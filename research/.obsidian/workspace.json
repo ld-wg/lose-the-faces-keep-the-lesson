@@ -178,13 +178,16 @@
   },
   "active": "301c63ab4c8eb4cb",
   "lastOpenFiles": [
+    "open-problems/60-open-questions.md",
+    "pipeline.md",
+    "next-steps/roadmap.md",
+    "papers/detection/rw-ananda-yolo-retinaface.md",
     "papers/detection/rw-ahmed-child-yolo-anonymization.md",
     "papers/diffusion/rw-klemp-ldfa.md",
     "papers/survey/rw-meden-bpet-survey.md",
     "papers/survey",
     "2026-07-28.md",
     "families/detection.md",
-    "next-steps/roadmap.md",
     "next-steps/gan-vs-diffusion.md",
     "stages/generation.md",
     "stages/identification.md",
@@ -192,7 +195,6 @@
     "families/gan.md",
     "families/diffusion.md",
     "next-steps/70-decisions.md",
-    "open-problems/60-open-questions.md",
     "stages/50-experiments.md",
     "stages/40-evaluation.md",
     "stages/30-method.md",
@@ -202,7 +204,6 @@
     "papers/gan/rw-yang-g2face.md",
     "papers/gan/rw-wu-ppgan.md",
     "papers/detection/rw-ahmed-yolov9-classroom.md",
-    "papers/detection/rw-ananda-yolo-retinaface.md",
     "next-steps",
     "open-problems",
     "stages",
@@ -213,7 +214,6 @@
     "papers",
     "rw-yang-g2face.md",
     "Untitled 1.canvas",
-    "Untitled.canvas",
-    "00-index.md"
+    "Untitled.canvas"
   ]
 }
