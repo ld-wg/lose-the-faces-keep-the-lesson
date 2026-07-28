@@ -11,10 +11,14 @@
             "id": "301c63ab4c8eb4cb",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "type": "markdown",
+              "state": {
+                "file": "pipeline.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "pipeline"
             }
           }
         ]
@@ -90,6 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
+                "file": "pipeline.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -99,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks"
+              "title": "Backlinks for pipeline"
             }
           },
           {
@@ -108,11 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
+                "file": "pipeline.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links"
+              "title": "Outgoing links from pipeline"
             }
           },
           {
@@ -150,12 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
+                "file": "pipeline.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline"
+              "title": "Outline of pipeline"
             }
           }
         ]
@@ -178,6 +185,7 @@
   },
   "active": "301c63ab4c8eb4cb",
   "lastOpenFiles": [
+    "pipeline_new.md",
     "20-related-work.md",
     "pipeline.md",
     "open-problems/60-open-questions.md",
@@ -204,7 +212,6 @@
     "papers/gan/rw-hellmann-ganonymization.md",
     "papers/gan/rw-yang-g2face.md",
     "papers/gan/rw-wu-ppgan.md",
-    "papers/detection/rw-ahmed-yolov9-classroom.md",
     "next-steps",
     "open-problems",
     "stages",
