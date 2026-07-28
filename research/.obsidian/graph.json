@@ -1,0 +1,51 @@
+{
+  "collapse-filter": true,
+  "search": "",
+  "showTags": false,
+  "showAttachments": false,
+  "hideUnresolved": false,
+  "showOrphans": true,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "path:families  ",
+      "color": {
+        "a": 1,
+        "rgb": 14701138
+      }
+    },
+    {
+      "query": "path:papers  ",
+      "color": {
+        "a": 1,
+        "rgb": 7217594
+      }
+    },
+    {
+      "query": "path:stages  ",
+      "color": {
+        "a": 1,
+        "rgb": 5431473
+      }
+    },
+    {
+      "query": "",
+      "color": {
+        "a": 1,
+        "rgb": 5419488
+      }
+    }
+  ],
+  "collapse-display": false,
+  "showArrow": false,
+  "textFadeMultiplier": 0,
+  "nodeSizeMultiplier": 1.97833333333333,
+  "lineSizeMultiplier": 2.46833333333333,
+  "collapse-forces": false,
+  "centerStrength": 0.816666666666667,
+  "repelStrength": 11.6666666666667,
+  "linkStrength": 0.366666666666667,
+  "linkDistance": 214,
+  "scale": 2.3429990846225,
+  "close": false
+}
