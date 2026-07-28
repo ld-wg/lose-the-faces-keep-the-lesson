@@ -178,8 +178,9 @@
   },
   "active": "301c63ab4c8eb4cb",
   "lastOpenFiles": [
-    "open-problems/60-open-questions.md",
+    "20-related-work.md",
     "pipeline.md",
+    "open-problems/60-open-questions.md",
     "next-steps/roadmap.md",
     "papers/detection/rw-ananda-yolo-retinaface.md",
     "papers/detection/rw-ahmed-child-yolo-anonymization.md",
@@ -212,7 +213,6 @@
     "papers/diffusion",
     "papers/detection",
     "papers",
-    "rw-yang-g2face.md",
     "Untitled 1.canvas",
     "Untitled.canvas"
   ]

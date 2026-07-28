@@ -4,6 +4,23 @@ Chronological record of what we decided and why. Newest first.
 
 ---
 
+## 2026-07-28 — FINAL PIPELINE: 3 networks + 2 thin stages, validated
+
+**Decision:** Adopt the merged 3-network architecture (detection+tracking / generation+compositing / temporal). Conditioning and compositing merged into the generator. Full rationale in [[pipeline]] §7.
+
+**Validated:** Independent literature check (2024–2026) confirmed all core instincts — merge conditioning, merge compositing, per-frame + temporal smoothing, diffusion-over-GAN, gaze-as-emergent. Video-native diffusion anonymization doesn't exist yet; per-frame + temporal transfer IS the current SOTA pattern.
+
+**One correction:** generator candidate set was outdated. Added:
+- **BLANKET** (ICDL 2025) — child-face specialist, solves our gating fairness risk → new primary lean
+- **Reverse Personalization** (WACV 2026) — Kung's successor to ReferenceNet, attribute-controllable
+- **AnonNET** (ICCV-W 2025), **NullFace** (FG 2026), **Muştu & Ekenel** (DSP 2025), **FDeID-Toolbox** (eval)
+
+**Why BLANKET over ReferenceNet:** ReferenceNet fails on infants (our subjects); BLANKET is purpose-built for child faces, temporally consistent, public code. Gating empirical question → Week 8–9 fairness smoke test.
+
+**Temporal:** anchor to fixed per-track canonical latent (not previous frame) to avoid drift. Primary = gradient injection; fallback/A-B = BLANKET's "generate once, swap per frame."
+
+---
+
 ## 2026-07-28 — Paper verification: 10 agents reviewed all PDFs
 
 Spawned one agent per paper to verify notes against actual PDFs in `~/Documents/tese/papers/`. Key outcomes below.

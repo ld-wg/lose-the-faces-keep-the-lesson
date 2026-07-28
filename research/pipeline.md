@@ -2,11 +2,11 @@
 
 End-to-end strategy for expression-preserving face de-identification in classroom videos.
 
-> This is the living design doc. Agents annotate `paper/main.tex` (commented, not deleted) and update this file. Goal: validate the architecture, find gaps, and decide whether the multi-network design is best or whether we should merge/simplify.
+> **Status: VALIDATED against current literature (2026-07-28).** The 3-network merged architecture is sound. One correction: the generator candidate set was outdated — added BLANKET (child-face specialist) and Reverse Personalization (Kung's successor to ReferenceNet). See §6 Conclusions and §7 Final Pipeline.
 
 ---
 
-## 1. Overall strategy
+## 1. Overall strategy (original 5-node design view)
 
 ```
 Input Video (classroom lecture)
@@ -245,6 +245,147 @@ _Agents append findings here per node._
   **Scope guard:** both merges select pretrained models whose published behavior already subsumes the stage — no unified model is trained, so "don't invent a new generator, make existing models video-capable" holds.
 
   Annotated `paper/main.tex` Methodology with `% [ARCH-AGENT]` comments (verdict, error-compounding map, compute honesty, scope guard). No text deleted.
+
+---
+
+## 6. Conclusions (drawn from the 6 node reviews + literature validation)
+
+### 6.1 The architecture makes sense — validated
+
+Independent validation against 2024–2026 literature confirmed our core instincts are **correct and current**:
+
+- ✅ **Merge conditioning into the generator** — confirmed. No recent explicit-conditioning method beats implicit driving-image conditioning on expression preservation. Kung's own follow-up (Reverse Personalization, WACV 2026) *abandoned* explicit conditioning entirely and still wins pose/gaze/expression. The field is moving our way.
+- ✅ **Merge compositing into the generator** — confirmed. CIAGAN/LDFA/ReferenceNet all inpaint in place.
+- ✅ **Per-frame + temporal smoothing** — confirmed. Video-native diffusion anonymization **does not exist yet** as a usable method; every 2024–2026 "video" solution (BLANKET, AnonNET, Muştu & Ekenel) is per-frame generation + a temporal transfer stage — exactly our plan.
+- ✅ **Gaze as emergent** — confirmed (Kung achieves best gaze with no gaze module).
+- ✅ **Diffusion over GAN** — confirmed, *especially for child faces* (GANs trained on adult FFHQ fail on infants; large-scale SD trained on LAION generalizes).
+
+### 6.2 The one correction: our generator candidate set was outdated
+
+The validation found we're missing a cluster of 2025–2026 methods — including the **direct successor to our primary candidate** and a **purpose-built solution to our gating risk**:
+
+| Method | Venue | Why it matters |
+|--------|-------|----------------|
+| **BLANKET** (Hadera et al.) | ICDL 2025 | **Solves our exact gating risk**: infant/child face video anonymization. Beats DeepPrivacy2, temporally consistent, public code. Key insight matches ours: large-scale SD generalizes to infants, GANs don't. |
+| **Reverse Personalization** (Kung et al.) | WACV 2026 | **Kung's own successor to ReferenceNet** — training-free, attribute-controllable (age/sex/race), SOTA privacy–utility. Gives demographic-similarity control for free. Code public. |
+| **AnonNET** (Egin et al.) | ICCV-W 2025 | Current best "unified" video anonymization (diffusion inpaint + reenactment). Must-cite, must-compare. |
+| **NullFace** (Kung et al.) | FG 2026 | Training-free localized anonymization; lowest re-ID in Reverse Personalization's table. |
+| **Muştu & Ekenel** | DSP 2025 | The temporal-consistency evidence base: face-swap (SimSwap/FaceDancer) beats anonymization-specific methods on temporal consistency. |
+| **FDeID-Toolbox** (Wei et al.) | arXiv 2603 | Standardized privacy/utility/quality eval — could save building eval infra + gain comparability. |
+
+### 6.3 Confirmed risks (not hypothetical)
+
+1. **Child-face fairness** — confirmed in the literature, not just our concern. BLANKET is the purpose-built mitigation.
+2. **Temporal mechanism is our least-validated component** — gradient injection (DiffAIM) was designed for impersonation, not anonymization. Our reframe (anchor to synthetic per-track latent) is sound but unproven. BLANKET's "generate identity once, swap per frame" is a simpler, *validated-on-children* alternative — A/B test it.
+3. **Compute honesty** — 200 DDPM steps/frame is not "standard hardware." Reverse Personalization: ~13 s/frame @ 1024² on A100. DDIM/few-step distillation or frame subsampling is **mandatory**, not optional.
+
+---
+
+## 7. FINAL PIPELINE (recommended)
+
+### 7.1 How many steps?
+
+**3 trainable networks + 2 thin stages** (down from the original 5). The 5-node view stays as the *design/benchmark* view; this is the *deployment* view.
+
+### 7.2 The final architecture
+
+```
+Input Video (classroom lecture)
+    │
+    ▼
+┌──────────────────────────────────────────────────────────────┐
+│ STAGE 1 — DETECTION + TRACKING  [trainable network #1]        │
+│ YOLOv9-M (or YOLOv8n) + ByteTrack                             │
+│ High recall priority. Output: [frame, track_id, box, conf]   │
+│ • ByteTrack keeps low-conf detections → recall               │
+│ • Tracker interpolation + RetinaFace 2nd pass on track drops │
+└──────────────────────────────────────────────────────────────┘
+    │ per-frame face crops + boxes + track IDs
+    ▼
+┌──────────────────────────────────────────────────────────────┐
+│ STAGE 2 — GENERATION + COMPOSITING  [trainable network #2]    │
+│ (conditioning + compositing MERGED in — no separate nets)    │
+│                                                               │
+│ Candidates (down-select at Week 14, pre-registered criteria):│
+│   • BLANKET (child-face specialist — NEW primary lean)       │
+│   • Reverse Personalization (Kung WACV'26, attribute control)│
+│   • ReferenceNet (Kung WACV'25, continuity baseline)         │
+│   • CIAGAN (GAN baseline, ~real-time)                        │
+│                                                               │
+│ • Implicit conditioning via driving image (no expression net)│
+│ • End-to-end inpainting (no separate compositor)             │
+│ • Seed-lock per track_id → consistent synthetic identity     │
+│ • 32px context padding + paste-back of unpadded region       │
+│ • Demographic-similarity control (age/sex/race-matched)      │
+└──────────────────────────────────────────────────────────────┘
+    │ composited frames (synthetic face in place)
+    ▼
+┌──────────────────────────────────────────────────────────────┐
+│ STAGE 3 — TEMPORAL CONSISTENCY  [thin stage, not a network]  │
+│ Anchor to fixed per-track canonical latent (NOT prev frame)  │
+│ • Primary: gradient injection (DiffAIM) toward per-track     │
+│   seed-locked latent — reuses generator U-Net                │
+│ • Fallback/A-B test: BLANKET's "generate once, swap per      │
+│   frame" (simpler, validated on children)                    │
+│ • Persistent track_id → synthetic identity (seed+latent) map │
+│ • Re-match on re-entry via ORIGINAL face embedding           │
+│ • Keyframe re-anchoring / EMA to prevent drift               │
+└──────────────────────────────────────────────────────────────┘
+    │
+    ▼
+Output Video (de-identified, expression-preserved) + audio
+```
+
+### 7.3 Decision rationale — each choice explained
+
+**Why 3 networks (not 5)?**
+The two merges (conditioning→generator, compositing→generator) delete the two *silent quality-loss* boundaries: landmark/3DMM failure → average-face fallback (destroys affect exactly in hard classroom conditions), and generation→compositing (seam/skin-tone mismatch). Both merges are **training-free** — we select pretrained generators whose published behavior already subsumes the stage, so "don't invent a new generator" holds. The two boundaries that *must* stay visible — detection recall (a miss = privacy leak) and temporal identity — remain separate, benchmarkable stages.
+
+**Why diffusion (not GAN)?**
+- Best-in-table pose/gaze/expression preservation (our core utility axes)
+- The anonymization knob $d$ = a free inference-time privacy–utility curve (thesis figure)
+- Seed diversity → consistent per-student pseudonym (helps temporal)
+- **Decisive for us:** GANs trained on adult FFHQ fail on infants; large-scale SD (LAION) generalizes to children. Our subjects are children.
+- *Trade-off accepted:* diffusion is heavy (200 DDPM steps/frame). Mitigation = DDIM/few-step distillation or frame subsampling (mandatory). GANs (CIAGAN) kept as ~real-time baseline.
+
+**Why BLANKET as the new primary lean (over ReferenceNet)?**
+ReferenceNet was our lean, but (a) its own author superseded it (Reverse Personalization), and (b) it verifiably fails on infants — our exact subjects. BLANKET is purpose-built for child faces, temporally consistent, and public. **This is now the gating empirical question:** run the Week 8–9 fairness smoke test on BLANKET vs ReferenceNet vs Reverse Personalization vs CIAGAN.
+
+**Why implicit conditioning (no expression/pose/gaze net)?**
+ReferenceNet/Reverse Personalization achieve best-in-table pose/gaze/expression with *no* explicit estimator — the driving image carries it implicitly. This removes an entire failure boundary (MediaPipe/D3DFR fail on occlusion/children). Estimators survive only as **evaluation probes** (they compute our utility metrics), not pipeline stages. Gaze = emergent, measured not modeled.
+
+**Why end-to-end compositing (no separate inpainter)?**
+Our utility promise is expression/gaze/affect — exactly what classical alpha/Poisson blending does *not* model. A feathered paste can preserve pixels yet break perceived affect via skin-tone/lighting discontinuity. CIAGAN/LDFA/ReferenceNet all inpaint in place. Classical blending = fallback only.
+
+**Why per-frame + temporal anchor (not video-native diffusion)?**
+Video-native diffusion anonymization doesn't exist as a usable method yet. Every current "video" solution is per-frame + temporal transfer. Our plan is *more* aligned with SOTA than chasing video diffusion. Video-native = future work.
+
+**Why anchor to a canonical latent (not the previous frame)?**
+"Reuse previous frame's face" is a feedback loop — artifacts compound over a long lecture take (drift). Anchoring to a fixed per-track seed-locked latent (and pulling toward it via gradient injection) prevents drift. This is the same "fixed identity per track" principle BLANKET and Muştu & Ekenel validate.
+
+### 7.4 Objectives & trade-offs summary
+
+| Objective | How the pipeline achieves it | Trade-off accepted |
+|-----------|------------------------------|--------------------|
+| **Privacy** (suppress identity) | High-recall detection (no face missed) + diffusion anonymization knob $d$ + seed-locked per-track pseudonym | Diffusion compute (heavy) |
+| **Utility** (preserve expression/gaze/affect) | Implicit driving-image conditioning (best-in-table) + end-to-end compositing | Not inspectable/editable signal |
+| **Fairness** (children) | BLANKET child-face specialist + stratified eval | Extra candidate to benchmark |
+| **Temporal stability** | Canonical-latent anchor + gradient injection | Least-validated component (has fallback) |
+| **Compute** (standard hardware) | DDIM/distillation/subsampling | Must be stated, not assumed |
+| **Modularity** | Detection / generation / temporal stay separately benchmarkable | Conditioning + compositing no longer swappable |
+
+### 7.5 Pre-registered down-select criteria (Week 14)
+
+Decide the primary generator empirically on:
+1. **Privacy** — ASR, Rank-N-T, API confidence, PG/PIC, NoA (held-out verifier + parrot attack)
+2. **Utility** — emotion agreement, 3DMM L2, pose/gaze, detection mAP, boundary coherence
+3. **Fairness** — stratified by age/ethnicity (child faces are gating)
+4. **Compute** — fps on target hardware
+5. **Temporal** — flicker (consecutive-frame LPIPS/embedding distance), identity-lock stability
+
+Sweep $d \in \{1.0, 1.2, 1.4, 1.6\}$ → privacy–utility curve figure.
+
+---
 
 ## Links
 

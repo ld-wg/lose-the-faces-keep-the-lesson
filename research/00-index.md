@@ -11,6 +11,8 @@ Expression-preserving face de-identification for educational research.
 **Diffusion:** [[rw-kung-referencenet]], [[rw-wang-gradient-injection]], [[rw-klemp-ldfa]]
 **Survey:** [[rw-meden-bpet-survey]]
 
+**➕ New (2025–2026, from pipeline validation — notes TODO):** BLANKET (ICDL'25, child-face), Reverse Personalization (WACV'26, Kung successor), AnonNET (ICCV-W'25), NullFace (FG'26), Muştu & Ekenel (DSP'25), FDeID-Toolbox (eval). See [[pipeline]] §6.2.
+
 > ⚠️ [[rw-ahmed-yolov9-classroom]] is **unverified** — its PDF is actually Srivastava 2021 (generic objects). The verified child-face YOLOv9 source is [[rw-ahmed-child-yolo-anonymization]].
 
 ## 📁 Families
