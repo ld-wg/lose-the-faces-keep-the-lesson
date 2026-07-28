@@ -1,0 +1,17 @@
+# Machine-specific path overrides
+config.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Data & training artifacts
+data/
+runs/
+*.pt
+!weights/yolov8n.pt
+
+# OS
+.DS_Store

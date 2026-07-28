@@ -20,6 +20,7 @@ Output Video (de-identified, expression-preserved)
 
 ```
 ├── src/
+│   ├── config.py              # Central path/env configuration
 │   ├── identify/              # Face identification network
 │   │   ├── train_face_detector.py
 │   │   ├── dataset_utils.py
@@ -31,23 +32,41 @@ Output Video (de-identified, expression-preserved)
 │   ├── yolov8n.pt
 │   ├── face_detector_sgd_best.pt
 │   └── face_detector_sam_best.pt
-├── docs/                      # Paper, notes, guides
-├── paper/                     # LaTeX source
+├── docs/                      # Notes and guides
+├── paper/                     # LaTeX source (main paper)
 ├── experiments/               # Training result CSVs
+├── config.example.json        # Path config template
 └── requirements.txt
+```
+
+## Configuration
+
+Dataset and output paths are resolved by `src/config.py` with this priority:
+
+1. **Environment variables** (highest): `PPY_WIDERFACE`, `PPY_DATASET_DIR`, `PPY_WEIGHTS_DIR`, `PPY_RUNS_DIR`
+2. **`config.local.json`** at the repo root (gitignored — copy `config.example.json` as a template)
+3. **Built-in defaults** (paths under the repo)
+
+`widerface_root` must point to an extracted WIDER FACE directory containing
+`wider_face_split/`, `WIDER_train/`, and `WIDER_val/`.
+
+Check your setup:
+
+```bash
+python -m src.config
 ```
 
 ## Quick Start
 
 ```bash
 pip install -r requirements.txt
+cp config.example.json config.local.json   # then edit widerface_root
 ```
 
 Train face detector:
 
 ```bash
-cd src/identify
-python train_face_detector.py --fraction 1.0 --epochs 30 --optimizer sam
+python src/identify/train_face_detector.py --fraction 1.0 --epochs 30 --optimizer sam
 ```
 
 Run webcam detection:

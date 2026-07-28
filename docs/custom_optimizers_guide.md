@@ -4,9 +4,9 @@ This workspace now includes first-class SAM and Lion optimizer support for the W
 
 ### Overview
 
-- `yolo/optimizers/optimizers.py` defines portable implementations of SAM and Lion. SAM exposes `first_step`/`second_step` and a `base` optimizer handle so the trainer can drive the two-phase update under AMP.
-- `yolo/optimizers/custom_trainer.py` subclasses Ultralytics' `DetectionTrainer`, wiring in the new optimizers. Lion slots directly into the stock training loop; SAM overrides `_do_train` and issues the extra adversarial step per batch while remaining compatible with GradScaler, EMA, and callbacks.
-- `yolo/train.py` adds CLI flags (`--optimizer`, `--sam-rho`, `--lion-beta1`, `--lion-beta2`) and conditionally swaps in the custom trainer when you request `sam` or `lion`. SAM automatically forces `nbs=batch` so accumulation stays at one step per update.
+- `src/identify/optimizers/custom_optimizers.py` defines portable implementations of SAM and Lion. SAM exposes `first_step`/`second_step` and a `base` optimizer handle so the trainer can drive the two-phase update under AMP.
+- `src/identify/optimizers/custom_trainer.py` subclasses Ultralytics' `DetectionTrainer`, wiring in the new optimizers. Lion slots directly into the stock training loop; SAM overrides `_do_train` and issues the extra adversarial step per batch while remaining compatible with GradScaler, EMA, and callbacks.
+- `src/identify/train_face_detector.py` adds CLI flags (`--optimizer`, `--sam-rho`, `--lion-beta1`, `--lion-beta2`) and conditionally swaps in the custom trainer when you request `sam` or `lion`. SAM automatically forces `nbs=batch` so accumulation stays at one step per update.
 - Training run directories inherit the optimizer tag (`train_sam_...`, `train_lion_...`) when you pass a non-auto optimizer, making it easy to compare experiments.
 - SAM-specific loop tweaks: we override `_do_train` only when SAM is selected, disable gradient accumulation (`nbs=batch`), and call a helper that performs the three SAM phases (perturb weights, recompute loss at `w+ε`, restore weights + `base.step()`) every batch, so the math lines up with the paper while still using Ultralytics’ logging/EMA/scheduler plumbing.
 
@@ -14,16 +14,15 @@ This workspace now includes first-class SAM and Lion optimizer support for the W
 
 1. Lion (single forward/backward per batch):
    ```bash
-   source venv/bin/activate
-   python yolo/train.py --optimizer lion --lion-beta1 0.95 --lion-beta2 0.99 --epochs 1 --fraction 0.001
+   python src/identify/train_face_detector.py --optimizer lion --lion-beta1 0.95 --lion-beta2 0.99 --epochs 1 --fraction 0.001
    ```
 2. SAM (double forward/backward per batch):
    ```bash
-   python yolo/train.py --optimizer sam --sam-rho 0.05 --epochs 1 --fraction 0.001
+   python src/identify/train_face_detector.py --optimizer sam --sam-rho 0.05 --epochs 1 --fraction 0.001
    ```
    Expect ~2× step time and higher VRAM requirements versus standard optimizers.
 
-Hyperparameters you do _not_ set fall back to the defaults baked into `train.py`. All other Ultralytics arguments remain available; the trainer quietly strips the custom options before passing overrides into the base class, so there are no parser conflicts.
+Hyperparameters you do _not_ set fall back to the defaults baked into `train_face_detector.py`. All other Ultralytics arguments remain available; the trainer quietly strips the custom options before passing overrides into the base class, so there are no parser conflicts.
 
 ### Under the Hood: Custom Trainer
 

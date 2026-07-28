@@ -3,7 +3,7 @@
 Command used:
 
 ```bash
-python train.py \
+python src/identify/train_face_detector.py \
   --fraction 1.0 \
   --epochs 30 \
   --batch-size 16 \
@@ -32,7 +32,7 @@ python train.py \
 ## SAM Training Configuration
 
 ```bash
-python train.py \
+python src/identify/train_face_detector.py \
   --fraction 1.0 \
   --epochs 30 \
   --batch-size 16 \
@@ -56,6 +56,6 @@ python train.py \
 
 ### Stability Changes Applied
 
-- Disabled AMP whenever `optimizer=sam`, so both the base step and the adversarial step run in FP32 (`train.py`).
+- Disabled AMP whenever `optimizer=sam`, so both the base step and the adversarial step run in FP32 (`train_face_detector.py`).
 - Added gradient clipping/logging inside `CustomDetectionTrainer._sam_optimizer_step` to cap the norm before/after each SAM step and skip updates when the norm becomes non-finite.
 - Logged the clipped gradient norms every N SAM steps to watch for divergence without digging into TensorBoard.

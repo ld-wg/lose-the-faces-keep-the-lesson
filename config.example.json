@@ -1,0 +1,6 @@
+{
+  "widerface_root": "/path/to/widerface",
+  "dataset_dir": "data/wider_face_yolo",
+  "weights_dir": "weights",
+  "runs_dir": "runs"
+}

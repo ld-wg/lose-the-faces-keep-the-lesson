@@ -2,9 +2,9 @@
 #!/usr/bin/env python3
 """
 WIDER FACE → YOLOv8 trainer (minimal & tidy)
-- Keeps your existing dataset prep/validation in utils.dataset
-- Removes custom optimizer/hardware plumbing
-- Fixes indentation bug and mistaken sys.exit
+- Dataset prep/validation in identify.dataset_utils
+- Paths resolved via src.config (defaults → config.local.json → PPY_* env vars)
+- Custom SAM/Lion optimizers via optimizers.custom_trainer
 - Small, readable, and safe on CPU/MPS/CUDA
 
 Usage (examples):
@@ -29,8 +29,10 @@ except ImportError:
 
 import yaml
 
-# --- Local utils (dataset only; keep minimal dependencies) ---
-from utils.dataset import (
+# --- Local modules (config + dataset utils) ---
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # src/
+from config import CONFIG
+from identify.dataset_utils import (
     prepare_dataset,
     check_dataset_integrity,
     validate_yolo_labels,
@@ -45,14 +47,10 @@ DEFAULT_BATCH_SIZE = 16
 DEFAULT_WORKERS = 4
 DEFAULT_IMGSZ = 640
 
-DATA_PATH = Path("../widerface").resolve()
-TRAIN_ANNOTATIONS = DATA_PATH / "wider_face_split" / "wider_face_train_bbx_gt.txt"
-VAL_ANNOTATIONS   = DATA_PATH / "wider_face_split" / "wider_face_val_bbx_gt.txt"
-TRAIN_IMAGES_SRC  = DATA_PATH / "WIDER_train" / "images"
-VAL_IMAGES_SRC    = DATA_PATH / "WIDER_val"   / "images"
-
-DATASET_DIR = Path("./datasets/wider_face_yolo").resolve()
-MODEL_FILE = "yolov8n.pt"
+# Paths come from src/config.py (defaults → config.local.json → PPY_* env vars)
+DATA_PATH = CONFIG.widerface_root
+DATASET_DIR = CONFIG.dataset_dir
+MODEL_FILE = str(CONFIG.weights_dir / "yolov8n.pt")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -133,7 +131,7 @@ def train_model(
         batch=batch_size,
         workers=workers,
         device=device,
-        project="runs/train",
+        project=str(CONFIG.runs_dir / "train"),
         name=experiment,
         exist_ok=True,
         optimizer=optimizer_key,
@@ -176,7 +174,7 @@ def train_model(
     results = model.train(**train_kwargs)
 
     # Locate best weights
-    model_path = Path("runs/train") / experiment / "weights" / "best.pt"
+    model_path = CONFIG.runs_dir / "train" / experiment / "weights" / "best.pt"
     if not model_path.exists():
         logger.error("Training failed - best.pt not found")
         return {"success": False}
@@ -230,18 +228,10 @@ def main() -> None:
     logger.info(f"Fraction={args.fraction} Epochs={args.epochs} Batch={args.batch_size} Workers={args.workers} ImgSz={args.imgsz}")
 
     # --- Required input paths sanity ---
-    required = [
-        (DATA_PATH, "WIDER FACE data directory"),
-        (TRAIN_ANNOTATIONS, "Train annotations"),
-        (VAL_ANNOTATIONS, "Val annotations"),
-        (TRAIN_IMAGES_SRC, "Train images"),
-        (VAL_IMAGES_SRC, "Val images"),
-    ]
-    missing = [desc for path, desc in required if not path.exists()]
-    if missing:
-        for path, desc in required:
-            if not path.exists():
-                logger.error(f"Missing: {desc} at {path}")
+    try:
+        CONFIG.require_widerface()
+    except FileNotFoundError as e:
+        logger.error(str(e))
         sys.exit(1)
 
     # --- Prepare dataset (keeps your existing converter) ---
