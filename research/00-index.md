@@ -25,6 +25,7 @@ Expression-preserving face de-identification for educational research.
 
 - [[10-problem]] — research question, hypothesis, scope
 - [[identification]] — stage 1: face detection ✅
+- [[identification-refined]] — stage 1 refined opinion (SCRFD/RetinaFace, low-light, child faces) 🆕
 - [[generation]] — stage 2: synthetic replacement ⬜
 - [[30-method]] — full pipeline design
 - [[40-evaluation]] — privacy & utility metrics

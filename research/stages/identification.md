@@ -1,5 +1,7 @@
 # Stage: Identification (Face Detection)
 
+> **⚠️ See [[identification-refined]] for the updated opinion.** The "done" status below is challenged: YOLOv8n (mAP50 0.616) is architecturally behind SCRFD-34G (0.853 hard AP) and RetinaFace (perfect classroom recall), and adult-trained detectors are age-biased against our child subjects.
+
 First pipeline stage: localize every face per frame with high recall.
 
 ## Goal
