@@ -1,9 +1,0 @@
-# Phase 1 — detection + tracking (RetinaFace via InsightFace)
-insightface>=0.7.3
-onnxruntime>=1.16.0
-
-# Computer Vision
-opencv-python>=4.8.0
-
-# Data
-numpy>=1.24.0

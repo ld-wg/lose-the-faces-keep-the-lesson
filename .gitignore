@@ -11,7 +11,6 @@ venv/
 data/
 runs/
 *.pt
-!weights/yolov8n.pt
 
 # Research notes
 research/

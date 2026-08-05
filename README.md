@@ -36,7 +36,8 @@ Output Video (de-identified, expression-preserved) + audio
 ├── paper/                       # LaTeX source (main paper)
 ├── research/                    # Research vault — decisions, paper notes, open questions
 ├── config.example.json          # Path config template
-└── requirements.txt
+├── pyproject.toml               # Project metadata + dependencies (uv)
+└── uv.lock                      # Locked dependency versions
 ```
 
 ## Configuration
@@ -53,26 +54,28 @@ Dataset and output paths are resolved by `src/config.py` with this priority:
 Check your setup:
 
 ```bash
-python -m src.config
+uv run python -m src.config
 ```
 
 ## Quick Start
 
+Requires [`uv`](https://docs.astral.sh/uv/) (`brew install uv`).
+
 ```bash
-pip install -r requirements.txt
+uv sync                                    # creates .venv, installs locked dependencies
 cp config.example.json config.local.json   # then edit paths as needed
 ```
 
 Run detection + tracking on a video:
 
 ```bash
-python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/phase1 --save-crops --preview
+uv run python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/phase1 --save-crops --preview
 ```
 
 Live webcam preview:
 
 ```bash
-python -m src.pipeline.phase1_detect.run --webcam
+uv run python -m src.pipeline.phase1_detect.run --webcam
 ```
 
 Each run writes `detections.jsonl` — one record per frame: `{frame_id, tracks: [{track_id, box, conf}]}` — plus, when requested, padded face crops (for the generation stage) and an annotated `preview.mp4`.
