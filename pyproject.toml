@@ -1,5 +1,5 @@
 [project]
-name = "privacy-preserving-yolo"
+name = "lose-the-faces-keep-the-lesson"
 version = "0.1.0"
 description = "Expression-preserving face de-identification for educational research"
 requires-python = ">=3.11"

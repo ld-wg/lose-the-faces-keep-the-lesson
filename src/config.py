@@ -1,4 +1,4 @@
-"""Central path/environment configuration for the privacy-preserving-yolo pipeline.
+"""Central path/environment configuration for the lose-the-faces-keep-the-lesson pipeline.
 
 Resolution order (later sources win):
     1. Built-in defaults (paths relative to this repo)
