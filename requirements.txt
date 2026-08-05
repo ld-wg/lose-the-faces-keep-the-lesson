@@ -3,6 +3,10 @@ torch>=2.0.0
 torchvision>=0.15.0
 ultralytics>=8.3.0
 
+# Phase 1 — face detection (RetinaFace via InsightFace)
+insightface>=0.7.3
+onnxruntime>=1.16.0
+
 # Computer Vision
 opencv-python>=4.8.0
 Pillow>=10.0.0
