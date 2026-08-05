@@ -72,195 +72,19 @@ In contrast, another diffusion based approach focuses on active identity manipul
 
 \section{Methodology}
 
-% [NODE1-AGENT] GAP (critical): "detection and tracking" is claimed but no tracker is ever specified.
-% Detection != tracking. Name the algorithm (ByteTrack / BoT-SORT / DeepSORT) and justify it.
-% Recommendation: ByteTrack — it keeps low-confidence detections in the association pool, which
-% directly serves our high-recall priority and partially mitigates the hard-condition recall
-% collapse reported by \cite{ahmed} (YOLOv9-M R=0.34 under occlusion/groups/low-light).
-% [NODE1-AGENT] GAP: no detector is named here. State the model (currently YOLOv8n, SAM optimizer,
-% fine-tuned on WIDER FACE) and defend the choice against the alternatives already cited:
-% YOLOv9-M \cite{ahmed} (mAP@0.5=0.963 on child faces, statistically > v8, ~122ms/frame — acceptable
-% offline) and RetinaFace \cite{gf-ananda} (R=1.00 in all 4 classroom scenarios, but slowest).
-% Given "no face goes unnoticed" is objective (i), a recall-first argument for RetinaFace or a
-% two-stage (YOLOv8n + RetinaFace on low-confidence frames) cascade should be considered.
-% [NODE1-AGENT] GAP: "tuned to classroom-like conditions" is asserted but no classroom-specific
-% evaluation protocol is defined. Adopt the 4-scenario protocol of \cite{gf-ananda} (vary headcount
-% 32-40 students, include a ~40 lux low-light scenario, report P/R/F1 at IoU>=0.5) and add a
-% hard-condition split per \cite{ahmed} (occlusion, groups, low light, motion blur).
-% [NODE1-AGENT] GAP: no fallback for missed detections. Since a single missed face = a privacy leak,
-% specify a mitigation: tracker-based box interpolation across miss gaps, confidence-threshold
-% tuning for recall, and/or a high-recall second pass on frames with track drops.
-This is a theoretical–practical (empirical) study with a primarily quantitative approach. The pipeline normalizes input video, performs high-recall face detection and tracking tuned to classroom-like conditions, estimates per-frame affect/expression signals, and applies a generative de-identification step that replaces each detected face with a non-identifying surrogate while preserving pose, expression, and scene coherence. Temporal consistency and basic post-processing ensure stable outputs suitable for downstream analysis.
-% [NODE4-AGENT] KEY ARCHITECTURE QUESTION (separate compositing vs end-to-end): the phrase
-% "replaces each detected face ... while preserving ... scene coherence" presupposes a SEPARATE
-% compositing stage (Node 4), but the verified candidates split on exactly this axis and the
-% choice should be stated explicitly, not assumed:
-%   * END-TO-END (fold compositing INTO the generator): CIAGAN \cite{ciagan} inpaints the face
-%     IN the generator (no separate paste-back); LDFA \cite{klemp} inpaints in place with SD2.
-%     Advantage: the model learns the boundary, so there is no hand-crafted seam to artifact.
-%   * SEPARATE compositing: ReferenceNet \cite{kung} generates only the face region and leaves
-%     blending as a downstream concern; GANonymization \cite{hellmann} re-synthesizes the face
-%     then pastes it back over a U-Net-removed background.
-%   RECOMMENDATION: prefer end-to-end / learned fusion over classical blending, because our
-%   utility promise (expression/gaze/affect) is exactly what classical alpha/Poisson blending
-%   does NOT model --- a hard or feathered paste can preserve pixels yet still break perceived
-%   affect via skin-tone/lighting discontinuity at the boundary. State the decision here.
-% [NODE4-AGENT] GAP (boundary handling --- currently unspecified): "scene coherence" is asserted
-% but no mechanism is named. Specify the mask/padding/feather policy:
-%   * CONTEXT PADDING: LDFA \cite{klemp} pads each face box by 32 px before inpainting and pastes
-%     back ONLY the unpadded region --- the pad gives the model boundary context and hides the seam.
-%     Adopt this; it is cheap and verified.
-%   * LEARNED ADAPTIVE MASK: G2Face \cite{h-yang} fuses generated identity features with original
-%     identity-irrelevant features via Identity-aware Feature Fusion (IFF) blocks with a LEARNED
-%     adaptive mask --- a stronger, learned alternative to fixed feathering that preserves
-%     hair/glasses/background edges. Consider IFF-style fusion if a separate compositor is kept.
-%   * CLASSICAL fallback: Poisson blending / alpha feathering are acceptable ONLY as a baseline;
-%     they do not preserve affect and are the likely source of skin-tone mismatch.
-% [NODE4-AGENT] GAP (known boundary artifacts to pre-empt): name the failure modes and a metric:
-%   * SKIN-TONE / LIGHTING MISMATCH: LDFA \cite{klemp} shows skin-tone mismatch when glasses are
-%     removed and lighting inconsistency at the boundary --- a direct threat in classrooms
-%     (glasses, hair over forehead, side lighting from windows).
-%   * GLASSES / HAIR EDGES: these straddle the face box and are the hardest to blend; a fixed
-%     rectangular mask cuts them. Use a face-parsing / soft mask rather than the raw detector box.
-%   * METRIC: add a boundary-coherence check to the utility axis (e.g., gradient/color
-%     discontinuity along the mask contour, or a face-parsing-consistency score) so "seamless"
-%     is measured, not asserted.
-% [NODE4-AGENT] GAP (overlapping faces / occlusion --- unaddressed): students sit close together,
-% so face boxes OVERLAP. LDFA \cite{klemp} is verified to produce artifacts on overlapping boxes
-% (one face's inpaint overwrites another). Specify an occlusion policy: process faces in
-% depth/order, mask already-composited faces out of subsequent inpaint contexts, or composite
-% back-to-front. Without this, close-seated students corrupt each other.
-% [NODE4-AGENT] NOTE (choice depends on generator): the compositing decision is NOT independent
-% of the GAN-vs-diffusion down-select (Node 3). Diffusion candidates (LDFA, ReferenceNet) naturally
-% inpaint in place and tolerate context padding; GAN candidates (CIAGAN end-to-end vs
-% GANonymization paste-back) differ among themselves. Make compositing an explicit scored
-% criterion in the Week-14 down-select, not an afterthought.
-% [NODE2-AGENT] KEY ARCHITECTURE QUESTION: "estimates per-frame affect/expression signals"
-% presupposes a SEPARATE estimation stage (Node 2), but our strongest generator candidate
-% (ReferenceNet, \cite{kung}) performs NO explicit estimation at all --- it conditions on a
-% face-swapped "driving image" and achieves BEST-in-table pose/gaze/expression preservation
-% with a single MSE loss. Suggest rephrasing to "extracts or derives the conditioning signal
-% (explicit or implicit)" so the text does not pre-commit to a standalone network. State the
-% separate-vs-merged decision explicitly here: a modular Node 2 is swappable/debuggable, but
-% merging estimation into the generator removes an entire failure boundary and an extra model.
-% [NODE2-AGENT] GAP: the text never says WHICH signal carries expression/pose/gaze into the
-% generator. The three verified options have distinct failure profiles --- name the choice:
-%   (a) Dense landmarks (MediaPipe 478pt, GANonymization \cite{hellmann}): cheap, interpretable,
-%       strong emotion preservation --- BUT detection failure triggers an "average face"
-%       fallback that loses expression ENTIRELY, plus Fear/Happy confusion. In classrooms
-%       (occlusions, board turns, children looking down) landmark failure is the COMMON case.
-%   (b) 3DMM coefficients (G2Face \cite{h-yang}): proven to preserve expression/pose via D3DFR
-%       shape/expression/pose coefficients fused into the identity embedding; more robust to
-%       moderate pose than 2D landmarks, but degrades on extreme pose/expression and adds an
-%       estimator dependency.
-%   (c) Driving image (ReferenceNet \cite{kung}): no explicit estimator to fail --- conditioning
-%       is implicit, so there is no Node-2 failure mode at all; the trade is the signal is not
-%       inspectable/editable and inherits the face-swapper's (InSwapper) biases.
-% [NODE2-AGENT] GAP (gaze): the abstract/intro promise gaze preservation, but no gaze estimator
-% appears anywhere in the pipeline. Evidence suggests explicit gaze estimation may be
-% UNNECESSARY: \cite{kung} achieves the best gaze preservation (0.161/0.166 angular error)
-% with NO gaze module --- gaze emerges from driving-image conditioning. Recommendation: do NOT
-% add a dedicated gaze network; evaluate gaze as an emergent property (quaternion/angular
-% distance, already in our utility metrics) and add explicit conditioning only if the emergent
-% result fails.
-% [NODE2-AGENT] GAP (failure modes --- currently unaddressed): state what happens when the
-% conditioning signal is unreliable:
-%   * occlusion / extreme pose / child faces: MediaPipe and D3DFR both degrade; Kung's model
-%     specifically fails on infants --- directly relevant since our subjects are children.
-%   * fallback policy (to specify): hold last valid conditioning vector, drop to the blur/mosaic
-%     censorship baseline, or flag the frame for manual review. GANonymization's silent
-%     "average face" fallback is the anti-pattern to avoid --- it destroys exactly the affect
-%     signal we promise to keep.
-%   * per-frame confidence gating: only replace when conditioning confidence exceeds a
-%     threshold; else censor. This couples Node 2 to the censorship baseline (Week 7).
-% [NODE2-AGENT] WARNING (affect vs structure): do not rely on SSIM-style regulators to preserve
-% affect --- PP-GAN \cite{yifan-wu} shows SSIM preserves only luminance/contrast/structure,
-% NOT expression. If an explicit carrier is chosen, the loss/regulator must include
-% expression/gaze terms (3DMM L2, gaze), not just pixel structure.
-% [ARCH-AGENT] ARCHITECTURE VERDICT (cross-cutting, builds on NODE1/2/3/5 reviews):
-% The 5-stage enumeration in research/pipeline.md is a DESIGN/LOGGING view, not a
-% deployment view. Recommended TARGET = 3 trainable networks + 2 thin (non-learned) stages:
-%   (1) Detection+Tracking [YOLOv8n + ByteTrack] --- keep separate; recall-critical,
-%       mature, and its output schema is the contract everything else consumes.
-%   (2) Generation+Compositing [ReferenceNet \cite{kung} OR CIAGAN \cite{ciagan}] ---
-%       MERGE Node 4 into Node 3. Verified precedent: CIAGAN and LDFA \cite{klemp}
-%       generate the face IN PLACE (end-to-end inpainting, no separate compositor);
-%       ReferenceNet's driving image carries background/pose, so the U-Net already
-%       synthesizes the face in context. A standalone compositor is then only a
-%       classical fallback (alpha-feather/Poisson, ~0 params) for the GAN path ---
-%       keep it as a utility, not a pipeline stage.
-%   (3) Temporal consistency [inference-time, reuses (2)'s U-Net via gradient
-%       injection \cite{wang}] --- keep as a distinct STAGE (it has its own failure
-%       modes: drift, identity lock) but it is NOT a new network.
-%   MERGED AWAY: Node 2 (expression/pose/gaze estimation) --- fold into the
-%       generator per the NODE2-AGENT verdict: ReferenceNet needs NO explicit
-%       conditioning network (driving image is implicit conditioning) and still
-%       achieves best-in-table pose/gaze/expression. Keep MediaPipe/3DMM only as
-%       EVALUATION PROBES (they compute our utility metrics), not as pipeline stages.
-%   REJECTED merges: (1+2) RetinaFace-landmarks -> expression net: only helps the
-%       explicit-carrier path we are moving away from, and couples the recall-critical
-%       detector to a conditioning choice. (3+5) video-native diffusion: correct
-%       end-state but out of scope for 20 weeks / standard hardware (200 DDPM
-%       steps/frame); keep per-frame + locking.
-% [ARCH-AGENT] ERROR-COMPOUNDING MAP (riskiest handoffs, in order):
-%   1. Detection -> everything: a missed face is an UNANONYMIZED child (privacy leak,
-%       not quality loss). Highest-stakes boundary; mitigations per NODE1-AGENT.
-%   2. Conditioning -> generation (only if Node 2 is separate): landmark/3DMM failure
-%       silently destroys affect (GANonymization average-face fallback). MERGING Node 2
-%       deletes this boundary entirely --- the strongest single argument for the merge.
-%   3. Generation -> compositing: seam/skin-tone mismatch (LDFA: mismatch around
-%       glasses, blurry tiny faces). Folding compositing into the generator deletes
-%       this boundary too.
-%   4. Frame t -> frame t+1: drift in temporal reuse (NODE5-AGENT); mitigated by
-%       anchoring to a canonical per-track latent, not the previous frame.
-%   Net: the two merges (2+3, 3+4) remove boundaries #2 and #3 --- precisely the two
-%   SILENT quality-loss boundaries --- while keeping the two boundaries that must stay
-%   visible (detection recall, temporal identity) as separately benchmarkable stages.
-% [ARCH-AGENT] COMPUTE: merging saves less FLOPs than it saves failure modes. Node 2
-% (~10-50M params) and classical compositing (~0) are noise next to the ~900M-param
-% diffusion generator at 200 steps/frame; the compute problem is the generator itself
-% (see NODE3-AGENT: DDIM/few-step distillation or A6000-class assumption). So argue
-% the merges on ROBUSTNESS grounds (fewer silent-failure boundaries, fewer models to
-% train/tune), not on compute grounds --- and say so explicitly, or reviewers will
-% expect a compute win that is not there.
-% [ARCH-AGENT] SCOPE GUARD: merging must not become "train a unified model" --- that
-% contradicts the stated goal ("don't invent a new generator, make existing models
-% video-capable"). Both recommended merges are TRAINING-FREE: they select generators
-% whose published, pretrained behavior already subsumes the merged stage (CIAGAN/LDFA
-% inpaint in place; ReferenceNet conditions implicitly). Frame it this way in the text.
-% REVIEW (Node 3 — Generation): The generative step is described only abstractly here.
-% Suggest naming the concrete candidates and the selection protocol: ReferenceNet
-% diffusion \cite{kung} (current leaning) vs.\ GANonymization \cite{hellmann} and
-% CIAGAN \cite{ciagan} as equal GAN baselines. CIAGAN matches GANonymization overall
-% and beats it on Fear/Happy/Sadness, so benchmarking only GANonymization would
-% undersell the GAN family. State explicitly that the GAN-vs-diffusion decision is
-% empirical (head-to-head on classroom frames), not a priori.
-% REVIEW: The phrase "non-identifying surrogate" hides the key mechanism — the
-% per-track fixed identity. Specify: a fixed random seed per track ID yields a
-% consistent pseudonymous face per student (ReferenceNet seed diversity). Also
-% consider demographic-similarity control (age/gender/ethnicity-matched surrogate)
-% so de-identified faces remain plausible for the classroom population — otherwise
-% the surrogate itself becomes a bias source.
-% REVIEW (fairness, gating): ReferenceNet is verified to fail on infants and
-% ethnic minorities (trained on CelebA-HQ/FFHQ/CelebRef-HQ — adult-skewed). Since
-% our subjects are children, the child-face fairness gap must be addressed in
-% Methodology, not deferred: (a) fine-tune on a child-face dataset, or
-% (b) fall back to a GAN baseline if degradation confirms on our data. This
-% decision should be stated as an explicit contingency plan here.
-% REVIEW (Node 5): "Temporal consistency ... ensure stable outputs" is asserted here but
-% never operationalized anywhere in this section. Since temporal consistency is our stated
-% differentiator (ALL cited baselines --- GANonymization, G2Face, PP-GAN, LDFA, ReferenceNet,
-% DiffAIM --- are image-only; Meden survey lists it as an open problem), the Methodology
-% should name the mechanism explicitly: (i) per-track identity locking (fixed seed/latent
-% per track ID, persisted across occlusions and re-entries), and (ii) a flicker-suppression
-% strategy (e.g., exponential moving average in latent space, or guided reuse of the
-% previous frame's latent). One sentence here would close the gap between claim and design.
+This is a theoretical–practical (empirical) study with a primarily quantitative approach. Our first sketch of the pipeline treated detection, expression/pose/gaze estimation, generation, compositing, and temporal stabilization as five separate trainable networks. Reviewing that sketch against the current literature showed that two of those five stages are already subsumed by the strongest generator candidates — an explicit estimation network is a failure point, not a necessity, and a hand-crafted compositing step reintroduces exactly the boundary artifacts a learned generator avoids — so we adopt a merged, three-stage pipeline instead: (1) detection and tracking, (2) generation with conditioning and compositing folded in, and (3) temporal stabilization.
 
-Evaluation is dual-objective. On the privacy axis, we quantify identity suppression via embedding-space similarity before and after de-identification, and run attacker-style tests: (i) verification ASR = fraction of de-identified faces still verified as the target, (ii) identification Rank-N-T = target appears in top-N of a closed-set gallery, and (iii) API confidence from commercial FR services (all per \cite{wang}). On the utility axis, we test whether behavioral signal is preserved: categorical emotion agreement and continuous distances for face shape/expression (L2 over 3DMM coefficients), pose/gaze (quaternion angular distances), plus image quality (PSNR, SSIM, FID; and a face-specific IQA) following prior anonymization benchmarks \cite{wang} \cite{kung}. Reproducibility and ethics are addressed through documented configurations, synthetic exemplars for illustration, and explicit clarification.
+Stage 1 (detection and tracking) performs high-recall face localization tuned to classroom conditions. We use RetinaFace, pretrained on WIDER FACE \cite{widerface} and run inference-only, together with ByteTrack for tracking; tracking is mandatory, not optional, since Stage 2 requires a persistent identity per track across frames, not a single-frame detection. We choose RetinaFace for recall: it reaches perfect recall (1.00) across all four classroom scenarios evaluated by \cite{gf-ananda}, including a low-light ($\sim$40 lux) and an occlusion scenario, the highest verified classroom recall among the detectors we reviewed — ahead of YOLOv9-M's 0.963 mAP@0.5 on child faces \cite{ahmed} (which nonetheless collapses to R=0.34 under combined occlusion, grouping, and low light) and our own YOLOv8n baseline (mAP50 0.616 on WIDER FACE). Because the pipeline runs offline, real-time inference is not required, so RetinaFace's higher latency is not a limiting factor. The output is a per-frame record [frame\_id, track\_id, x, y, w, h, conf]; note that a track ID is an anonymous, video-local label, not an identity — attaching one is not itself an identification step. Box stability is reported via track fragmentation and ID-switch rate, not detection mAP alone, since unstable boxes propagate as flicker into Stage 3. Fine-tuning on child or classroom-specific data is out of scope for this work: we lack a consented classroom dataset and the compute budget (16GB RAM, no GPU cluster) to fine-tune a heavier detector, so age-stratified detection performance is evaluated only against WIDER FACE and reported as a limitation rather than resolved.
+
+Stage 2 (generation and compositing) replaces each track with a non-identifying synthetic surrogate, folding both conditioning and blending into the generator itself rather than treating them as separate stages. On conditioning: explicit carriers such as dense landmarks or 3DMM coefficients are dispensable and risky — they degrade under occlusion and on children, and GANonymization's silent "average face" fallback on landmark-detection failure \cite{hellmann} shows how an explicit carrier can quietly erase the exact affect we are trying to keep. ReferenceNet \cite{kung} instead conditions implicitly on a driving image and still achieves the best-in-table pose, gaze, and expression preservation we found in the literature, with gaze in particular emerging without any dedicated gaze estimator. We therefore keep landmark/3DMM estimators only as evaluation probes for our utility metrics, not as pipeline stages. On compositing: generators that inpaint the face in place — CIAGAN \cite{ciagan}, LDFA \cite{klemp} — avoid the hand-crafted seam that a separate paste-back step needs, because classical alpha/Poisson blending preserves pixel structure but not the perceived affect at skin-tone and lighting boundaries; we adopt end-to-end, in-place generation as the default and keep classical blending only as a fallback baseline. Our shortlist balances a diffusion lean with a GAN fallback: BLANKET, a diffusion model trained specifically for child and infant faces with temporal consistency, is our current primary candidate, alongside Reverse Personalization (a training-free successor to ReferenceNet with explicit age/sex/race attribute control) and ReferenceNet itself as diffusion candidates, and CIAGAN as an equally-weighted GAN baseline to GANonymization \cite{hellmann} (CIAGAN matches it overall and beats it on Fear/Happy/Sadness, so it is not a lesser alternative). Diffusion is favored on utility grounds, but this preference is conditional on child-face fidelity: ReferenceNet and the GAN family are trained on adult-skewed data (CelebA-HQ/FFHQ/CelebRef-HQ) and are verified to degrade on infants and ethnic minorities, which is precisely why BLANKET's child-specific training makes it our primary lean rather than ReferenceNet; if the child-face degradation of all diffusion candidates is confirmed on our data, CIAGAN is the documented fallback. Each track is assigned a fixed random seed, yielding one consistent pseudonymous face per student for as long as the track persists, together with demographic-similarity control (an age/sex/race-matched surrogate, via Reverse Personalization's attribute conditioning) so the surrogate itself does not introduce a demographic distortion of its own.
+
+Stage 3 (temporal stabilization) is a thin, non-trainable stage rather than a new network. It reuses Stage 2's own generator via gradient injection \cite{wang}, guiding each frame's generation toward the track's fixed canonical latent rather than toward the previous frame's synthetic output; anchoring to a fixed latent, rather than the previous frame, avoids the drift that a naive feedback loop would accumulate over a multi-minute take. A persistent track\_id $\to$ synthetic-identity (seed/latent) table lets a student who is briefly occluded or re-enters the frame recover the same synthetic face, matched via the original, pre-anonymization face embedding rather than the synthetic one, decoupling identity recovery from tracker fragility. BLANKET's simpler "generate once, swap into every frame" serves as a fallback and ablation against the gradient-injection variant. Visual continuity is measured directly — an embedding or LPIPS distance between consecutive composited faces within a track — rather than only asserted.
+
+Evaluation is dual-objective. On the privacy axis, we quantify identity suppression via embedding-space similarity before and after de-identification, and run attacker-style tests: (i) verification ASR = fraction of de-identified faces still verified as the target, (ii) identification Rank-N-T = target appears in top-N of a closed-set gallery, and (iii) API confidence from commercial FR services (all per \cite{wang}), complemented by Privacy Gain (PG) and the joint Privacy-gain Identity-loss Coefficient (PIC) \cite{meden}, anonymization coverage (NoA, the fraction of faces actually anonymized, since a missed face is a leak) \cite{klemp}, and two attack-style checks that a same-distribution verifier would understate: a held-out verifier (a face-recognition model distinct from any used while building the pipeline) and a parrot/imitation attack (a matcher retrained directly on de-identified footage) \cite{yifan-wu,meden}. On the utility axis, we test whether behavioral signal is preserved: categorical emotion agreement and continuous distances for face shape/expression (L2 over 3DMM coefficients), pose/gaze (quaternion angular distances), image quality (PSNR, SSIM, FID, and a face-specific IQA), post-anonymization detection mAP (confirming a face is still analyzable, not merely present) \cite{klemp}, and facial-trait removal to check for unintended demographic bias introduced by the surrogate faces \cite{hellmann}, following prior anonymization benchmarks \cite{wang,kung}. Reproducibility and ethics are addressed through documented configurations, synthetic exemplars for illustration, and explicit clarification.
 
 \section{Chronogram}
 
-It is clear the face recognition/localization piece is the most mature, so Phase 1 focuses there: review and select datasets (also assess collecting UFPR classroom video with proper consent), select a detector/FR stack, then test, fine-tune, and report metrics on the chosen sets. We’ll then standardize the output per frame, return face crops and bounding boxes with IDs/confidence and expose a simple input API for the generative stage. Phase 2 tackles anonymization: review GAN/diffusion options, choose two candidates, and integrate them with frame-to-frame controls (reuse previous synthetic face, optional gradient-injection for consistency) into the pipeline. After selecting one primary method, we lock the evaluation plan and metrics (privacy and utility) and run the full study, then consolidate results and write-up. We don’t aim to invent a new generator, the goal is to make existing models video-capable and documented—leaving model improvements for future work.
+It is clear the face recognition/localization piece is the most mature, so Phase 1 focuses there: review and select datasets (also assess collecting UFPR classroom video with proper consent), select a detector/tracker stack, then test and report metrics on the chosen sets. We’ll then standardize the output per frame, return face crops and bounding boxes with IDs/confidence and expose a simple input API for the generative stage. Phase 2 tackles anonymization: review GAN/diffusion options, shortlist candidates (balanced across both families, with a child-face fairness smoke test gating the diffusion lean before integration effort is committed), and integrate them with frame-to-frame controls (per-track identity locking via gradient injection toward a fixed canonical latent) into the pipeline. After selecting one primary method against pre-registered privacy/utility/fairness/compute criteria, we lock the evaluation plan and metrics and run the full study, then consolidate results and write-up. We don’t aim to invent a new generator, the goal is to make existing models video-capable and documented—leaving model improvements for future work.
 
 \begin{table}[ht]
 \centering
@@ -274,64 +98,19 @@ It is clear the face recognition/localization piece is the most mature, so Phase
 \midrule
 1 & Review and select datasets; assess UFPR classroom collection with consent & Final dataset list & Weeks 1--2 \\
 \addlinespace
-% [NODE1-AGENT] IMPROVEMENT: "detector/FR stack" should also name the TRACKER selection — tracking
-% is a separate design decision (ByteTrack/BoT-SORT/DeepSORT) with its own tuning (match thresholds,
-% track buffer length) and metrics (IDF1, ID switches). Add it to this task or the Week 6 API task.
-1 & Select detector/FR stack & Baseline FR pipeline & Week 3 \\
+1 & Select detector/tracker stack (RetinaFace + ByteTrack) & Baseline detection+tracking pipeline & Week 3 \\
 \addlinespace
-1 & Test, fine-tune, and report sets metrics & ID metrics report & Weeks 4--5 \\
+1 & Test and report detection/tracking metrics on WIDER FACE & ID metrics report & Weeks 4--5 \\
 \addlinespace
 1 & Standardize outputs and API & Per-frame crops, boxes; input API for gen stage & Week 6 \\
 \addlinespace
 1 & Deliver censorship baseline (blur/mosaic) & Ready-to-use censored video pipeline & Week 7 \\
 \addlinespace
-2 & Review GAN/diffusion options; pick two candidates & Shortlist of 2 generators & Weeks 8--9 \\
-% [NODE3-AGENT] IMPROVEMENT: "pick two candidates" should be explicit and balanced:
-% one diffusion (ReferenceNet \cite{kung}, current leaning) + one GAN. For the GAN slot,
-% treat CIAGAN \cite{ciagan} as an EQUAL baseline to GANonymization \cite{hellmann} —
-% CIAGAN matches it overall and beats it on Fear/Happy/Sadness, so shortlisting only
-% GANonymization would undersell the GAN family.
-% [NODE3-AGENT] GATING: add a child-face fairness smoke test to Weeks 8--9 BEFORE
-% committing integration effort. ReferenceNet is verified to fail on infants and
-% ethnic minorities (trained on adult-skewed CelebA-HQ/FFHQ/CelebRef-HQ); our subjects
-% are children. Run ReferenceNet on a small child-face sample first; if degradation
-% confirms, the GAN candidate becomes primary (or budget a child-face fine-tune).
+2 & Shortlist generators (BLANKET, Reverse Personalization, ReferenceNet as diffusion; CIAGAN as equal GAN baseline) and run a child-face fairness smoke test before committing integration effort & Balanced shortlist; gating fairness result & Weeks 8--9 \\
 \addlinespace
-2 & Integrate candidates with frame-to-frame controls & Working replacements; option to reuse previous face & Weeks 10--13 \\
-% [NODE4-AGENT] IMPROVEMENT: "Working replacements" must include the COMPOSITING sub-task, which
-% is currently invisible in the Chronogram. Budget time here for: (i) the separate-vs-end-to-end
-% decision (CIAGAN/LDFA fold compositing into the generator; ReferenceNet/GANonymization need a
-% paste-back step); (ii) boundary handling --- 32 px context padding + paste-back of only the
-% unpadded region (LDFA \cite{klemp}), or a learned adaptive mask (G2Face IFF \cite{h-yang});
-% (iii) an overlapping-face occlusion policy (LDFA artifacts on overlapping boxes); and
-% (iv) a boundary-artifact check (skin-tone/lighting mismatch, glasses/hair edges). These are
-% integration-blocking, not polish.
-% [NODE3-AGENT] COMPUTE RISK: ReferenceNet needs 200 DDPM steps/frame at 512x512 —
-% seconds per frame on standard hardware, so 30 fps classroom video is infeasible
-% without DDIM/few-step distillation, reduced steps, or frame-subsampling. Budget
-% time here for a speed/quality study, or state the hardware assumption (e.g.,
-% single A6000-class GPU) explicitly. GAN candidates (pix2pix/CIAGAN) are
-% ~real-time — this asymmetry belongs in the Week-14 down-select criteria.
-% REVIEW (Node 5): "reuse previous face" as the frame-to-frame control has two unaddressed
-% failure modes that Weeks 10--13 should explicitly budget for:
-%   (a) DRIFT / ERROR ACCUMULATION --- conditioning frame t on the synthetic output of
-%       frame t-1 means small artifacts compound over a long take; without a periodic
-%       re-anchor to the per-track canonical latent (the seed-locked identity), the face
-%       can slowly morph. Suggest: keyframe re-anchoring every N frames or on track
-%       confidence recovery.
-%   (b) IDENTITY LOCK vs TRACKER FRAGILITY --- the lock is only as good as Node 1's track
-%       IDs. ByteTrack/DeepSORT will produce ID switches and drop tracks under occlusion;
-%       a re-entering student must recover the SAME synthetic identity. Suggest: maintain
-%       a persistent track-ID -> synthetic-identity (seed/latent) table, with re-matching
-%       on re-entry via the ORIGINAL (pre-anonymization) face embedding, not the synthetic one.
+2 & Integrate candidates: end-to-end conditioning+compositing, per-track seed-locked identity, gradient-injection anchoring to the canonical latent (not the previous frame), re-matching on occlusion/re-entry via the original embedding & Working replacements with stable per-track identity & Weeks 10--13 \\
 \addlinespace
-2 & Down-select primary method; lock evaluation plan & Chosen generator; fixed privacy/utility metrics & Week 14 \\
-% [NODE3-AGENT] IMPROVEMENT: pre-register the down-select criteria so the choice is
-% defensible: (i) privacy (ASR / Rank-N-T), (ii) utility (emotion agreement, pose/gaze
-% distance), (iii) fairness (stratified by age/ethnicity — mandatory with child
-% subjects), (iv) compute (frames/sec on target hardware). ReferenceNet's knob d gives
-% a ready-made privacy-utility curve: sweep d in {1.0, 1.2, 1.4, 1.6} and plot re-ID vs
-% expression/gaze retention — a natural thesis figure.
+2 & Down-select primary method against pre-registered criteria (privacy: ASR/Rank-N-T; utility: emotion/pose/gaze; fairness: stratified by age/ethnicity; compute: frames/sec); sweep the diffusion anonymization knob for a privacy--utility curve; lock evaluation plan & Chosen generator; fixed privacy/utility metrics & Week 14 \\
 \addlinespace
 2 & Run full study on test set & Results & Weeks 15--16 \\
 \addlinespace
@@ -346,104 +125,11 @@ It is clear the face recognition/localization piece is the most mature, so Phase
 
 Technically, we expect a unified and accessible framework that delivers high-recall detection and expression-preserving de-identification suitable for classroom-style video, achieving substantial identity-similarity reduction and low targeted re-identification relative to blur/mosaic, while keeping emotion/expression agreement within a small, predefined loss margin. Longer-term consequences include easier inclusion of authentic video evidence in teacher development and a solid base for extensions such as broader body-cue handling, tighter guarantees, and scaled deployment once data-governance resources are available.
 
-% [NODE1-AGENT] IMPROVEMENT: "optionally track" contradicts the pipeline design — Node 3 requires a
-% fixed synthetic identity per track ID, so tracking is MANDATORY, not optional. Reword to make
-% tracking a hard requirement and name the tracker (suggest ByteTrack; see Methodology comments).
-% [NODE1-AGENT] IMPROVEMENT: "identities/track IDs" conflates two things — a track ID is an
-% anonymous, video-local label, NOT an identity. Clarify terminology to avoid implying we perform
-% identification (which would itself be a privacy concern).
-% [NODE1-AGENT] IMPROVEMENT: specify the exact output schema here or in Methodology:
-% [frame_id, track_id, x, y, w, h, conf] — this is the contract Node 2/3 consume.
-% [NODE1-AGENT] IMPROVEMENT: "stable boxes" needs an operational definition — e.g., box jitter /
-% ID-switch rate / track fragmentation metrics (MOTA, IDF1), since unstable boxes propagate as
-% flicker into Node 5. Detection mAP alone does not measure temporal stability.
-% [NODE1-AGENT] NOTE: our YOLOv8n-SAM baseline reaches mAP50 = 0.616 on WIDER FACE — far below the
-% near-perfect classroom P/R in \cite{gf-ananda} and the 0.963 of YOLOv9-M in \cite{ahmed}. Either
-% justify why WIDER FACE fine-tuning suffices, or plan a classroom-domain fine-tune / model upgrade.
-Frame-to-frame detection (e.g. YOLO, RetinaFace) to localize (and optionally track) every face. The output is a per-frame list of identities/track IDs and their bounding boxes with confidence scores, plus a rendered “censorship” version (blur/mosaic/black box) that can already be used ethically. Priority is high recall and stable boxes in classroom conditions; real time is not required.
+Frame-to-frame detection with RetinaFace, pretrained on WIDER FACE \cite{widerface}, localizes every face; ByteTrack tracking is mandatory rather than optional, since Stage 2 requires a persistent identity per track. The output is a per-frame list of track IDs — anonymous, video-local labels, not identities — and their bounding boxes with confidence scores ([frame\_id, track\_id, x, y, w, h, conf]), plus a rendered "censorship" version (blur/mosaic/black box) that can already be used ethically on its own. Priority is high recall and stable boxes (measured via track fragmentation and ID-switch rate, not detection mAP alone) in classroom conditions; real time is not required.
 
-% [NODE3-AGENT] IMPROVEMENT: this paragraph should name the actual candidates and the
-% decision protocol rather than "a diffusion or GAN based model". Current leaning is
-% ReferenceNet diffusion \cite{kung} (best-in-table pose/gaze/expression at d=1.2; the
-% knob d is an inference-time privacy-utility curve; seed diversity gives a consistent
-% per-student pseudonym), with GANonymization \cite{hellmann} AND CIAGAN \cite{ciagan}
-% as equal GAN baselines. G2Face \cite{h-yang} is SOTA on utility but its reversible
-% "password" path is unnecessary for de-ID and adds complexity — cite as related, not a candidate.
-% [NODE3-AGENT] GAP (fixed identity per track): seed-locking per track ID is necessary
-% but not sufficient. Also specify DEMOGRAPHIC-SIMILARITY control: the surrogate face
-% should match the subject's rough age/gender/ethnicity so the de-identified video stays
-% plausible and does not itself introduce demographic distortion (e.g., adult-looking
-% surrogates on children). State how this is enforced (conditioning, filtering, or
-% per-track demographic tag from Node 2).
-% [NODE3-AGENT] GAP (fairness): ReferenceNet's verified failures on infants/ethnic
-% minorities is a direct threat since subjects are children. The Expected Results should
-% commit to a stratified fairness evaluation (per age band and ethnicity) as a first-class
-% result, with the fallback (GAN primary, or child-face fine-tune) stated up front —
-% not discovered during write-up.
-Once the faces are localized, a diffusion or GAN based model will be applied to generate new, anonymized faces that preserve expressions and other key features, then replace the original faces in each frame. To address temporal consistency, the previously generated face could be retained and used as a reference for the next frame, combined with the gradient injection technique \cite{wang} to guide the identity towards the target while maintaining facial structure. However, ensuring the visual continuity of facial features over time remains a critical challenge, requiring further refinement in the integration of the face generation and gradient-based manipulation processes.
-% [NODE4-AGENT] GAP: "replace the original faces in each frame" is the only mention of
-% compositing in Expected Results, and it is silent on HOW. State the intended mechanism and its
-% evidence: end-to-end inpainting (CIAGAN \cite{ciagan}, LDFA \cite{klemp}) avoids a hand-crafted
-% seam entirely, whereas a separate paste-back (ReferenceNet \cite{kung}, GANonymization
-% \cite{hellmann}) needs explicit boundary handling --- 32 px context padding with paste-back of
-% only the unpadded region \cite{klemp}, or learned adaptive-mask fusion (G2Face IFF
-% \cite{h-yang}). Classical Poisson/alpha blending should be framed as a baseline only, since it
-% does not model the affect we promise to preserve.
-% [NODE4-AGENT] GAP (success criterion): "seamless" is never given a measurable definition here.
-% Commit to a boundary-quality result: no visible seam / skin-tone / lighting discontinuity at the
-% mask contour (the verified LDFA failure modes), evaluated with a boundary-gradient or
-% face-parsing-consistency metric, and reported per-scenario (glasses, hair occlusion, side
-% lighting) --- these are exactly the classroom conditions where compositing breaks.
-% [NODE4-AGENT] GAP (overlapping faces): classrooms have close-seated students with overlapping
-% face boxes; LDFA \cite{klemp} is verified to artifact there. Expected Results should state the
-% occlusion-handling policy (ordered/masked compositing) and include an overlap scenario in the
-% evaluation, or the "seamless" claim will fail precisely on crowded frames.
-% REVIEW (Node 5): This paragraph is the heart of the temporal claim but is underspecified
-% in four ways. Suggested clarifications (do not delete; refine in a revision):
-%
-% (1) "guide the identity towards the target" --- WHICH target? In DiffAIM \cite{wang} the
-%     target is a REAL identity (impersonation). For de-identification the target must be a
-%     SYNTHETIC, per-track pseudonymous identity. The cleanest source is Kung's seed
-%     diversity \cite{kung}: fix the noise seed per track ID to define a canonical synthetic
-%     identity, then let gradient injection pull each frame's generation toward THAT latent
-%     rather than toward the previous frame's output. This converts "reuse previous face"
-%     (which drifts) into "anchor to a fixed per-track identity" (which does not).
-%
-% (2) DRIFT / ERROR ACCUMULATION --- conditioning on the previous frame's synthetic output
-%     is a feedback loop: artifacts at frame t become the reference at t+1. Over a
-%     multi-minute lecture take this can visibly morph the face. Mitigations to name:
-%     keyframe re-anchoring to the canonical per-track latent every N frames; an EMA
-%     (exponential moving average) over latents instead of hard copy; or only reusing the
-%     previous latent when detection confidence is high.
-%
-% (3) IDENTITY LOCKING ACROSS OCCLUSION / RE-ENTRY --- the mechanism must survive the
-%     tracker losing the face (student turns to board, leaves frame, is occluded). Specify:
-%     a persistent table mapping track ID -> synthetic identity (seed + latent); on track
-%     re-entry or ID-switch, re-match using the ORIGINAL face embedding (pre-anonymization)
-%     so the same student always receives the same synthetic face. Note the dependency:
-%     this couples Node 5 to Node 1's tracker choice (ByteTrack/DeepSORT, still unspecified)
-%     and to Node 3's seed-locking.
-%
-% (4) FLICKER --- "visual continuity" needs a measurable definition or it cannot be
-%     evaluated. Suggest adding a temporal metric to the utility axis: per-pixel or
-%     LPIPS/embedding distance between consecutive composited faces within a track, and/or
-%     a temporal-consistency score (e.g., warping error between frame t and t+1 given
-%     optical flow). Without this, "no flicker" is asserted but never tested.
+Once faces are localized, a generative model — BLANKET or Reverse Personalization as diffusion candidates, CIAGAN as an equally-weighted GAN baseline — produces a new, anonymized face conditioned implicitly on the source frame and composites it in place, preserving expression, pose, and gaze without a separate blending step. Each track keeps a fixed random seed, so a given student receives one consistent synthetic identity throughout the recording; that surrogate is additionally constrained to match the subject's approximate age, sex, and race, so the de-identified footage stays demographically plausible rather than introducing its own distortion (e.g., adult-looking surrogates on children). To address temporal consistency, gradient injection \cite{wang} guides each frame's generation toward the track's fixed canonical latent — not toward the previous frame's synthetic output — which avoids the drift a naive feedback loop would accumulate over a multi-minute take; on occlusion or re-entry, the same synthetic identity is recovered by re-matching the original, pre-anonymization face embedding against the persistent track\_id-to-identity table, decoupling identity recovery from tracker fragility. Frame-to-frame visual continuity is reported as a measured quantity — an embedding or LPIPS distance between consecutive composited faces within a track — rather than only claimed. Stratified fairness evaluation by age band and ethnicity is a first-class result, not an afterthought, since our subjects are children and both the GAN family and ReferenceNet are verified to degrade on underrepresented groups; BLANKET's child-specific training is our hedge against that risk, with CIAGAN as the documented fallback if diffusion degradation is confirmed on our data.
 
-We also make explicit what is out of scope so expectations align with deliverables. We adopt image-level, expression-preserving face replacement with temporal smoothing rather than a fully video native generative model and true sequence modeling (frame-to-frame) or identity locking remains future work.
-% REVIEW (Node 5): This scope sentence is in tension with the rest of the paper. The
-% Introduction and Chronogram promise "frame-to-frame controls" and temporal consistency as
-% a contribution, but here "identity locking" is deferred to future work. Two issues:
-%   (a) CONSISTENCY --- if identity locking is future work, then the per-track consistent
-%       pseudonym (the thing that makes the video usable and is our differentiator over
-%       image-only baselines) is NOT delivered. Recommend softening: keep video-native
-%       diffusion as future work, but commit to at least seed-locked per-track identity +
-%       temporal smoothing as in-scope, since that is achievable with existing models.
-%   (b) VIDEO-NATIVE VS PER-FRAME+SMOOTHING --- the choice of "image-level + temporal
-%       smoothing" over "video-native diffusion" is reasonable given compute (200 DDPM
-%       steps/frame) and the 20-week timeline, but it should be JUSTIFIED here in one
-%       clause (cost, maturity of video diffusion, and that per-frame + locking already
-%       closes the gap the baselines leave open) rather than only stated as a limitation. We do not claim formal privacy guarantees (e.g., differential privacy or provable unlinkability). Privacy is evaluated attack-wise via embedding similarity and re-identification risk. Fairness will be reported with stratified analyses by demographics and scene conditions, but cannot be guaranteed across all subgroups given dataset limitations. Non-face identifiers such as voice, clothing logos, body shape, and background context are not anonymized in this release. These boundaries, together with insights from GAN and diffusion-based literature, guide both our design choices and our evaluation protocol.
+We also make explicit what is out of scope so expectations align with deliverables. Per-track identity locking (a fixed, seed-locked synthetic identity persisted across occlusions and re-entries) and temporal smoothing via gradient injection are in scope and are our stated differentiator over the image-only baselines in the literature (GANonymization, G2Face, PP-GAN, LDFA, ReferenceNet); what remains future work is true video-native sequence modeling — generating temporally consistent frames directly rather than per-frame generation anchored to a fixed identity. We choose per-frame generation with identity locking over video-native diffusion because the latter does not yet exist in a form usable at our target frame count and hardware budget (a single diffusion step already costs on the order of 200 DDPM iterations per frame at 512x512), while per-frame generation plus canonical-latent anchoring already closes most of the temporal gap that image-only baselines leave open. We do not claim formal privacy guarantees (e.g., differential privacy or provable unlinkability). Privacy is evaluated attack-wise via embedding similarity and re-identification risk. Fairness will be reported with stratified analyses by demographics and scene conditions, but cannot be guaranteed across all subgroups given dataset limitations. Non-face identifiers such as voice, clothing logos, body shape, and background context are not anonymized in this release. These boundaries, together with insights from GAN and diffusion-based literature, guide both our design choices and our evaluation protocol.
 
 \bibliographystyle{sbc}
 \bibliography{sbc-template}
