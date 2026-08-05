@@ -32,11 +32,9 @@ Output Video (de-identified, expression-preserved) + audio
 │       │   └── run.py           # CLI: video / webcam / image dir → detections.jsonl
 │       ├── phase2_generate/     # Synthetic face generation + compositing
 │       └── phase3_temporal/     # Temporal identity stabilization
-├── weights/                     # Model weights
 ├── docs/                        # Notes and guides
 ├── paper/                       # LaTeX source (main paper)
 ├── research/                    # Research vault — decisions, paper notes, open questions
-├── experiments/                 # Experiment result CSVs
 ├── config.example.json          # Path config template
 └── requirements.txt
 ```
@@ -81,12 +79,12 @@ Each run writes `detections.jsonl` — one record per frame: `{frame_id, tracks:
 
 ## Status
 
-| Stage | State |
-|-------|-------|
-| Detection + Tracking (RetinaFace + ByteTrack) | ✅ Implemented |
-| Generation + Compositing | ⬜ Not started |
-| Temporal Stabilization | ⬜ Not started |
-| Privacy / utility evaluation | ⬜ Not started |
+| Stage                                         | State       |
+| --------------------------------------------- | ----------- |
+| Detection + Tracking (RetinaFace + ByteTrack) | Implemented |
+| Generation + Compositing                      | Not started |
+| Temporal Stabilization                        | Not started |
+| Privacy / utility evaluation                  | Not started |
 
 See `research/` for the design rationale, candidate shortlist, and open questions behind each stage.
 

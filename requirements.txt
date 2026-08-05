@@ -1,20 +1,9 @@
-# Core ML
-torch>=2.0.0
-torchvision>=0.15.0
-ultralytics>=8.3.0
-
-# Phase 1 — face detection (RetinaFace via InsightFace)
+# Phase 1 — detection + tracking (RetinaFace via InsightFace)
 insightface>=0.7.3
 onnxruntime>=1.16.0
 
 # Computer Vision
 opencv-python>=4.8.0
-Pillow>=10.0.0
 
 # Data
 numpy>=1.24.0
-PyYAML>=6.0
-tqdm>=4.65.0
-
-# Optional: for custom optimizers
-# lion-pytorch  # install from source if needed
