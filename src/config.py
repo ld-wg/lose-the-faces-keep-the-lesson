@@ -106,7 +106,7 @@ class Config:
         ]
         if not missing:
             return
-        lines = "\n".join(f"  ✗ {desc}: {path}" for desc, path in missing)
+        lines = "\n".join(f"  [missing] {desc}: {path}" for desc, path in missing)
         raise FileNotFoundError(
             "WIDER FACE dataset not found or incomplete:\n"
             f"{lines}\n\n"
@@ -162,9 +162,9 @@ def _main() -> None:
     print()
     ok = True
     for desc, (path, exists) in CONFIG.widerface_status().items():
-        mark = "✓" if exists else "✗"
+        mark = "ok" if exists else "missing"
         ok = ok and exists
-        print(f"  {mark} {desc}: {path}")
+        print(f"  [{mark}] {desc}: {path}")
     if not ok:
         print("\nDataset incomplete — see: python -m src.config  (or README → Configuration)")
         sys.exit(1)
