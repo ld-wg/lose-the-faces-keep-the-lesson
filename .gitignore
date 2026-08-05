@@ -17,3 +17,6 @@ research/
 
 # OS
 .DS_Store
+
+# VS Code
+.vscode/
