@@ -13,5 +13,8 @@ runs/
 *.pt
 !weights/yolov8n.pt
 
+# Research notes
+research/
+
 # OS
 .DS_Store
