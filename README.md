@@ -5,37 +5,39 @@ Expression-preserving face de-identification for educational research. Detects f
 ## Pipeline
 
 ```
-Input Video
+Input Video (classroom lecture)
     ↓
-[identify]  Face Detection — YOLOv8 on WIDER FACE
-    ↓ per-frame bounding boxes + confidence
-[generate]  Synthetic Face Generation — GAN/Diffusion (Phase 2)
-    ↓ synthetic face conditioned on expression + pose
-[inpaint]   Face Replacement — compositing + temporal smoothing (Phase 2)
+[phase1_detect]   Detection + Tracking
+                  RetinaFace (pretrained, WIDER FACE) + ByteTrack
+    ↓ per-frame [frame_id, track_id, box, conf] + optional padded face crops
+[phase2_generate] Generation + Compositing
+                  Synthetic surrogate face, conditioned and composited in place;
+                  fixed seed per track → one consistent pseudonymous identity per student
     ↓
-Output Video (de-identified, expression-preserved)
+[phase3_temporal] Temporal Stabilization
+                  Anchors each frame to the track's canonical latent (gradient injection)
+    ↓
+Output Video (de-identified, expression-preserved) + audio
 ```
 
 ## Project Structure
 
 ```
 ├── src/
-│   ├── config.py              # Central path/env configuration
-│   ├── identify/              # Face identification network
-│   │   ├── train_face_detector.py
-│   │   ├── dataset_utils.py
-│   │   ├── webcam_detect.py
-│   │   └── optimizers/        # Custom optimizers (Lion, SAM)
-│   ├── generate/              # Synthetic face generation (Phase 2)
-│   └── inpaint/               # Face replacement/compositing (Phase 2)
-├── weights/                   # Trained model weights
-│   ├── yolov8n.pt
-│   ├── face_detector_sgd_best.pt
-│   └── face_detector_sam_best.pt
-├── docs/                      # Notes and guides
-├── paper/                     # LaTeX source (main paper)
-├── experiments/               # Training result CSVs
-├── config.example.json        # Path config template
+│   ├── config.py                # Central path/env configuration
+│   └── pipeline/
+│       ├── phase1_detect/       # Detection + tracking
+│       │   ├── detector.py      # RetinaFace via InsightFace
+│       │   ├── tracker.py       # ByteTrack-style multi-face tracker
+│       │   └── run.py           # CLI: video / webcam / image dir → detections.jsonl
+│       ├── phase2_generate/     # Synthetic face generation + compositing
+│       └── phase3_temporal/     # Temporal identity stabilization
+├── weights/                     # Model weights
+├── docs/                        # Notes and guides
+├── paper/                       # LaTeX source (main paper)
+├── research/                    # Research vault — decisions, paper notes, open questions
+├── experiments/                 # Experiment result CSVs
+├── config.example.json          # Path config template
 └── requirements.txt
 ```
 
@@ -60,38 +62,36 @@ python -m src.config
 
 ```bash
 pip install -r requirements.txt
-cp config.example.json config.local.json   # then edit widerface_root
+cp config.example.json config.local.json   # then edit paths as needed
 ```
 
-Train face detector:
+Run detection + tracking on a video:
 
 ```bash
-python src/identify/train_face_detector.py --fraction 1.0 --epochs 30 --optimizer sam
+python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/phase1 --save-crops --preview
 ```
 
-Run webcam detection:
+Live webcam preview:
 
 ```bash
-python src/identify/webcam_detect.py --model weights/face_detector_sam_best.pt
+python -m src.pipeline.phase1_detect.run --webcam
 ```
 
-## Face Detection Results (WIDER FACE, 30 epochs)
+Each run writes `detections.jsonl` — one record per frame: `{frame_id, tracks: [{track_id, box, conf}]}` — plus, when requested, padded face crops (for the generation stage) and an annotated `preview.mp4`.
 
-| Optimizer | mAP50 | mAP50-95 |
-|-----------|-------|----------|
-| SGD       | 0.608 | 0.319    |
-| Lion      | 0.580 | 0.306    |
-| SAM       | 0.616 | 0.327    |
+## Status
 
-## Roadmap
+| Stage | State |
+|-------|-------|
+| Detection + Tracking (RetinaFace + ByteTrack) | ✅ Implemented |
+| Generation + Compositing | ⬜ Not started |
+| Temporal Stabilization | ⬜ Not started |
+| Privacy / utility evaluation | ⬜ Not started |
 
-- [x] Face detection with YOLOv8 on WIDER FACE
-- [x] Optimizer comparison (SGD, Lion, SAM)
-- [ ] GAN/diffusion-based face generation
-- [ ] Face inpainting and temporal consistency
-- [ ] Privacy/utility evaluation
+See `research/` for the design rationale, candidate shortlist, and open questions behind each stage.
 
 ## References
 
 - WIDER FACE: http://shuoyang1213.me/WIDERFACE/
-- YOLOv8: https://github.com/ultralytics/ultralytics
+- InsightFace: https://github.com/deepinsight/insightface
+- ByteTrack: https://github.com/ifzhang/ByteTrack
