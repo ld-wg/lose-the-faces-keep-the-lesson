@@ -1,7 +1,8 @@
 """Phase 1 — face detection + tracking.
 
-Decision (research/pipeline.md Part 4): RetinaFace pretrained on WIDER FACE,
-inference-only, for maximum classroom recall. ByteTrack for tracking.
+Decision (research/pipeline.md Part 4): SCRFD-10GF pretrained on WIDER FACE,
+inference-only, for the best cost/AP trade-off among verified detectors.
+ByteTrack for tracking.
 """
 
 from .detector import FaceDetector, Detection

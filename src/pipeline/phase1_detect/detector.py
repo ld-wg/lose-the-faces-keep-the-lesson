@@ -1,11 +1,15 @@
-"""RetinaFace face detector (Phase 1).
+"""SCRFD-10GF face detector (Phase 1).
 
-Decision (research/pipeline.md Part 4): RetinaFace pretrained on WIDER FACE,
-inference-only. Chosen for perfect classroom recall (Ananda et al., ICVEE 2024)
-over YOLOv8n (our mAP50 0.616 baseline) — recall is the only currency that
-matters in a privacy pipeline (a missed face = a leaked identity).
+Decision (research/pipeline.md Part 4): SCRFD-10GF pretrained on WIDER FACE,
+inference-only. Chosen for the best cost/AP trade-off among verified detectors
+(research/stages/identification.md) over YOLOv8n (our mAP50 0.616 baseline) —
+recall is the primary currency in a privacy pipeline (a missed face = a leaked
+identity), and SCRFD-10GF gets it at an order of magnitude fewer params/FLOPs
+than the alternatives.
 
-Backend: InsightFace (buffalo_l pack ships RetinaFace R50 pretrained on WIDER FACE).
+Backend: InsightFace (buffalo_l pack ships SCRFD-10GF, not RetinaFace — verified
+against insightface's own model router; see research/stages/identification.md
+"Correction" section for the full three-way verification).
 Falls back to a clear error if insightface is not installed.
 """
 
@@ -52,7 +56,7 @@ class Detection:
 
 
 class FaceDetector:
-    """RetinaFace detector via InsightFace.
+    """SCRFD-10GF detector via InsightFace.
 
     Usage:
         detector = FaceDetector(conf_threshold=0.3)  # low threshold → high recall
@@ -71,7 +75,7 @@ class FaceDetector:
                 false positives are filtered downstream by tracking.
             det_size: detector input size; larger = better small-face recall, slower.
             ctx_id: 0 for GPU/MPS, -1 for CPU.
-            model_name: InsightFace model pack (buffalo_l ships RetinaFace R50).
+            model_name: InsightFace model pack (buffalo_l ships SCRFD-10GF).
         """
         self.conf_threshold = conf_threshold
         self.det_size = det_size
@@ -89,7 +93,7 @@ class FaceDetector:
                 "insightface is required for Phase 1 detection. "
                 "Install with: pip install insightface onnxruntime"
             ) from e
-        logger.info(f"Loading InsightFace pack '{self.model_name}' (RetinaFace, det_size={self.det_size})")
+        logger.info(f"Loading InsightFace pack '{self.model_name}' (SCRFD-10GF, det_size={self.det_size})")
         app = FaceAnalysis(name=self.model_name)
         app.prepare(ctx_id=self.ctx_id, det_size=self.det_size)
         self._app = app

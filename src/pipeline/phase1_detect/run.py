@@ -13,10 +13,13 @@ Usage:
     # Image directory
     python -m src.pipeline.phase1_detect.run --input imgs/ --out runs/phase1
 
-Outputs (in --out dir):
-    detections.jsonl   one JSON object per frame: {frame_id, tracks:[{track_id, box, conf}]}
+Outputs (in --out dir) — the Phase 1 -> Phase 2 contract, see src/pipeline/contracts.py:
+    detections.jsonl   one JSON object per frame: {frame_id, tracks:[{track_id, box, conf, landmarks, crop_path}]}
+    tracks.json         whole-video per-track manifest: seed, first/last frame, representative crop
+                        (video/webcam mode only — image-directory mode has no persistent
+                        track identity to seed-lock, so it writes detections.jsonl only)
     crops/             optional padded face crops named {frame:06d}_{track_id}.jpg
-    preview.mp4        optional annotated video (if --preview)
+    preview.mp4        optional annotated video (if --preview; not part of the Phase 2 contract)
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ from config import CONFIG  # noqa: E402
 
 from .detector import FaceDetector  # noqa: E402
 from .tracker import FaceTracker  # noqa: E402
+from ..contracts import Face, Frame, Identity, Manifest, Video, derive_seed  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -75,46 +79,61 @@ def run_video(args, detector: FaceDetector, tracker: FaceTracker) -> None:
                                  cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
 
     jsonl_path = out_dir / "detections.jsonl"
+    video_source = "webcam" if args.webcam else str(args.input)
     frame_id = 0
+    frame_w = frame_h = 0
     t0 = time.time()
     total_faces = 0
+    track_stats: dict[int, dict] = {}  # track_id -> running manifest fields
 
     with jsonl_path.open("w") as jf:
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
+            frame_h, frame_w = frame.shape[:2]
 
             detections = detector.detect(frame)
             tracks = tracker.update(detections)
             total_faces += len(tracks)
 
-            # pipeline contract output
-            record = {
-                "frame_id": frame_id,
-                "tracks": [
-                    {"track_id": t.track_id, "box": [round(v, 1) for v in t.box],
-                     "conf": round(t.confidence, 3)}
-                    for t in tracks
-                ],
-            }
-            jf.write(json.dumps(record) + "\n")
-
-            # optional padded crops for Phase 2
-            if args.save_crops:
-                h, w = frame.shape[:2]
-                for t in tracks:
+            observations = []
+            for t in tracks:
+                crop_path = None
+                if args.save_crops:
                     x1 = max(0, int(t.box[0]) - args.pad)
                     y1 = max(0, int(t.box[1]) - args.pad)
-                    x2 = min(w, int(t.box[2]) + args.pad)
-                    y2 = min(h, int(t.box[3]) + args.pad)
+                    x2 = min(frame_w, int(t.box[2]) + args.pad)
+                    y2 = min(frame_h, int(t.box[3]) + args.pad)
                     crop = frame[y1:y2, x1:x2]
-                    cv2.imwrite(str(crops_dir / f"{frame_id:06d}_{t.track_id}.jpg"), crop)
+                    crop_name = f"{frame_id:06d}_{t.track_id}.jpg"
+                    cv2.imwrite(str(crops_dir / crop_name), crop)
+                    crop_path = f"crops/{crop_name}"
+
+                landmarks = [tuple(p) for p in t.landmarks.tolist()] if t.landmarks is not None else None
+                observations.append(Face(
+                    track_id=t.track_id, box=t.box, confidence=t.confidence,
+                    landmarks=landmarks, crop_path=crop_path,
+                ))
+
+                # accumulate whole-video manifest fields for this track
+                stats = track_stats.setdefault(t.track_id, {
+                    "first_frame": frame_id, "last_frame": frame_id, "num_observations": 0,
+                    "best_confidence": -1.0, "best_crop": None,
+                })
+                stats["last_frame"] = frame_id
+                stats["num_observations"] += 1
+                if t.confidence > stats["best_confidence"]:
+                    stats["best_confidence"] = t.confidence
+                    stats["best_crop"] = crop_path
+
+            # pipeline contract output (see src/pipeline/contracts.py)
+            jf.write(Frame(frame_id=frame_id, faces=observations).to_json() + "\n")
 
             if args.webcam or writer is not None:
                 vis = draw_tracks(frame, tracks)
                 if args.webcam:
-                    cv2.imshow("Phase 1 — RetinaFace + ByteTrack", vis)
+                    cv2.imshow("Phase 1 — SCRFD-10GF + ByteTrack", vis)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
                 if writer is not None:
@@ -130,11 +149,30 @@ def run_video(args, detector: FaceDetector, tracker: FaceTracker) -> None:
     if args.webcam:
         cv2.destroyAllWindows()
 
+    # whole-video track manifest (see src/pipeline/contracts.py) — the seed-locking
+    # contract Phase 2 needs, derived entirely from what we already tracked above.
+    manifest = Manifest(
+        video=Video(source=video_source, width=frame_w, height=frame_h,
+                    fps=cap.get(cv2.CAP_PROP_FPS) or 0.0, frame_count=frame_id),
+        identities=[
+            Identity(
+                track_id=tid, seed=derive_seed(video_source, tid),
+                first_frame=s["first_frame"], last_frame=s["last_frame"],
+                num_observations=s["num_observations"],
+                representative_crop=s["best_crop"],
+                representative_confidence=round(s["best_confidence"], 3),
+            )
+            for tid, s in track_stats.items()
+        ],
+    )
+    manifest_path = out_dir / "tracks.json"
+    manifest.save(manifest_path)
+
     dt = time.time() - t0
     fps = frame_id / dt if dt > 0 else 0
     logger.info(f"Done: {frame_id} frames, {total_faces} face-detections, "
-                f"{tracker._next_id - 1} unique tracks, {fps:.1f} fps")
-    logger.info(f"Output: {jsonl_path}")
+                f"{len(track_stats)} unique tracks, {fps:.1f} fps")
+    logger.info(f"Output: {jsonl_path}, {manifest_path}")
 
 
 def run_images(args, detector: FaceDetector) -> None:
