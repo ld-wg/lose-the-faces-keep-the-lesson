@@ -1,26 +1,28 @@
-"""SCRFD-10GF face detector (Phase 1).
+"""Phase 1 face detector facade — dispatches to a swappable backend.
 
-Decision (research/pipeline.md Part 4): SCRFD-10GF pretrained on WIDER FACE,
-inference-only. Chosen for the best cost/AP trade-off among verified detectors
-(research/stages/identification.md) over YOLOv8n (our mAP50 0.616 baseline) —
-recall is the primary currency in a privacy pipeline (a missed face = a leaked
-identity), and SCRFD-10GF gets it at an order of magnitude fewer params/FLOPs
-than the alternatives.
+Decision (research/stages/identification.md): SCRFD-10GF (InsightFace's
+`buffalo_l` pack) is the deployed default. SCRFD-34GF and YOLO-FaceV2-l are
+the two Tier 0.5 candidates queued for head-to-head comparison on our own
+hardware — same method (same tracker, same Phase 1 -> Phase 2 contract in
+`contracts.py`), just a different detector underneath. All three implement
+`detect(frame) -> list[Detection]` and produce the same `Detection` shape,
+so `run.py`, `tracker.py`, and `contracts.py` don't care which one runs.
 
-Backend: InsightFace (buffalo_l pack ships SCRFD-10GF, not RetinaFace — verified
-against insightface's own model router; see research/stages/identification.md
-"Correction" section for the full three-way verification).
-Falls back to a clear error if insightface is not installed.
+Backend code lives one-per-model under `models/<name>/backend.py` (see
+`models/__init__.py`), imported lazily: only the selected model's module —
+and its optional dependency, if any — is ever imported.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+
+from .models import MODEL_NAMES, load_backend_class
 
 logger = logging.getLogger(__name__)
 
@@ -56,47 +58,54 @@ class Detection:
 
 
 class FaceDetector:
-    """SCRFD-10GF detector via InsightFace.
+    """Facade over the three Phase 1 detector backends (see `MODEL_NAMES`).
 
     Usage:
-        detector = FaceDetector(conf_threshold=0.3)  # low threshold → high recall
+        detector = FaceDetector(model="scrfd-10gf", conf_threshold=0.3)  # low threshold -> high recall
         detections = detector.detect(frame_bgr)
     """
 
     def __init__(
         self,
+        model: str = "scrfd-10gf",
+        weights: Optional[Path] = None,
         conf_threshold: float = 0.3,
         det_size: tuple[int, int] = (640, 640),
         ctx_id: int = 0,
-        model_name: str = "buffalo_l",
     ):
         """Args:
+            model: which detector to run — one of `MODEL_NAMES`
+                ("scrfd-10gf", "scrfd-34gf", "yolo-facev2-l").
+            weights: path to that model's weights file. Unused for
+                "scrfd-10gf" (resolved by name via InsightFace's own model
+                cache); required for the other two — resolve a default path
+                under `CONFIG.weights_dir` at the call site if not given
+                explicitly (see `run.py`).
             conf_threshold: low default (0.3) favours recall over precision —
                 false positives are filtered downstream by tracking.
             det_size: detector input size; larger = better small-face recall, slower.
             ctx_id: 0 for GPU/MPS, -1 for CPU.
-            model_name: InsightFace model pack (buffalo_l ships SCRFD-10GF).
         """
+        if model not in MODEL_NAMES:
+            raise ValueError(f"Unknown model {model!r}. Choose from: {', '.join(MODEL_NAMES)}")
+        self.model = model
+        self.weights = weights
         self.conf_threshold = conf_threshold
         self.det_size = det_size
         self.ctx_id = ctx_id
-        self.model_name = model_name
-        self._app = None  # lazy load
+        self._backend = None  # lazy load
 
     def _load(self):
-        if self._app is not None:
+        if self._backend is not None:
             return
-        try:
-            from insightface.app import FaceAnalysis
-        except ImportError as e:
-            raise ImportError(
-                "insightface is required for Phase 1 detection. "
-                "Install with: pip install insightface onnxruntime"
-            ) from e
-        logger.info(f"Loading InsightFace pack '{self.model_name}' (SCRFD-10GF, det_size={self.det_size})")
-        app = FaceAnalysis(name=self.model_name)
-        app.prepare(ctx_id=self.ctx_id, det_size=self.det_size)
-        self._app = app
+        backend_cls = load_backend_class(self.model)
+        logger.info(f"Loading detector backend '{self.model}' (weights={self.weights})")
+        self._backend = backend_cls(
+            conf_threshold=self.conf_threshold,
+            det_size=self.det_size,
+            ctx_id=self.ctx_id,
+            weights=self.weights,
+        )
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
         """Detect faces in a BGR frame (OpenCV format).
@@ -104,19 +113,7 @@ class FaceDetector:
         Returns a list of Detection sorted by confidence (desc).
         """
         self._load()
-        faces = self._app.get(frame)
-        detections: list[Detection] = []
-        for f in faces:
-            conf = float(f.det_score)
-            if conf < self.conf_threshold:
-                continue
-            x1, y1, x2, y2 = map(float, f.bbox)
-            landmarks = getattr(f, "kps", None)
-            detections.append(
-                Detection(x1=x1, y1=y1, x2=x2, y2=y2, confidence=conf, landmarks=landmarks)
-            )
-        detections.sort(key=lambda d: d.confidence, reverse=True)
-        return detections
+        return self._backend.detect(frame)
 
     def detect_with_crops(
         self, frame: np.ndarray, pad: int = 32

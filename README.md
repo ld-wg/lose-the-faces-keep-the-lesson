@@ -8,7 +8,8 @@ Expression-preserving face de-identification for educational research. Detects f
 Input Video (classroom lecture)
     ↓
 [phase1_detect]   Detection + Tracking
-                  RetinaFace (pretrained, WIDER FACE) + ByteTrack
+                  SCRFD-10GF (default, pretrained on WIDER FACE) + ByteTrack;
+                  SCRFD-34GF / YOLO-FaceV2-l selectable for comparison (--model)
     ↓ per-frame [frame_id, track_id, box, conf] + optional padded face crops
 [phase2_generate] Generation + Compositing
                   Synthetic surrogate face, conditioned and composited in place;
@@ -27,7 +28,11 @@ Output Video (de-identified, expression-preserved) + audio
 │   ├── config.py                # Central path/env configuration
 │   └── pipeline/
 │       ├── phase1_detect/       # Detection + tracking
-│       │   ├── detector.py      # RetinaFace via InsightFace
+│       │   ├── detector.py      # FaceDetector facade — dispatches to a model backend
+│       │   ├── models/          # One backend per detector, selected via --model:
+│       │   │   ├── scrfd_10gf/      #   SCRFD-10GF via InsightFace buffalo_l pack (default)
+│       │   │   ├── scrfd_34gf/      #   SCRFD-34GF via a converted .onnx (see convert.py)
+│       │   │   └── yolo_facev2_l/   #   YOLO-FaceV2-l (vendored inference code, see NOTICE.md)
 │       │   ├── tracker.py       # ByteTrack-style multi-face tracker
 │       │   └── run.py           # CLI: video / webcam / image dir → detections.jsonl
 │       ├── phase2_generate/     # Synthetic face generation + compositing
@@ -57,6 +62,28 @@ Check your setup:
 uv run python -m src.config
 ```
 
+### Detector models (`--model`)
+
+Phase 1's detector is swappable — SCRFD-10GF (default), SCRFD-34GF, and YOLO-FaceV2-l are the three candidates under head-to-head comparison (`research/stages/identification.md`, Tier 0.5). All three run through the same runtime at inference time (`onnxruntime` on an `.onnx` file) — SCRFD-10GF needs nothing beyond the base install; the other two need a one-time, offline conversion first, since neither ships a ready-to-use ONNX file:
+
+- **SCRFD-34GF** — no pre-built ONNX is published anywhere; convert one yourself from the official checkpoint:
+  ```bash
+  uv sync --extra scrfd-34gf-convert          # mmcv/mmdet, one-time, conversion only
+  # download the SCRFD-34GF checkpoint (.pth) from the OneDrive link in
+  # deepinsight/insightface's detection/scrfd README, then:
+  uv run python -m src.pipeline.phase1_detect.models.scrfd_34gf.convert \
+      --checkpoint /path/to/scrfd_34g.pth --output weights/scrfd_34g.onnx
+  ```
+- **YOLO-FaceV2-l** — same pattern: download `yolo-facev2l-preweight.pt` from [Krasjet-Yu/YOLO-FaceV2](https://github.com/Krasjet-Yu/YOLO-FaceV2), then convert it:
+  ```bash
+  uv sync --extra yolo-facev2-convert         # torch, one-time, conversion only
+  uv run python -m src.pipeline.phase1_detect.models.yolo_facev2_l.convert \
+      --checkpoint /path/to/yolo-facev2l-preweight.pt --output weights/yolo_facev2l.onnx
+  ```
+  Note: this conversion step vendors a slice of YOLO-FaceV2's model code, which upstream ships with no LICENSE file — see `src/pipeline/phase1_detect/models/yolo_facev2_l/NOTICE.md` before any public release of this repo. Inference itself never touches that vendored code.
+
+For both, inference afterward uses only the base `insightface`/`onnxruntime` stack already required by SCRFD-10GF — no `mmcv`/`mmdet`/`torch` needed at run time. Both default to `weights/<file>` under `CONFIG.weights_dir`; override with `--weights <path>`.
+
 ## Quick Start
 
 Requires [`uv`](https://docs.astral.sh/uv/) (`brew install uv`).
@@ -72,6 +99,13 @@ Run detection + tracking on a video:
 uv run python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/phase1 --save-crops --preview
 ```
 
+Swap the detector (see "Detector models" above for one-time setup per model):
+
+```bash
+uv run python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/scrfd34 --model scrfd-34gf
+uv run python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/yolov2 --model yolo-facev2-l
+```
+
 Live webcam preview:
 
 ```bash
@@ -82,12 +116,12 @@ Each run writes `detections.jsonl` — one record per frame: `{frame_id, tracks:
 
 ## Status
 
-| Stage                                         | State       |
-| --------------------------------------------- | ----------- |
-| Detection + Tracking (RetinaFace + ByteTrack) | Implemented |
-| Generation + Compositing                      | Not started |
-| Temporal Stabilization                        | Not started |
-| Privacy / utility evaluation                  | Not started |
+| Stage                                                              | State       |
+| ------------------------------------------------------------------- | ----------- |
+| Detection + Tracking (SCRFD-10GF default + ByteTrack; SCRFD-34GF / YOLO-FaceV2-l selectable) | Implemented |
+| Generation + Compositing                                           | Not started |
+| Temporal Stabilization                                             | Not started |
+| Privacy / utility evaluation                                       | Not started |
 
 See `research/` for the design rationale, candidate shortlist, and open questions behind each stage.
 
