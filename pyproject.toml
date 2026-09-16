@@ -10,5 +10,26 @@ dependencies = [
     "numpy>=1.24.0",
 ]
 
+# Kept optional (not in `dependencies`) so a plain `uv sync` stays light —
+# these only matter to the two Tier 0.5 detector candidates
+# (research/stages/identification.md), not the deployed SCRFD-10GF default.
+# Both groups below are needed only for a one-time checkpoint -> ONNX
+# conversion (models/<name>/convert.py); the resulting .onnx is loaded at
+# inference time via the same insightface/onnxruntime stack SCRFD-10GF
+# already uses, no extra needed for that part. All three detector backends
+# are the same shape at runtime: an .onnx file + onnxruntime.
+[project.optional-dependencies]
+# `models/yolo_facev2_l/convert.py`
+yolo-facev2-convert = [
+    "torch>=2.2",
+]
+# `models/scrfd_34gf/convert.py`
+scrfd-34gf-convert = [
+    "mmcv>=1.3.3,<1.4",
+    "mmdet>=2.11,<2.14",
+    "onnx",
+    "onnxsim",
+]
+
 [tool.uv]
 package = false

@@ -13,6 +13,10 @@ Usage:
     # Image directory
     python -m src.pipeline.phase1_detect.run --input imgs/ --out runs/phase1
 
+    # Swap detector backend (research/stages/identification.md, Tier 0.5)
+    python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/scrfd34 --model scrfd-34gf
+    python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/yolov2 --model yolo-facev2-l
+
 Outputs (in --out dir) — the Phase 1 -> Phase 2 contract, see src/pipeline/contracts.py:
     detections.jsonl   one JSON object per frame: {frame_id, tracks:[{track_id, box, conf, landmarks, crop_path}]}
     tracks.json         whole-video per-track manifest: seed, first/last frame, representative crop
@@ -39,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from config import CONFIG  # noqa: E402
 
 from .detector import FaceDetector  # noqa: E402
+from .models import DEFAULT_WEIGHTS_FILENAME, MODEL_NAMES  # noqa: E402
 from .tracker import FaceTracker  # noqa: E402
 from ..contracts import Face, Frame, Identity, Manifest, Video, derive_seed  # noqa: E402
 
@@ -133,7 +138,7 @@ def run_video(args, detector: FaceDetector, tracker: FaceTracker) -> None:
             if args.webcam or writer is not None:
                 vis = draw_tracks(frame, tracks)
                 if args.webcam:
-                    cv2.imshow("Phase 1 — SCRFD-10GF + ByteTrack", vis)
+                    cv2.imshow(f"Phase 1 — {args.model} + ByteTrack", vis)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
                 if writer is not None:
@@ -217,12 +222,22 @@ def main() -> None:
     p.add_argument("--pad", type=int, default=32, help="Crop padding (px) for Phase 2")
     p.add_argument("--save-crops", action="store_true", help="Save padded face crops")
     p.add_argument("--preview", action="store_true", help="Write annotated preview.mp4")
+    p.add_argument("--model", type=str, default="scrfd-10gf", choices=MODEL_NAMES,
+                   help="Detector backend (research/stages/identification.md, Tier 0.5)")
+    p.add_argument("--weights", type=str, default=None,
+                   help="Weights file for --model (default: CONFIG.weights_dir/<model default filename>; "
+                        "unused for scrfd-10gf, which resolves its pack by name)")
     args = p.parse_args()
 
     if not args.webcam and not args.input:
         p.error("provide --input or --webcam")
 
-    detector = FaceDetector(conf_threshold=args.conf, det_size=(args.det_size, args.det_size))
+    weights = Path(args.weights) if args.weights else None
+    if weights is None and args.model in DEFAULT_WEIGHTS_FILENAME:
+        weights = CONFIG.weights_dir / DEFAULT_WEIGHTS_FILENAME[args.model]
+
+    detector = FaceDetector(model=args.model, weights=weights,
+                             conf_threshold=args.conf, det_size=(args.det_size, args.det_size))
     tracker = FaceTracker()
 
     if args.input and Path(args.input).is_dir():
