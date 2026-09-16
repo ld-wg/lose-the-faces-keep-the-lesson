@@ -10,16 +10,37 @@ logic against the minimal vendored slice in `vendor/` (see `NOTICE.md`).
 
 One-time, offline tool, not part of the inference pipeline: `backend.py`
 loads the resulting `.onnx` via `insightface.model_zoo.model_zoo.ModelRouter`,
-no `torch`/`mmcv`/`mmdet` at inference time. Needs the `scrfd-34gf-convert`
-optional dependency group (`torch`, `mmcv` 1.3.3-1.3.x, `mmdet` 2.11-2.13,
-`onnx`, `onnxsim`) — not installed by a plain `uv sync`.
+no `torch`/`mmcv`/`mmdet` at inference time.
 
-Usage:
+mmcv 1.3.x / mmdet 2.11.0 predate PEP 517 build isolation and will not
+resolve through this project's `uv`-managed environment (mmcv's setup.py
+needs pkg_resources at build time; mmdet 2.11.0's mmpycocotools dependency
+has a broken Cython build). Both are solved by using OpenMMLab's own
+prebuilt wheels instead of building from source, in a disposable Python 3.8
+environment — this is the standard way this era of mmcv/mmdet gets
+installed. Verified working end-to-end (checkpoint -> onnx -> loaded via
+InsightFace's router -> ran inference) on Linux/CUDA 11.3, an NVIDIA A5000:
 
-    uv sync --extra scrfd-34gf-convert
+    uv python install 3.8
+    uv venv --python 3.8 .venv-scrfd34 && source .venv-scrfd34/bin/activate
+    uv pip install "setuptools<81"
+    uv pip install torch==1.10.0+cu113 torchvision==0.11.0+cu113 \\
+        -f https://download.pytorch.org/whl/torch_stable.html
+    uv pip install mmcv-full==1.3.18 \\
+        -f https://download.openmmlab.com/mmcv/dist/cu113/torch1.10.0/index.html
+    uv pip install "mmdet==2.11.0" --no-deps   # 2.11.0 is the last version with
+    uv pip install pycocotools matplotlib terminaltables onnx  # generate_inputs_and_wrap_model;
+                                                                # --no-deps + plain pycocotools
+                                                                # skips its broken mmpycocotools pin
+
     python -m src.pipeline.phase1_detect.models.scrfd_34gf.convert \\
         --checkpoint <path-to-manually-downloaded .pth> \\
-        --output weights/scrfd_34g.onnx
+        --output weights/scrfd_34g.onnx --no-simplify
+
+`--no-simplify` skips the `onnxsim` pass, which needs `cmake` to build;
+drop the flag if `cmake` is available and you `uv pip install onnxsim` too.
+No CUDA/A5000? cu113 wheels still install and trace fine on CPU, just
+slower — this conversion runs once, so it isn't performance-sensitive.
 
 Always exports with dynamic H/W axes, unlike upstream: `scrfd2onnx.py`'s
 `--shape` flag silently switches between a static export (shape given) and
@@ -95,9 +116,10 @@ def convert(
         from mmdet.core import generate_inputs_and_wrap_model
     except ImportError as e:
         raise ImportError(
-            "SCRFD-34GF conversion needs the 'scrfd-34gf-convert' optional "
-            "dependency group (torch, mmcv 1.3.3-1.3.x, mmdet 2.11-2.13, "
-            "onnx, onnxsim). Install with: uv sync --extra scrfd-34gf-convert"
+            "SCRFD-34GF conversion needs torch, mmcv-full 1.3.18, mmdet 2.11.0, "
+            "and onnx in a separate Python 3.8 environment — this project's own "
+            "uv-managed venv won't resolve them (they predate PEP 517 build "
+            "isolation). See this module's docstring for the exact setup."
         ) from e
 
     _register_custom_modules()
