@@ -11,25 +11,23 @@ dependencies = [
 ]
 
 # Kept optional (not in `dependencies`) so a plain `uv sync` stays light —
-# these only matter to the two Tier 0.5 detector candidates
+# only matters for the yolo-facev2-l Tier 0.5 candidate
 # (research/stages/identification.md), not the deployed SCRFD-10GF default.
-# Both groups below are needed only for a one-time checkpoint -> ONNX
-# conversion (models/<name>/convert.py); the resulting .onnx is loaded at
+# Needed only for a one-time checkpoint -> ONNX conversion
+# (models/yolo_facev2_l/convert.py); the resulting .onnx is loaded at
 # inference time via the same insightface/onnxruntime stack SCRFD-10GF
-# already uses, no extra needed for that part. All three detector backends
-# are the same shape at runtime: an .onnx file + onnxruntime.
+# already uses, no extra needed for that part.
 [project.optional-dependencies]
-# `models/yolo_facev2_l/convert.py`
 yolo-facev2-convert = [
     "torch>=2.2",
 ]
-# `models/scrfd_34gf/convert.py`
-scrfd-34gf-convert = [
-    "mmcv>=1.3.3,<1.4",
-    "mmdet>=2.11,<2.14",
-    "onnx",
-    "onnxsim",
-]
+
+# SCRFD-34GF's conversion tool (models/scrfd_34gf/convert.py) is NOT set up
+# through this file: mmcv 1.3.x / mmdet 2.11.0 predate PEP 517 build
+# isolation and don't resolve cleanly through uv's project lock. It needs
+# its own disposable Python 3.8 environment, built from OpenMMLab's
+# official prebuilt wheels instead of source — see convert.py's docstring
+# for the exact, verified recipe.
 
 [tool.uv]
 package = false

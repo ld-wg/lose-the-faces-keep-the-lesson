@@ -62,8 +62,8 @@ registry, so no functionality is lost. See the header comment in
 
 ## Registry-collision risk (real, but scoped)
 
-This vendoring approach relies on `pip`-installed `mmdet` (2.11–2.13, per
-the `scrfd-34gf-convert` optional dependency group in `pyproject.toml`) not
+This vendoring approach relies on `mmdet==2.11.0` (installed per `convert.py`'s
+docstring — a separate Python 3.8 environment, not this project's own) not
 already registering anything named `SCRFD`, `SCRFDHead`, or `ResNetV1e` —
 confirmed true for mainline mmdetection as of this writing, since none of
 these three names/architectures exist upstream. If a future `mmdet` release
