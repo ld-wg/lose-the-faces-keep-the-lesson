@@ -7,7 +7,7 @@
 # upstream's `attempt_download()` silently reaches out to GitHub
 # releases / Google Cloud Storage over the network to fetch a missing
 # `yolov5*.pt` by name, using `requests` + `torch.hub`. That's the wrong
-# behavior for this pipeline for two reasons: (1) `yolo-facev2l-preweight.pt`
+# behavior for this pipeline for two reasons: (1) `yolo-facev2s-preweight.pt`
 # isn't one of the auto-downloadable `ultralytics/yolov5` release assets
 # upstream's logic matches against anyway, so the real download branch
 # was already dead code for our checkpoint; (2) `convert.py` (the only
@@ -28,7 +28,7 @@ def attempt_download(file, repo='ultralytics/yolov5'):
     if not file.exists():
         raise FileNotFoundError(
             f"YOLO-FaceV2 weights not found: {file}\n"
-            "Download 'yolo-facev2l-preweight.pt' from "
+            "Download 'yolo-facev2s-preweight.pt' from "
             "https://github.com/Krasjet-Yu/YOLO-FaceV2/releases and place it at this path "
             "(this vendored attempt_download() does not auto-download, unlike upstream's)."
         )

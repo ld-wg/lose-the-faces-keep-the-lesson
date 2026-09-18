@@ -5,16 +5,21 @@ description = "Expression-preserving face de-identification for educational rese
 requires-python = ">=3.11"
 dependencies = [
     "insightface>=0.7.3",
-    "onnxruntime>=1.16.0",
+    # Developed on Mac, only ever run on Linux (serra1 or similar CUDA
+    # machines) — onnxruntime-gpu has no macOS wheel at all, so the split
+    # is platform-gated, not a manual/opt-in choice. `uv sync` installs the
+    # right one automatically on either machine, no flags needed.
+    "onnxruntime>=1.16.0; sys_platform == 'darwin'",
+    "onnxruntime-gpu>=1.19; sys_platform == 'linux'",
     "opencv-python>=4.8.0",
     "numpy>=1.24.0",
 ]
 
 # Kept optional (not in `dependencies`) so a plain `uv sync` stays light —
-# only matters for the yolo-facev2-l Tier 0.5 candidate
+# only matters for the yolo-facev2-s Tier 0.5 candidate
 # (research/stages/identification.md), not the deployed SCRFD-10GF default.
 # Needed only for a one-time checkpoint -> ONNX conversion
-# (models/yolo_facev2_l/convert.py); the resulting .onnx is loaded at
+# (models/yolo_facev2_s/convert.py); the resulting .onnx is loaded at
 # inference time via the same insightface/onnxruntime stack SCRFD-10GF
 # already uses, no extra needed for that part.
 [project.optional-dependencies]
@@ -31,3 +36,43 @@ yolo-facev2-convert = [
 
 [tool.uv]
 package = false
+
+# insightface unconditionally requires plain `onnxruntime` regardless of
+# platform, which would collide with onnxruntime-gpu above on Linux (both
+# install files under the same `onnxruntime` import name). This overrides
+# insightface's own declared deps to drop that one entry — our own
+# platform-gated onnxruntime/onnxruntime-gpu above already covers what it
+# actually needs. Verified live on serra1 (disposable scratch project):
+# `uv sync` there installs onnxruntime-gpu only, no plain onnxruntime
+# alongside it, and both `onnxruntime.get_available_providers()` (includes
+# CUDAExecutionProvider) and `import insightface` work correctly.
+#
+# Pinned to insightface's exact resolved version below — if insightface is
+# ever upgraded, this list needs re-checking against its new metadata
+# (`python -c "import importlib.metadata as m; print(m.distribution('insightface').requires)"`)
+# or the override may silently stop applying / go stale.
+[[tool.uv.dependency-metadata]]
+name = "insightface"
+version = "2.0"
+requires-dist = [
+    "numpy",
+    "onnx>=1.13",
+    "opencv-python",
+    "tqdm",
+    "requests",
+    "scipy",
+    "scikit-image",
+    "PySide6-Essentials>=6.5; extra == 'gui'",
+    "Pillow>=9.1; extra == 'gui'",
+    "reportlab; extra == 'gui'",
+    "scikit-learn; extra == 'gui'",
+    "cryptography>=42.0.0; extra == 'gui'",
+    "rfc8785>=0.1.4; extra == 'gui'",
+    "av>=12; extra == 'gui'",
+    "PyYAML>=6.0; extra == 'gui'",
+    "av>=12; extra == 'privateframe'",
+    "PyYAML>=6.0; extra == 'privateframe'",
+    "cython; extra == 'face3d'",
+    "albumentations; extra == 'face3d'",
+    "matplotlib; extra == 'face3d'",
+]

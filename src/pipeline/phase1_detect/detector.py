@@ -1,7 +1,7 @@
 """Phase 1 face detector facade — dispatches to a swappable backend.
 
 Decision (research/stages/identification.md): SCRFD-10GF (InsightFace's
-`buffalo_l` pack) is the deployed default. SCRFD-34GF and YOLO-FaceV2-l are
+`buffalo_l` pack) is the deployed default. SCRFD-34GF and YOLO-FaceV2-s are
 the two Tier 0.5 candidates queued for head-to-head comparison on our own
 hardware — same method (same tracker, same Phase 1 -> Phase 2 contract in
 `contracts.py`), just a different detector underneath. All three implement
@@ -75,7 +75,7 @@ class FaceDetector:
     ):
         """Args:
             model: which detector to run — one of `MODEL_NAMES`
-                ("scrfd-10gf", "scrfd-34gf", "yolo-facev2-l").
+                ("scrfd-10gf", "scrfd-34gf", "yolo-facev2-s").
             weights: path to that model's weights file. Unused for
                 "scrfd-10gf" (resolved by name via InsightFace's own model
                 cache); required for the other two — resolve a default path

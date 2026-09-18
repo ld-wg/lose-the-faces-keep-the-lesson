@@ -10,7 +10,16 @@ venv/
 # Data & training artifacts
 data/
 runs/
+weights/
 *.pt
+*.pth
+*.onnx
+
+# Test/demo videos — often contain real people's faces; this project is
+# specifically about not exposing those, so never commit them by accident.
+*.mp4
+*.mov
+*.avi
 
 # Research notes
 research/
