@@ -15,7 +15,7 @@ Usage:
 
     # Swap detector backend (research/stages/identification.md, Tier 0.5)
     python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/scrfd34 --model scrfd-34gf
-    python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/yolov2 --model yolo-facev2-l
+    python -m src.pipeline.phase1_detect.run --input lecture.mp4 --out runs/yolov2 --model yolo-facev2-s
 
 Outputs (in --out dir) — the Phase 1 -> Phase 2 contract, see src/pipeline/contracts.py:
     detections.jsonl   one JSON object per frame: {frame_id, tracks:[{track_id, box, conf, landmarks, crop_path}]}

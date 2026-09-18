@@ -10,7 +10,7 @@ fewer params/FLOPs than the alternatives.
 the commonly assumed default for InsightFace pipelines — verified against
 insightface's own model router (see identification.md's "Correction"
 section). This backend is otherwise unchanged from Phase 1's original
-implementation; the other two candidates in `..scrfd_34gf` / `..yolo_facev2_l`
+implementation; the other two candidates in `..scrfd_34gf` / `..yolo_facev2_s`
 are new, queued for head-to-head comparison (Tier 0.5).
 """
 

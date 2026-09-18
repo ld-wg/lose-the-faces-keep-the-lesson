@@ -1,6 +1,10 @@
 # Machine-specific path overrides
 config.local.json
 
+# SSH/infra notes — hostnames, key filenames, access topology. Local-only,
+# never committed.
+docs/serra1-ssh.md
+
 # Python
 __pycache__/
 *.py[cod]
@@ -10,7 +14,16 @@ venv/
 # Data & training artifacts
 data/
 runs/
+weights/
 *.pt
+*.pth
+*.onnx
+
+# Test/demo videos — often contain real people's faces; this project is
+# specifically about not exposing those, so never commit them by accident.
+*.mp4
+*.mov
+*.avi
 
 # Research notes
 research/

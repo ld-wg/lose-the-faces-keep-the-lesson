@@ -26,10 +26,13 @@
 #      (a `--cfg`/`--device` argparse smoke test for training-time model
 #      construction) — dead code for a module that's only ever imported,
 #      never run as a script, in this pipeline.
-# `Detect` and `Model` (including `parse_model`) — the classes/functions
-# that actually matter, including the landmark-aware decode math in
-# `Detect.forward()` (baked into the exported ONNX graph via
-# `export_cat=True` — see `../convert.py`) — are otherwise verbatim.
+# `Detect` and `Model` (including `parse_model`) are otherwise verbatim —
+# including `Detect.forward()`'s `export_cat=True` branch, which is left in
+# place unused: it calls `self._make_grid_new()`, which doesn't exist
+# anywhere in this file or upstream. `convert.py` monkey-patches
+# `Detect.forward` with its own corrected decode instead of using either
+# of this file's own inference branches — see `convert.py`'s docstring and
+# ../NOTICE.md ("Only -s actually works") for why.
 # `backend.py` (the code that runs on every pipeline invocation) never
 # imports this file — it loads `convert.py`'s ONNX output instead.
 

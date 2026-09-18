@@ -2,13 +2,16 @@
 
 `vendor/` in this directory contains a slice of
 [**Krasjet-Yu/YOLO-FaceV2**](https://github.com/Krasjet-Yu/YOLO-FaceV2)'s
-model-definition code, needed to load `yolo-facev2l-preweight.pt` (a custom
+model-definition code, needed to load a checkpoint from that repo (a custom
 YOLOv5 architecture — CBAM/SE/EMA attention + RFEM/MultiSEAM modules — not
 loadable via stock `ultralytics`/`torch.hub`) for a **one-time conversion to
 ONNX** (`convert.py`). Mirroring `../scrfd_34gf`'s shape: `backend.py` never
 imports `vendor/` or `torch` — it only loads the resulting `.onnx` file via
 `onnxruntime`, exactly like the other two detector backends. `vendor/` and
 the licensing situation below matter only if you run `convert.py` yourself.
+
+**This is the "-s" (small) checkpoint, not "-l" (large) as originally
+planned** — see "Only -s actually works" below for why.
 
 ## Provenance
 
@@ -59,19 +62,72 @@ same accepted risk, not a different risk.
 - Reimplement `convert.py`'s use of this vendored code independently from
   the paper (Yu et al., *Pattern Recognition* 155:110714, 2024,
   arXiv:2208.02019), without reference to this vendored code, or
-- Drop the `yolo-facev2-l` backend from any public release entirely (the
+- Drop the `yolo-facev2-s` backend from any public release entirely (the
   other two detector backends, `scrfd-10gf` and `scrfd-34gf`, have no such
   encumbrance).
 
+## Only "-s" actually works — "-l"/"-m"/"-n" are broken as published
+
+This is the finding that determined which checkpoint size this backend
+targets, found by actually running all four sizes through `convert.py`
+against real footage (`video-demo.mov`) and inspecting the model directly
+when the results looked wrong — not assumed from specs or naming.
+
+**What happened:** `yolo-facev2l-preweight.pt` was the original target (see
+`research/stages/identification.md`'s Tier 0.5 rationale — largest verified
+Hard AP gain among the candidates, from the repo's own Preweight table).
+Converting and running it produced **zero detections** on real classroom-like
+footage that SCRFD-10GF finds 1112 faces in. Debugging in order:
+
+1. Confirmed the checkpoint has no landmark channels (see below) — fixed the
+   decode, still zero detections.
+2. Checked objectness/class confidence directly: max ~0.02 across all 17,640
+   anchors, only 13-14 distinct values — essentially no variation at all,
+   not just "low confidence."
+3. Ruled out `attempt_load()`'s `.fuse()` step (BatchNorm folding) as the
+   cause: loading the raw, unfused checkpoint gives identical numbers.
+4. Ruled out the decode/conversion code itself: tested `yolo-facev2n-preweight.pt`
+   (a different size, same code path) — nearly **identical** degenerate
+   confidence statistics. Two independently-trained checkpoints producing
+   the same narrow broken output through the same code pointed at a shared
+   bug in *our* code, not two independently bad models — so this needed
+   one more check, not less.
+5. Hooked the backbone's own output (before the `Detect` head's final conv):
+   **std 0.0004–0.02** across all three feature scales, on an input tensor
+   with std ~0.2. A working backbone processing real image content doesn't
+   produce that — this is the network not responding to the input at all,
+   upstream of any decode logic.
+6. Tested `-m` and `-s` too. `-m` matches `-l`/`-n`'s broken pattern exactly
+   (backbone std 0.0004–0.02). **`-s` is different**: backbone std
+   0.4–1.0 (healthy), objectness up to 0.85, and a full run on
+   `video-demo.mov` found 1178 detections across 12 tracks — in line with
+   SCRFD-10GF's 1112/15 on the same footage.
+
+**Conclusion:** `-l`, `-m`, and `-n` are functionally broken in the
+published v2.1 release, independent of anything in this vendored slice or
+`convert.py` (the same code correctly handles `-s`). `-s` is the only size
+this backend supports. Its real AP (98.3/97.0/89.3 Easy/Medium/Hard, from
+the repo's own table) is lower than `-l`'s claimed 98.6/97.9/91.9, but it's
+a number backed by an actually-working checkpoint, which `-l`'s isn't.
+
+**Not fully understood, flagged rather than overstated:** the working
+theory was "the broken sizes are stale checkpoints carried over from the
+pre-landmark v1.0 release, never retrained" — supported by `v1.0`'s
+`preweight.pt` being byte-for-byte the same size as `-s`'s v2.1 file. But
+that match is against `-s`, the size that *works* — so it doesn't actually
+explain why `-l`/`-m`/`-n` specifically are broken. Treat "-s works, the
+other three don't" as a confirmed empirical result, and the byte-size
+coincidence as an interesting but unproven side note, not a full
+explanation.
+
 ## Design change: conversion-only, not a runtime dependency
 
-The first version of this backend loaded `yolo-facev2l-preweight.pt`
-directly with `torch` on every `detect()` call, which required: (1) `torch`/
-`torchvision` as a hard runtime dependency, (2) inserting `vendor/` onto
-`sys.path` as bare `models`/`utils` packages so `torch.load()`'s unpickler
-could resolve the checkpoint's pickled class references (upstream's own
-repo layout has `models`/`utils` as top-level packages — see the old
-revision's comments if you need the full explanation), and (3)
+The first version of this backend loaded the checkpoint directly with
+`torch` on every `detect()` call, which required: (1) `torch`/`torchvision`
+as a hard runtime dependency, (2) inserting `vendor/` onto `sys.path` as
+bare `models`/`utils` packages so `torch.load()`'s unpickler could resolve
+the checkpoint's pickled class references (upstream's own repo layout has
+`models`/`utils` as top-level packages), and (3)
 `torch.load(..., weights_only=False)`, needed because this checkpoint
 pickles a full `Model` instance rather than a plain state_dict —
 `weights_only=False` executes arbitrary code during unpickling, fine only
@@ -95,11 +151,11 @@ numpy in `backend.py` now, not vendored).
 
 | File | Role |
 |---|---|
-| `vendor/models/yolo.py` | `Model`/`Detect`/`parse_model` — the architecture graph. `Detect.export_cat` (this fork's own flag) is what `convert.py` flips to get a single, already-decoded output tensor — see `convert.py`'s docstring. |
+| `vendor/models/yolo.py` | `Model`/`Detect`/`parse_model` — the architecture graph. `convert.py` monkey-patches `Detect.forward` with a corrected decode rather than using this file's own inference branch — see `convert.py`'s docstring for why (its `export_cat` path calls a method, `_make_grid_new`, that doesn't exist anywhere in this file or upstream — dead code, not something to rely on). |
 | `vendor/models/common.py` | Layer building blocks (`Conv`, `C3`, `SPP`, `Focus`, `RFEM`, `SEAM`, `MultiSEAM`, `StemBlock`, etc.) that `parse_model` resolves the YAML's module names against. |
 | `vendor/models/experimental.py` | `attempt_load()` — loads the `.pt` checkpoint. |
 | `vendor/models/attention/{cbam,se,ema}.py` | `CBAM`/`SE`/`EMA` attention modules, verbatim. |
-| `vendor/models/yolov5l_v2_RFEM_MultiSEAM.yaml` | The "-l" (large) model config — see "Config-to-checkpoint pairing" below. |
+| `vendor/models/yolov5s_v2_RFEM_MultiSEAM.yaml` | The "-s" (small) model config — reference/documentation only, not actually loaded by `convert.py` (`attempt_load()` unpickles the fully-constructed model directly from the checkpoint, no YAML needed). |
 | `vendor/utils/general.py` | Trimmed to `make_divisible`/`check_file`/`set_logging` only — the three names `models/yolo.py` imports at module load time. The old NMS/coordinate-rescaling functions (`non_max_suppression_face`, `scale_coords`, `scale_coords_landmarks`, `check_img_size`, `xywh2xyxy`, `clip_coords`) were dropped along with the old direct-`.pt`-loading backend — `backend.py` reimplements NMS/letterbox itself in plain numpy instead. |
 | `vendor/utils/torch_utils.py`, `vendor/utils/autoanchor.py` | Support functions `models/yolo.py` imports at module load time. |
 | `vendor/utils/google_utils.py` | **Not verbatim** — see below. |
@@ -120,34 +176,6 @@ Two remaining files are worth calling out:
   `weights_only=False`** to its `torch.load()` call, not present upstream.
   Only run `convert.py` against a checkpoint you trust the provenance of
   (see "Design change" above).
-
-## Config-to-checkpoint pairing: how `yolov5l_v2_RFEM_MultiSEAM.yaml` was determined
-
-Upstream's README does not state an explicit per-checkpoint config mapping.
-Determined by combining two things from the same README:
-
-1. The "Preweight" table lists **YOLO-FaceV2l** at Easy/Medium/Hard
-   `0.986/0.979/0.919` — matching (to 3 decimal places, ×100) the
-   `98.6/97.9/91.9` figures already recorded for YOLO-FaceV2-l in
-   `research/stages/identification.md`'s decision table, confirming
-   `yolo-facev2l-preweight.pt` is indeed the "-l" (large) variant.
-2. The README's own training example command uses
-   `--cfg models/yolov5s_v2_RFEM_MultiSEAM.yaml` for the "-s" (small)
-   preweight, and the repo's `models/` directory has one
-   `yolov5{n,s,m,l}_v2_RFEM_MultiSEAM.yaml` per size letter (confirmed via
-   the full repo tree, `git/trees/master?recursive=1`). Substituting "l"
-   for "s" gives `models/yolov5l_v2_RFEM_MultiSEAM.yaml` — the file
-   vendored here.
-
-**Residual uncertainty, flagged rather than papered over:** this is a
-naming-convention inference, not an explicit statement from upstream that
-`yolo-facev2l-preweight.pt` was trained with exactly this YAML. It's a
-reasonable inference (consistent naming across all four size variants,
-consistent with the "s" example), but wasn't independently verified against
-the actual checkpoint's architecture (no checkpoint was available in the
-session that vendored this code — verify by running `convert.py` against
-the real checkpoint and checking the exported graph's output shape before
-relying on results from this backend).
 
 ## Conversion-time import mechanics — read if you touch `convert.py` or `vendor/`
 
