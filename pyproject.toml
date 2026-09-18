@@ -10,7 +10,15 @@ dependencies = [
     # is platform-gated, not a manual/opt-in choice. `uv sync` installs the
     # right one automatically on either machine, no flags needed.
     "onnxruntime>=1.16.0; sys_platform == 'darwin'",
-    "onnxruntime-gpu>=1.19; sys_platform == 'linux'",
+    # Upper-bounded deliberately: onnxruntime-gpu's CUDA/cuDNN requirement
+    # jumps by major version across releases (1.18-1.20 target CUDA 12.x;
+    # 1.27+ moved to CUDA 13.x). serra1's driver caps at CUDA 12.5 (see
+    # `nvidia-smi`) — a driver can never run a newer CUDA than it reports,
+    # no library install fixes that. Verified 1.19.2 actually initializes
+    # CUDAExecutionProvider (not just lists it) and runs real inference on
+    # serra1's already-installed CUDA 12.5 + cuDNN 9 system libraries — no
+    # nvidia-*-cu12 pip deps needed. Re-verify this range before bumping it.
+    "onnxruntime-gpu>=1.19,<1.21; sys_platform == 'linux'",
     "opencv-python>=4.8.0",
     "numpy>=1.24.0",
 ]
