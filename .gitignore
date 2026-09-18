@@ -1,6 +1,10 @@
 # Machine-specific path overrides
 config.local.json
 
+# SSH/infra notes — hostnames, key filenames, access topology. Local-only,
+# never committed.
+docs/serra1-ssh.md
+
 # Python
 __pycache__/
 *.py[cod]
