@@ -35,6 +35,37 @@ yolo-facev2-convert = [
     "torch>=2.2",
 ]
 
+# Phase 2 — CIAGAN generation backend (phase2_generate/models/ciagan/).
+# Unlike the Phase 1 ONNX detectors, this keeps PyTorch native at inference
+# time (see models/ciagan/NOTICE.md for why) and adds `dlib` for the
+# 68-point landmark extraction the checkpoint's architecture depends on —
+# no Phase 1 detector backend produces landmarks dense enough for it.
+#
+# `dlib` has no prebuilt PyPI wheel for any recent release (verified:
+# 19.24.2/19.24.4/19.24.6/20.0.1 are all sdist-only) — installing this
+# extra compiles from source. `[tool.uv.extra-build-dependencies]` below
+# provisions `cmake` into dlib's isolated build environment automatically
+# (verified on serra1: a plain `uv sync --extra phase2-ciagan` builds dlib
+# successfully with no system-wide cmake, no sudo). What that can't paper
+# over is a missing C++ compiler itself — verified failing on a Mac with no
+# Xcode Command Line Tools installed (cmake's compiler-sanity-check step
+# fails outright). Run `xcode-select --install` first on a fresh Mac.
+#
+# `torch` is capped on Linux for the exact same reason as onnxruntime-gpu
+# above: its default PyPI wheel bundles its own CUDA 13.0 runtime, and
+# serra1's driver (555.42, CUDA 12.5 max per `nvidia-smi`) can't run it —
+# confirmed empirically (`torch.cuda.is_available()` False, "CUDA
+# initialization: driver too old"). Redirected to PyTorch's own cu124
+# wheel index instead (see `[tool.uv.sources]`/`[[tool.uv.index]]` below),
+# capped at <2.7 since that's the newest torch version cu124 publishes.
+# Verified on serra1: torch==2.6.0+cu124 initializes CUDA and runs a real
+# matmul on-device. No cap needed on Mac (MPS/CPU only, no driver ceiling).
+phase2-ciagan = [
+    "torch>=2.2,<2.7; sys_platform == 'linux'",
+    "torch>=2.2; sys_platform == 'darwin'",
+    "dlib>=19.24",
+]
+
 # SCRFD-34GF's conversion tool (models/scrfd_34gf/convert.py) is NOT set up
 # through this file: mmcv 1.3.x / mmdet 2.11.0 predate PEP 517 build
 # isolation and don't resolve cleanly through uv's project lock. It needs
@@ -44,6 +75,29 @@ yolo-facev2-convert = [
 
 [tool.uv]
 package = false
+
+# dlib's sdist build shells out to `cmake` directly — this provisions it
+# into dlib's isolated build environment (via the `cmake` PyPI package,
+# prebuilt binaries) so `uv sync --extra phase2-ciagan` works standalone,
+# with no system-wide cmake install or sudo needed. Verified on serra1
+# (no system cmake, no sudo access) — see phase2-ciagan's comment above.
+[tool.uv.extra-build-dependencies]
+dlib = ["cmake"]
+
+# See phase2-ciagan's comment above: redirects `torch` to PyTorch's own
+# CUDA-12.4 wheel index on Linux only, instead of the default PyPI index
+# (which resolves to a CUDA-13.0-only build serra1's driver can't run).
+# `explicit = true` keeps this index from being used for any other
+# package's resolution.
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu124", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
 
 # insightface unconditionally requires plain `onnxruntime` regardless of
 # platform, which would collide with onnxruntime-gpu above on Linux (both
