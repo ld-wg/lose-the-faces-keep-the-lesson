@@ -150,12 +150,22 @@ manifest logging — it is not a real class index and should not be read as
 - `GANonymization_50.ckpt` ("50 epochs — demo version"):
   https://mediastore.rz.uni-augsburg.de/get/Sfle_etB1D/ (686,311,019 bytes)
 
-**This project defaults to the 25-epoch checkpoint** (`DEFAULT_WEIGHTS_FILENAME["ganonymization"]`
-= `ganonymization_pix2pix_25.ckpt`): its numbers are the ones reported in
-the peer-reviewed paper's evaluation tables (Sec. 4), so results from this
-project stay directly comparable to the published benchmark. The 50-epoch
-checkpoint appears tuned for the project's own public demo, not for
-reproducing the paper's reported numbers.
+**Reversed on 2026-09-23, after real-video testing:** this project now
+defaults to the **50-epoch** checkpoint (`DEFAULT_WEIGHTS_FILENAME["ganonymization"]`
+= `ganonymization_pix2pix_50.ckpt`), not the 25-epoch "publication
+version" originally chosen for paper-comparability. The 25-epoch
+checkpoint's numbers *are* the ones reported in the paper's own evaluation
+tables (Sec. 4) — a real, valid reason to prefer it for literal
+reproducibility — but side-by-side on the same real crop from this
+project's own footage (`video-demo-2.mov`, frame 6, track 7 — a large,
+close-up face), the 25-epoch checkpoint produced visibly noisy,
+speckled, incoherent output (chaotic RGB speckle texture, no recognizable
+facial structure), while the 50-epoch checkpoint produced a
+noticeably smoother, more coherent skin-toned result on the identical
+input. This is a real, tested finding, not a guess — pass
+`--weights weights/ganonymization_pix2pix_25.ckpt` explicitly if
+reproducing the paper's own reported numbers is the goal instead of best
+visual quality on this project's own footage.
 
 **Head-segmentation checkpoint**: hosted on Google Drive
 (`constants.py`'s `HEAD_SEGMENTATION_MODEL_URL`,
@@ -183,6 +193,11 @@ redirect makes plain `curl`/`wget` unreliable here).
   defaults to `affine=False` (no learnable params), so each of the 15
   down/up blocks contributes exactly one Conv2d/ConvTranspose2d weight
   tensor (bias=False), plus the final block's Conv2d weight+bias = 17.
+- `weights/ganonymization_pix2pix_50.ckpt` (now the default — see above):
+  686,311,019 bytes, SHA256
+  `34e6698712b50f9325ac36ec3daf8febb5cca6813a1605bc2d7ecb78a896fe62`.
+  Same checkpoint shape/key structure as the 25-epoch file, loads the same
+  way, `strict=True`.
 - `weights/head_segmentation.ckpt`: 359,589,211 bytes, SHA256
   `f40446ae67288b2721c942543cf24e7439fd116535b64e3d06778f580baf5b4a`.
   Also a Lightning checkpoint. `hyper_parameters`: `encoder_name=resnet34`,
@@ -298,3 +313,63 @@ Not a documented root cause or a tuned default yet — a status snapshot to
 resume from, in the same spirit as `ciagan/NOTICE.md`'s own dated entries
 (each one is a real, tested finding, not a guess), just mid-process here
 rather than complete.
+
+### 2026-09-23 (same day, resumed): "is this even the right/trained model?" — investigated directly, two real findings
+
+Prompted by the first real output looking rough enough to suspect a wrong
+or untrained checkpoint. Investigated directly rather than assuming
+either way:
+
+- **Checkpoint loading itself is not the problem.** Re-verified: exact
+  byte sizes and SHA256s match what was downloaded, `strict=True`/
+  enforced-match state_dict loads succeed for both the generator (17/17
+  keys) and head-segmentation (278/278 real model keys), `epoch: 24`
+  confirms the "25 epochs" file is genuinely that checkpoint (not a
+  mislabeled one), and `hyper_parameters` contain real SLURM-cluster
+  training paths (`/mnt/slurm/fabio/facemorphergan/...`) — all consistent
+  with a genuine, complete training run, not a stub or corrupted file. A
+  landmark overlay directly on a real frame (drawn onto the actual photo,
+  not the black dot canvas) confirmed the 478-point mesh itself aligns
+  correctly with the real eyes/nose/mouth/eyebrows — ruling out a
+  landmark-scale or detection bug as the primary cause.
+- **Real finding #1 — checkpoint choice.** Compared the 25-epoch and
+  50-epoch checkpoints side-by-side on the identical real crop (same
+  frame, same face, same code path): the 25-epoch checkpoint produced
+  visibly noisy/speckled, incoherent output; the 50-epoch checkpoint
+  produced a noticeably smoother, more coherent result on the same input.
+  This project's earlier reasoning for defaulting to the 25-epoch
+  checkpoint (paper-comparability) was reasonable in theory but empirically
+  wrong for this project's own use case — **default switched to the
+  50-epoch checkpoint** (see "Checkpoint status" above and
+  `models/DEFAULT_WEIGHTS_FILENAME`'s updated comment). Even the 50-epoch
+  result is still short of the paper's own published examples — no clearly
+  resolved eyes/nose/mouth yet, just a smoother skin-toned region — so this
+  is a real improvement, not a full fix.
+- **Real finding #2 — rotation is actively failing detection in real
+  cases, not just theoretically unverified.** Tested `align_rotation` on a
+  real, large, close-up face (`video-demo-2.mov`, frame 6, track 7): the
+  *rotated* letterboxed canvas failed MediaPipe's second detection pass
+  entirely (`_facemesh_points` returned `None`); the *unrotated* canvas
+  succeeded. The ledger's "ok" status for this exact frame/track was only
+  ever reached via `generate()`'s automatic no-rotation fallback, silently
+  — meaning `_rotation_matrix()`'s sign convention or general approach may
+  itself be wrong, not just "unverified as the docstring says. **Not yet
+  root-caused** — flagged here as a confirmed real bug/limitation to
+  investigate before trusting `align_rotation=True` as a net positive.
+- **Also tested and ruled out (partially):** reducing `context_ratio` from
+  0.6 to 0.25 on the same large face changed the framing but did **not**
+  meaningfully fix the noisy/speckled texture quality on the 25-epoch
+  checkpoint — so crop-scale-vs-training-distribution mismatch, while a
+  real and plausible concern (the detected face mesh only spans roughly
+  35-45% of the 512 canvas in the cases checked, `context_ratio=0.6` may
+  still be too generous), is not obviously the *dominant* cause of the
+  noise pattern specifically — the checkpoint choice (finding #1) had a
+  much larger, more clear-cut effect than the crop-ratio change did in
+  this comparison. Still worth its own dedicated sweep before concluding
+  either way — this was a spot check, not a rigorous sweep.
+
+**Net status:** not an untrained-model bug. Real, partial progress (better
+default checkpoint); real, unresolved issues remain (rotation correctness,
+overall facial coherence even on the better checkpoint, context_ratio not
+rigorously swept). Continues to warrant the same multi-round treatment
+CIAGAN's own calibration required, not a one-session fix.

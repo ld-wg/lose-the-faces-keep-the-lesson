@@ -18,9 +18,20 @@ _MODULES = {
 }
 
 #: model name -> expected weights filename under CONFIG.weights_dir.
+#
+#  ganonymization: defaults to the **50-epoch** checkpoint, not the
+#  25-epoch "publication version" — reversed from this project's initial
+#  choice after real-video testing (see models/ganonymization/NOTICE.md's
+#  calibration log, 2026-09-23). The 25-epoch checkpoint's numbers match
+#  the paper's own evaluation tables, which is a real reason to prefer it
+#  for literal reproducibility, but on this project's actual footage it
+#  produces visibly noisier/less coherent output than the 50-epoch one —
+#  confirmed side-by-side on the same real crop, not assumed. Pass
+#  `--weights weights/ganonymization_pix2pix_25.ckpt` explicitly if
+#  reproducing the paper's own reported numbers is the goal.
 DEFAULT_WEIGHTS_FILENAME = {
     "ciagan": "ciagan_generator.pth",
-    "ganonymization": "ganonymization_pix2pix_25.ckpt",
+    "ganonymization": "ganonymization_pix2pix_50.ckpt",
 }
 
 #: Expected head-segmentation checkpoint filename under CONFIG.weights_dir.
