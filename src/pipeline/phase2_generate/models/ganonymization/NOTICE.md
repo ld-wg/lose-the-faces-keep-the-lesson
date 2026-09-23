@@ -373,3 +373,44 @@ default checkpoint); real, unresolved issues remain (rotation correctness,
 overall facial coherence even on the better checkpoint, context_ratio not
 rigorously swept). Continues to warrant the same multi-round treatment
 CIAGAN's own calibration required, not a one-session fix.
+
+### 2026-09-23 (round 2): rotation A/B tested on real video — initial "disable it" call reversed
+
+Following up on round 1's rotation finding (confirmed causing a real
+detection failure on `video-demo-2.mov` frame 6/track 7), briefly defaulted
+`align_rotation` to `False`, reasoning that `generate()`'s automatic
+no-rotation fallback already recovers any case rotation fails, so leaving
+it on looked like pure downside (wasted compute) with no confirmed upside.
+
+**Directly tested instead of trusting that reasoning — and it was wrong.**
+First, re-derived `_rotation_matrix()`'s sign convention independently
+(without using the function itself as a reference, to avoid circular
+reasoning) and confirmed it's algebraically correct — not a sign bug, as
+initially suspected. Empirically verified with a synthetic-angle test:
+tilted a real crop by known angles (+15°, −15°, +30°), ran the correction,
+and confirmed the eye-line's `dy` collapsed to ≈0 in all three cases
+(e.g. −12.37→−0.43, 21.68→0.40, −28.95→−0.59 px), regardless of tilt
+direction/magnitude. The real detection-failure finding from round 1 was
+real, but its cause is more likely `BORDER_REPLICATE` pushing real facial
+content out of the fixed-size rotation canvas on a close-up face, not a
+math error.
+
+Then tested the actual coverage claim on the full real video
+(`video-demo-2.mov`, 2928 face-observations) — `align_rotation=True` vs
+`False`, otherwise identical config. Confirmed deterministic first (ran
+the `False` config twice — byte-identical `"ok"` sets both times, ruling
+out MediaPipe GPU-inference non-determinism as a confound). Result:
+**`True` is a strict coverage superset** — 1048 "ok" vs 1031, with the
+diff entirely one-directional (17 frames succeed only under `True`, zero
+succeed only under `False`). Spot-checked two of the 17 recovered frames
+visually (`generated/9/000012.png`, `generated/13/000150.png`) — normal
+output quality, not degenerate.
+
+**Conclusion: reverted `align_rotation` back to `True`** (matching
+upstream's own intent, and the original pre-round-2 default). The
+`BORDER_REPLICATE` failure mode is real, but costs nothing once the
+fallback is accounted for — those frames land on identical output to
+`align_rotation=False` anyway. Leveling a tilted head genuinely helps
+MediaPipe detect some faces that the unrotated pass misses, which is
+exactly rotation's intended benefit — this was a case worth trusting the
+data over a plausible-sounding argument, not the other way around.

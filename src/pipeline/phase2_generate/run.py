@@ -131,11 +131,10 @@ def main() -> None:
                    help="ciagan: correction factor on the checkpoint's built-in CelebA-portrait "
                         "crop radius, calibrated for this project's footage (see "
                         "models/ciagan/NOTICE.md) — not a per-video tunable, don't change casually")
-    p.add_argument("--align-rotation", action=argparse.BooleanOptionalAction, default=False,
+    p.add_argument("--align-rotation", action=argparse.BooleanOptionalAction, default=True,
                    help="ganonymization: level the crop by eye-line angle before landmark extraction "
-                        "(default: off — real-video testing found it causes more MediaPipe detection "
-                        "failures than it fixes on close-up faces, see "
-                        "models/ganonymization/backend.py's module docstring)")
+                        "(default: on — real-video A/B test showed it's a strict coverage superset, "
+                        "see models/ganonymization/backend.py's module docstring)")
     p.add_argument("--refine-mask", action=argparse.BooleanOptionalAction, default=False,
                    help="ciagan: intersect its composite mask with a real head-segmentation model's "
                         "output, to clean up (not expand) the seam — opt-in, see models/ciagan/NOTICE.md")

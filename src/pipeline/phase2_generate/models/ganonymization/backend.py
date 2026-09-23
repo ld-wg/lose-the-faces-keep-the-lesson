@@ -44,25 +44,36 @@ quietly wrong:
    independent pass on the rotated+letterboxed canvas is what actually
    feeds the generator.
 
-**Rotation correction exists but defaults to OFF (`align_rotation=False`).**
-Upstream's real `FaceCrop(align=True)` wraps RetinaFace's own
-`alignment_procedure`, which *does* do eye-based in-plane rotation
-correction before the model ever sees the image (verified against
-`retinaface/commons/postprocess.py`), so skipping RetinaFace per this
-project's own decision does mean starting out *missing* something
-upstream's own pipeline has, in principle. In practice, real-video
-calibration found the opposite of a strong prior: rotating in-place within
-a fixed-size canvas (`cv2.warpAffine(..., borderMode=cv2.BORDER_REPLICATE)`)
-can push real facial content (chin, forehead, ear) outside the original
-crop bounds and backfill the gap with replicated edge pixels — confirmed
-causing MediaPipe's second detection pass to fail on a real large/close-up
-face where the *unrotated* canvas succeeded. Since `generate()`'s automatic
-no-rotation fallback already recovers any case where rotation fails, this
-means `align_rotation=True` was pure downside (wasted compute, inconsistent
-per-frame treatment) with no confirmed upside — see NOTICE.md's calibration
-log for the real test. Left in as an opt-in (`--align-rotation`), not
-deleted, in case a future fix (e.g. rotating within a padded, larger
-canvas) makes it a net positive.
+**Rotation correction defaults ON (`align_rotation=True`) — tested both
+ways on real video, not assumed.** Upstream's real `FaceCrop(align=True)`
+wraps RetinaFace's own `alignment_procedure`, which *does* do eye-based
+in-plane rotation correction before the model ever sees the image
+(verified against `retinaface/commons/postprocess.py`). This project's own
+decision to skip RetinaFace (see NOTICE.md) means starting out *missing*
+that, so rotation was built in here too — but a real bug was found during
+calibration: rotating in-place within a fixed-size canvas
+(`cv2.warpAffine(..., borderMode=cv2.BORDER_REPLICATE)`) can push real
+facial content (chin, forehead, ear) outside the original crop bounds and
+backfill the gap with replicated edge pixels, confirmed causing
+MediaPipe's second detection pass to fail on a real large/close-up face
+where the *unrotated* canvas succeeded.
+
+That finding briefly motivated defaulting rotation OFF, reasoning that
+`generate()`'s automatic no-rotation fallback already recovers every case
+where rotation fails, so enabling it looked like pure downside (wasted
+compute) with no confirmed upside. **Directly tested on a full real
+video and disconfirmed**: comparing `align_rotation=True` vs `False` on
+identical footage (`video-demo-2.mov`, 2928 face-observations, verified
+deterministic — two identical runs produced byte-identical results)
+showed `True` is a strict superset — every case that succeeds without
+rotation also succeeds with it, plus 17 more (faces that only became
+detectable once leveled), and zero cases were lost. Spot-checked those 17
+recovered frames visually — normal output quality, not degenerate. So
+`align_rotation=True`'s only real cost is wasted compute on frames where
+it doesn't help (an extra failed detection attempt before falling back),
+never a quality or coverage regression — reverted back to the default
+matching upstream's own intent. See NOTICE.md's calibration log for the
+full, honest before/after.
 
 **Checkerboard/blur tendency is architectural, not a bug here.** The
 vendored `GeneratorUNet` (`vendor/pix2pix_generator.py`) is upstream's
@@ -247,7 +258,7 @@ class Backend:
         ctx_id: int = 0,
         segmentation_weights: Optional[Path] = None,
         img_size: int = 512,
-        align_rotation: bool = False,
+        align_rotation: bool = True,
         random_init: bool = False,
         blend_mode: str = "poisson",
         sharpen_generated: bool = False,
