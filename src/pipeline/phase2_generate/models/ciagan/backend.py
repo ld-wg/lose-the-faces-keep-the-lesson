@@ -48,13 +48,20 @@ both if you change either.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from pathlib import Path
 from typing import Optional
 
 import cv2
 import numpy as np
+
+from .._compositing import poisson_composite as _poisson_composite
+from .._segmentation import (
+    hash_and_log,
+    load_or_random_head_segmentation,
+    predict_head_mask,
+    resolve_torch_device,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -172,34 +179,6 @@ def _landmark_canvas(points128: np.ndarray) -> np.ndarray:
     return canvas
 
 
-def _poisson_composite(crop: np.ndarray, generated: np.ndarray, mask_bool: np.ndarray) -> np.ndarray:
-    """Gradient-domain blend of `generated` into `crop` within `mask_bool`.
-
-    Replaces a hard-edged paste (a visible skin-tone/lighting seam at
-    CIAGAN's jaw+eyebrow mask boundary — the model itself has no blending,
-    see the module docstring) with `cv2.seamlessClone`: it solves for pixel
-    values inside the mask whose *gradients* match `generated`'s, so the
-    interior content is preserved but the boundary blends into the
-    surrounding lighting/color instead of cutting sharply across it.
-
-    Falls back to the hard-mask paste if `seamlessClone` raises — it needs
-    a non-degenerate mask that doesn't touch the image border, which can
-    happen for a face very close to the crop's edge. A cosmetic blending
-    step failing shouldn't take down the whole frame.
-    """
-    ys, xs = np.where(mask_bool)
-    if ys.size == 0:
-        return crop.copy()
-    center = ((int(xs.min()) + int(xs.max())) // 2, (int(ys.min()) + int(ys.max())) // 2)
-    mask_u8 = mask_bool.astype(np.uint8) * 255
-    try:
-        return cv2.seamlessClone(generated, crop, mask_u8, center, cv2.NORMAL_CLONE)
-    except cv2.error:
-        output = crop.copy()
-        output[mask_bool] = generated[mask_bool]
-        return output
-
-
 def _mask_canvas(points128: np.ndarray) -> np.ndarray:
     """128x128 float32 mask, 1.0 over the face+forehead polygon, else 0.0.
 
@@ -234,6 +213,8 @@ class Backend:
         ctx_id: int = 0,
         random_init: bool = False,
         portrait_scale: float = 1.0,
+        segmentation_weights: Optional[Path] = None,
+        refine_mask: bool = False,
     ):
         if img_size != 128:
             # The architecture itself branches on `img_size == 128` (extra
@@ -251,9 +232,23 @@ class Backend:
         self.ctx_id = ctx_id
         self.random_init = random_init
         self.portrait_scale = portrait_scale
+        # Opt-in mask-boundary refinement (see NOTICE.md) — intersects this
+        # backend's own jaw+eyebrow polygon against a real head-segmentation
+        # model's output, to avoid pasting onto background/hair pixels the
+        # polygon incorrectly includes at extreme angles. Default off: this
+        # only cleans up the composite edge, it does NOT add coverage
+        # CIAGAN's generator never produced in the first place (see
+        # `generate()`'s comment at the intersection point) — and changing
+        # a calibrated backend's default behavior needs its own real-video
+        # validation round first, same discipline already applied to
+        # `portrait_scale`/`context_ratio`.
+        self.segmentation_weights = segmentation_weights
+        self.refine_mask = refine_mask
         self._model = None  # lazy load
         self._dlib_detector = None
         self._dlib_predictor = None
+        self._seg_model = None
+        self._seg_resolution = None
         self._device = None
 
     def identity_class(self, seed: int) -> int:
@@ -290,14 +285,7 @@ class Backend:
         self._dlib_detector = dlib.get_frontal_face_detector()
         self._dlib_predictor = dlib.shape_predictor(str(self.dlib_predictor))
 
-        if self.ctx_id < 0:
-            device = torch.device("cpu")
-        elif torch.cuda.is_available():
-            device = torch.device("cuda")
-        elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
-            device = torch.device("mps")
-        else:
-            device = torch.device("cpu")
+        device = resolve_torch_device(self.ctx_id)
         self._device = device
 
         from .vendor.arch_unet_flex import Generator
@@ -317,14 +305,27 @@ class Backend:
                     "(not real anonymization)."
                 )
             weights_path = Path(self.weights)
-            sha256 = hashlib.sha256(weights_path.read_bytes()).hexdigest()
-            logger.info(f"Loading CIAGAN generator from {weights_path} (sha256={sha256})")
+            hash_and_log(weights_path, "CIAGAN generator")
             state_dict = torch.load(str(weights_path), map_location=device, weights_only=True)
             model.load_state_dict(state_dict, strict=True)
 
         model.eval()
         model.to(device)
         self._model = model
+
+        if self.refine_mask:
+            if not self.random_init and (
+                self.segmentation_weights is None or not Path(self.segmentation_weights).is_file()
+            ):
+                raise FileNotFoundError(
+                    f"head-segmentation checkpoint not found: {self.segmentation_weights}\n"
+                    "Required because --refine-mask is set. See "
+                    "models/ganonymization/NOTICE.md for how to obtain it, or "
+                    "drop --refine-mask to keep ciagan's original mask behavior."
+                )
+            self._seg_model, self._seg_resolution = load_or_random_head_segmentation(
+                self.segmentation_weights, self.random_init, device,
+            )
 
     def _landmarks68(self, crop: np.ndarray) -> Optional[np.ndarray]:
         """Run dlib on `crop` (BGR, see module docstring re: no RGB convert).
@@ -399,5 +400,16 @@ class Backend:
                                     borderMode=cv2.BORDER_CONSTANT, borderValue=0.0)
         mask_full_bool = mask_full > 0.5
         gen_full_bgr = cv2.cvtColor(gen_full_rgb, cv2.COLOR_RGB2BGR)
+
+        if self.refine_mask:
+            # Intersect, never expand: CIAGAN's generator only ever
+            # produced pixels for the jaw+eyebrow polygon above, so there's
+            # no synthetic content for a bigger mask to reveal. This only
+            # removes background/hair pixels the crude polygon incorrectly
+            # included (e.g. at extreme head angles) — a seam-quality
+            # cleanup, not a coverage fix. See NOTICE.md.
+            crop_rgb_full = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            head_mask = predict_head_mask(self._seg_model, self._seg_resolution, crop_rgb_full, self._device)
+            mask_full_bool = mask_full_bool & head_mask
 
         return _poisson_composite(crop, gen_full_bgr, mask_full_bool)

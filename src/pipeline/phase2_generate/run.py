@@ -26,8 +26,10 @@ Outputs (in --out dir):
     generated/<track_id>/<frame_id:06d>.png   one PNG per (frame, track) — the
                                                box-proportional context crop,
                                                lossless (this is the pixel
-                                               data a later compositing stage
-                                               consumes, not a debug artifact).
+                                               data `compose_video.py`
+                                               consumes to build a full
+                                               output video, not a debug
+                                               artifact).
     generation.jsonl    one ledger line per processed item: status is "ok",
                         "skipped_no_landmarks" (dlib found nothing usable —
                         passthrough of the original crop, unmodified),
@@ -56,6 +58,8 @@ from .generator import FaceGenerator  # noqa: E402
 from .models import (  # noqa: E402
     DEFAULT_CONTEXT_RATIO,
     DEFAULT_DLIB_PREDICTOR_FILENAME,
+    DEFAULT_IMG_SIZE,
+    DEFAULT_SEGMENTATION_WEIGHTS_FILENAME,
     DEFAULT_WEIGHTS_FILENAME,
     MODEL_NAMES,
 )
@@ -63,6 +67,23 @@ from ..contracts import Frame, Manifest  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def crop_box(h: int, w: int, box: tuple[float, float, float, float], context_ratio: float
+             ) -> tuple[int, int, int, int]:
+    """The (cx1, cy1, cx2, cy2) pixel rectangle `_context_crop` cuts, exposed
+    separately so `compose_video.py` can recompute the exact same rectangle
+    to paste a generated crop back into its source frame — same formula,
+    single source of truth, not duplicated.
+    """
+    x1, y1, x2, y2 = box
+    box_w, box_h = x2 - x1, y2 - y1
+    pad_x, pad_y = context_ratio * box_w, context_ratio * box_h
+    cx1 = max(0, int(x1 - pad_x))
+    cy1 = max(0, int(y1 - pad_y))
+    cx2 = min(w, int(x2 + pad_x))
+    cy2 = min(h, int(y2 + pad_y))
+    return cx1, cy1, cx2, cy2
 
 
 def _context_crop(frame, box: tuple[float, float, float, float], context_ratio: float):
@@ -74,13 +95,7 @@ def _context_crop(frame, box: tuple[float, float, float, float], context_ratio: 
     a fixed small pad broke CIAGAN's own portrait-crop assumption).
     """
     h, w = frame.shape[:2]
-    x1, y1, x2, y2 = box
-    box_w, box_h = x2 - x1, y2 - y1
-    pad_x, pad_y = context_ratio * box_w, context_ratio * box_h
-    cx1 = max(0, int(x1 - pad_x))
-    cy1 = max(0, int(y1 - pad_y))
-    cx2 = min(w, int(x2 + pad_x))
-    cy2 = min(h, int(y2 + pad_y))
+    cx1, cy1, cx2, cy2 = crop_box(h, w, box, context_ratio)
     return frame[cy1:cy2, cx1:cx2]
 
 
@@ -98,18 +113,41 @@ def main() -> None:
                    help="Weights file for --model (default: CONFIG.weights_dir/<model default filename>; "
                         "unused with --random-init)")
     p.add_argument("--dlib-predictor", type=str, default=None,
-                   help="Path to shape_predictor_68_face_landmarks.dat "
+                   help="ciagan: path to shape_predictor_68_face_landmarks.dat "
                         "(default: CONFIG.weights_dir/<default filename>)")
+    p.add_argument("--segmentation-weights", type=str, default=None,
+                   help="ganonymization (required)/ciagan with --refine-mask (opt-in): path to the "
+                        "head-segmentation checkpoint (default: CONFIG.weights_dir/<default filename>, "
+                        "see models/DEFAULT_SEGMENTATION_WEIGHTS_FILENAME)")
     p.add_argument("--context-ratio", type=float, default=None,
                    help="Crop padding as a multiple of the detected box's own width/height "
                         "(default: model-specific, see models/DEFAULT_CONTEXT_RATIO)")
     p.add_argument("--num-classes", type=int, default=1200,
                    help="ciagan: identity classes in the loaded checkpoint")
-    p.add_argument("--img-size", type=int, default=128, help="ciagan: network resolution (fixed at 128)")
+    p.add_argument("--img-size", type=int, default=None,
+                   help="Network resolution (default: model-specific, see models/DEFAULT_IMG_SIZE — "
+                        "ciagan is fixed at 128, ganonymization at 512, neither is a free knob)")
     p.add_argument("--portrait-scale", type=float, default=1.0,
                    help="ciagan: correction factor on the checkpoint's built-in CelebA-portrait "
                         "crop radius, calibrated for this project's footage (see "
                         "models/ciagan/NOTICE.md) — not a per-video tunable, don't change casually")
+    p.add_argument("--align-rotation", action=argparse.BooleanOptionalAction, default=True,
+                   help="ganonymization: level the crop by eye-line angle before landmark extraction "
+                        "(default: on — real-video A/B test showed it's a strict coverage superset, "
+                        "see models/ganonymization/backend.py's module docstring)")
+    p.add_argument("--refine-mask", action=argparse.BooleanOptionalAction, default=False,
+                   help="ciagan: intersect its composite mask with a real head-segmentation model's "
+                        "output, to clean up (not expand) the seam — opt-in, see models/ciagan/NOTICE.md")
+    p.add_argument("--min-detection-confidence", type=float, default=0.3,
+                   help="ganonymization: MediaPipe FaceMesh detection threshold (default: 0.3, not "
+                        "upstream's 0.5 — real-video sweep found 0.3 improves coverage but going "
+                        "lower, e.g. 0.1-0.2, makes it WORSE than the 0.5 baseline, non-monotonically; "
+                        "see models/ganonymization/NOTICE.md)")
+    p.add_argument("--enhance-detection-input", action=argparse.BooleanOptionalAction, default=True,
+                   help="ganonymization: CLAHE-boost the (detection-only) input to the final FaceMesh "
+                        "pass, to help detect small/blurry faces — never reaches the generator's own "
+                        "input (default: on — real-video test showed a real coverage gain, see "
+                        "models/ganonymization/backend.py's _enhance_for_detection())")
     p.add_argument("--ctx-id", type=int, default=0, help="0 for GPU/MPS, -1 for CPU")
     p.add_argument("--random-init", action="store_true",
                    help="Smoke test: random generator weights, output is NOT real anonymization")
@@ -134,6 +172,8 @@ def main() -> None:
     if context_ratio is None:
         context_ratio = DEFAULT_CONTEXT_RATIO.get(args.model, 1.0)
 
+    img_size = args.img_size if args.img_size is not None else DEFAULT_IMG_SIZE.get(args.model, 512)
+
     weights = Path(args.weights) if args.weights else None
     if weights is None and not args.random_init and args.model in DEFAULT_WEIGHTS_FILENAME:
         weights = CONFIG.weights_dir / DEFAULT_WEIGHTS_FILENAME[args.model]
@@ -142,17 +182,39 @@ def main() -> None:
     if dlib_predictor is None and args.model in DEFAULT_DLIB_PREDICTOR_FILENAME:
         dlib_predictor = CONFIG.weights_dir / DEFAULT_DLIB_PREDICTOR_FILENAME[args.model]
 
-    generator = FaceGenerator(
-        model=args.model, weights=weights, ctx_id=args.ctx_id,
-        num_classes=args.num_classes, img_size=args.img_size,
-        dlib_predictor=dlib_predictor, random_init=args.random_init,
-        portrait_scale=args.portrait_scale,
-    )
+    # Shared between ganonymization (required) and ciagan (opt-in via
+    # --refine-mask) — see models/DEFAULT_SEGMENTATION_WEIGHTS_FILENAME.
+    needs_segmentation = args.model == "ganonymization" or (args.model == "ciagan" and args.refine_mask)
+    segmentation_weights = Path(args.segmentation_weights) if args.segmentation_weights else None
+    if segmentation_weights is None and needs_segmentation:
+        segmentation_weights = CONFIG.weights_dir / DEFAULT_SEGMENTATION_WEIGHTS_FILENAME
+
+    backend_kwargs: dict = {"random_init": args.random_init}
+    if args.model == "ciagan":
+        backend_kwargs.update(
+            num_classes=args.num_classes, img_size=img_size,
+            dlib_predictor=dlib_predictor, portrait_scale=args.portrait_scale,
+            refine_mask=args.refine_mask,
+            segmentation_weights=segmentation_weights if args.refine_mask else None,
+        )
+    elif args.model == "ganonymization":
+        backend_kwargs.update(
+            img_size=img_size, segmentation_weights=segmentation_weights,
+            align_rotation=args.align_rotation,
+            min_detection_confidence=args.min_detection_confidence,
+            enhance_detection_input=args.enhance_detection_input,
+        )
+
+    generator = FaceGenerator(model=args.model, weights=weights, ctx_id=args.ctx_id, **backend_kwargs)
     if args.random_init:
         logger.warning("--random-init: output is NOT real anonymization, smoke test only")
 
-    if args.model == "ciagan" and not args.random_init and weights is None:
-        p.error("--weights is required unless --random-init is set")
+    if not args.random_init and args.model in DEFAULT_WEIGHTS_FILENAME and weights is None:
+        p.error(f"--weights is required for --model {args.model} unless --random-init is set")
+
+    if not args.random_init and needs_segmentation and segmentation_weights is None:
+        suffix = " with --refine-mask" if args.model == "ciagan" else ""
+        p.error(f"--segmentation-weights is required for --model {args.model}{suffix} unless --random-init is set")
 
     stats: dict[int, dict] = {}  # track_id -> counts
     jsonl_path = phase1_dir / "detections.jsonl"
@@ -226,12 +288,18 @@ def main() -> None:
     dt = time.time() - t0
     fps = num_frames / dt if dt > 0 else 0
     passthrough_total = sum(s["num_frames_passthrough"] for s in stats.values())
+
+    def _jsonable(v):
+        return str(v) if isinstance(v, Path) else v
+
+    backend_config = {k: _jsonable(v) for k, v in backend_kwargs.items()
+                       if k not in {"random_init", "img_size"}}  # already surfaced at top level
+
     run_manifest = {
         "phase1_dir": str(phase1_dir), "video": video_path, "model": args.model,
         "weights": str(weights) if weights else None, "random_init": args.random_init,
-        "context_ratio": context_ratio,
-        "portrait_scale": args.portrait_scale,
-        "num_classes": args.num_classes, "img_size": args.img_size,
+        "context_ratio": context_ratio, "img_size": img_size,
+        "backend_config": backend_config,
         "identities": [
             {"track_id": tid, "seed": s["seed"],
              "identity_class": generator.identity_class(s["seed"]) if s["seed"] is not None else None,

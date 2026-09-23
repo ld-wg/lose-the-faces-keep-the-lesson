@@ -238,6 +238,50 @@ was never going to match whatever portrait framing this backend actually
 needs) and, as a side effect, drops the `--save-crops` requirement on the
 Phase 1 run entirely.
 
+### Follow-up (2026-09-23): `_poisson_composite` extracted to a shared module
+
+`ganonymization` (see `../ganonymization/NOTICE.md`) needs the identical
+Poisson-blend paste-back logic — extracted verbatim into
+`../_compositing.py::poisson_composite()`, with this file importing it back
+under its original private name (`from .._compositing import
+poisson_composite as _poisson_composite`). No behavior change: same
+function body, same call site.
+
+### Follow-up (2026-09-23): opt-in mask-boundary refinement via head-segmentation
+
+This backend's own composite mask (`_mask_canvas()`) is a crude polygon —
+the jaw contour capped at eyebrow height, straight lines between landmark
+points. At extreme head angles or partial occlusion, this polygon can
+include pixels that aren't actually head at all (background bleeding in
+at the jaw corners), producing a visibly wrong seam.
+
+Since a real head-segmentation model was vendored for `../ganonymization/`
+anyway (see that directory's `NOTICE.md` for its provenance/license —
+shared at `../_vendor/head_segmentation_model.py`, not duplicated here),
+this backend can now **intersect** its polygon mask against the real head
+silhouette: `Backend(..., refine_mask=True, segmentation_weights=...)`
+(CLI: `--refine-mask`, `--segmentation-weights`). Default **off** —
+preserves all previously-calibrated behavior unless explicitly enabled.
+
+**What this can and cannot fix, precisely:** this can only ever shrink or
+clean the mask, never grow it, because this backend's generator only ever
+produces synthetic pixels for the jaw-to-eyebrow region it was trained on
+— there is no generated content for hair/forehead/ears to reveal by
+enlarging the mask. This is a seam-quality cleanup, **not** a fix for this
+backend's actual full-head-coverage limitation (see "Mask coverage" above)
+— that limitation is architectural (the generator's own training
+distribution), not a compositing-mask shape problem, and is why
+`ganonymization` exists as a separate backend rather than a patch here.
+
+**Not yet empirically validated** as of this entry — needs its own
+real-video sweep (`--refine-mask` on/off against the same tilted-head
+frames used for this backend's original rotation-correction calibration
+above) before considering flipping the default to `True`: confirm the
+intersection changes nothing visible on typical frontal faces, measurably
+improves the seam at the problem angles, and doesn't introduce new
+artifacts by incorrectly excluding legitimate face pixels where the
+segmentation model itself is uncertain.
+
 ## `shape_predictor_68_face_landmarks.dat` — dlib's 68-point model
 
 Needed for the 68-point landmark extraction this backend's preprocessing

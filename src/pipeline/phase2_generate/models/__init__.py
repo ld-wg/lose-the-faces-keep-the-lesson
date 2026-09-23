@@ -14,17 +14,48 @@ import importlib
 #: model name -> submodule under this package
 _MODULES = {
     "ciagan": "ciagan",
+    "ganonymization": "ganonymization",
 }
 
 #: model name -> expected weights filename under CONFIG.weights_dir.
+#
+#  ganonymization: defaults to the **50-epoch** checkpoint, not the
+#  25-epoch "publication version" — reversed from this project's initial
+#  choice after real-video testing (see models/ganonymization/NOTICE.md's
+#  calibration log, 2026-09-23). The 25-epoch checkpoint's numbers match
+#  the paper's own evaluation tables, which is a real reason to prefer it
+#  for literal reproducibility, but on this project's actual footage it
+#  produces visibly noisier/less coherent output than the 50-epoch one —
+#  confirmed side-by-side on the same real crop, not assumed. Pass
+#  `--weights weights/ganonymization_pix2pix_25.ckpt` explicitly if
+#  reproducing the paper's own reported numbers is the goal.
 DEFAULT_WEIGHTS_FILENAME = {
     "ciagan": "ciagan_generator.pth",
+    "ganonymization": "ganonymization_pix2pix_50.ckpt",
 }
+
+#: Expected head-segmentation checkpoint filename under CONFIG.weights_dir.
+#  A plain string, not a per-model dict: it's the same shared checkpoint
+#  and model class (models/_vendor/head_segmentation_model.py) for both
+#  ganonymization (required — its primary compositing mask) and ciagan
+#  (opt-in, via --refine-mask — see models/ciagan/NOTICE.md).
+DEFAULT_SEGMENTATION_WEIGHTS_FILENAME = "head_segmentation.ckpt"
 
 #: model name -> expected dlib shape-predictor filename under CONFIG.weights_dir
 #  (only backends that need a separate landmark model populate this).
 DEFAULT_DLIB_PREDICTOR_FILENAME = {
     "ciagan": "shape_predictor_68_face_landmarks.dat",
+}
+
+#: model name -> the generator's native square canvas resolution. Not a
+#  free per-run tunable — each checkpoint's architecture is trained at a
+#  fixed resolution (ciagan: 128, hard-enforced by its own backend.py;
+#  ganonymization: 512, per the paper's Face Extraction step, also
+#  hard-enforced). Exists so run.py doesn't hardcode one number's default
+#  for every --model.
+DEFAULT_IMG_SIZE = {
+    "ciagan": 128,
+    "ganonymization": 512,
 }
 
 #: model name -> crop padding as a multiple of the detected box's own
@@ -39,6 +70,19 @@ DEFAULT_DLIB_PREDICTOR_FILENAME = {
 #  — re-check both together if you change either, see NOTICE.md.
 DEFAULT_CONTEXT_RATIO = {
     "ciagan": 0.15,
+    # Calibrated via a real-video sweep on video-demo-2.mov (see
+    # models/ganonymization/NOTICE.md's calibration log) — NOT a value
+    # ciagan's own mechanism transfers to: ganonymization letterbox-resizes
+    # the WHOLE crop into a fixed 512 canvas (no landmark-radius-derived
+    # affine transform), and full-head segmentation needs hair/ears/
+    # forehead physically present in the crop to segment at all. The
+    # sweep ({0.15, 0.25, 0.35, 0.45, 0.6, 0.8}) was non-monotonic — a
+    # real dip at 0.25-0.45 — with coverage peaking at the highest value
+    # tested (0.8: 1226 "ok" vs 0.6's 1194, out of 2928 face-observations)
+    # and comparable visual quality between them. Values above 0.8 were
+    # not tested — flagged as an open question, not chased further this
+    # round.
+    "ganonymization": 0.8,
 }
 
 MODEL_NAMES = tuple(_MODULES)
