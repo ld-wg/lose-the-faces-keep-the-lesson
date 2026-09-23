@@ -131,12 +131,30 @@ def main() -> None:
                    help="ciagan: correction factor on the checkpoint's built-in CelebA-portrait "
                         "crop radius, calibrated for this project's footage (see "
                         "models/ciagan/NOTICE.md) — not a per-video tunable, don't change casually")
-    p.add_argument("--align-rotation", action=argparse.BooleanOptionalAction, default=True,
+    p.add_argument("--align-rotation", action=argparse.BooleanOptionalAction, default=False,
                    help="ganonymization: level the crop by eye-line angle before landmark extraction "
-                        "(default: on — see models/ganonymization/backend.py's module docstring)")
+                        "(default: off — real-video testing found it causes more MediaPipe detection "
+                        "failures than it fixes on close-up faces, see "
+                        "models/ganonymization/backend.py's module docstring)")
     p.add_argument("--refine-mask", action=argparse.BooleanOptionalAction, default=False,
                    help="ciagan: intersect its composite mask with a real head-segmentation model's "
                         "output, to clean up (not expand) the seam — opt-in, see models/ciagan/NOTICE.md")
+    p.add_argument("--blend-mode", type=str, default="poisson", choices=["poisson", "feather"],
+                   help="ganonymization: compositing strategy (default: poisson, matches shipped "
+                        "behavior). 'feather' avoids poisson's real-face-bleeds-through failure mode "
+                        "on low-contrast generated content — opt-in pending calibration, see "
+                        "models/ganonymization/NOTICE.md")
+    p.add_argument("--sharpen-generated", action=argparse.BooleanOptionalAction, default=False,
+                   help="ganonymization: unsharp-mask the generated face before compositing — may help "
+                        "poisson mode, may worsen this checkpoint's own checkerboard tendency, judge "
+                        "visually (see models/ganonymization/backend.py's _sharpen())")
+    p.add_argument("--min-detection-confidence", type=float, default=0.5,
+                   help="ganonymization: MediaPipe FaceMesh detection threshold (default: 0.5, "
+                        "upstream's own value) — lowering trades recall for precision")
+    p.add_argument("--enhance-detection-input", action=argparse.BooleanOptionalAction, default=False,
+                   help="ganonymization: CLAHE-boost the (detection-only) input to the final FaceMesh "
+                        "pass, to help detect small/blurry faces — never reaches the generator's own "
+                        "input, see models/ganonymization/backend.py's _enhance_for_detection()")
     p.add_argument("--ctx-id", type=int, default=0, help="0 for GPU/MPS, -1 for CPU")
     p.add_argument("--random-init", action="store_true",
                    help="Smoke test: random generator weights, output is NOT real anonymization")
@@ -190,6 +208,9 @@ def main() -> None:
         backend_kwargs.update(
             img_size=img_size, segmentation_weights=segmentation_weights,
             align_rotation=args.align_rotation,
+            blend_mode=args.blend_mode, sharpen_generated=args.sharpen_generated,
+            min_detection_confidence=args.min_detection_confidence,
+            enhance_detection_input=args.enhance_detection_input,
         )
 
     generator = FaceGenerator(model=args.model, weights=weights, ctx_id=args.ctx_id, **backend_kwargs)

@@ -44,17 +44,43 @@ quietly wrong:
    independent pass on the rotated+letterboxed canvas is what actually
    feeds the generator.
 
-**Rotation correction, added here, not in upstream's landmark-only
-inference path.** Upstream's real `FaceCrop(align=True)` wraps RetinaFace's
-own `alignment_procedure`, which *does* do eye-based in-plane rotation
+**Rotation correction exists but defaults to OFF (`align_rotation=False`).**
+Upstream's real `FaceCrop(align=True)` wraps RetinaFace's own
+`alignment_procedure`, which *does* do eye-based in-plane rotation
 correction before the model ever sees the image (verified against
-`retinaface/commons/postprocess.py`). Skipping RetinaFace per this
-project's own decision means starting out *missing* something upstream's
-own pipeline has — the same gap `../ciagan/backend.py` found and fixed for
-CIAGAN (whose own upstream never rotated at all). Built in from round one
-here as a strong prior, not an open question — see `_rotation_matrix()`'s
-docstring for the derivation, and NOTICE.md for the real-video calibration
-that should confirm (not just assume) it helps.
+`retinaface/commons/postprocess.py`), so skipping RetinaFace per this
+project's own decision does mean starting out *missing* something
+upstream's own pipeline has, in principle. In practice, real-video
+calibration found the opposite of a strong prior: rotating in-place within
+a fixed-size canvas (`cv2.warpAffine(..., borderMode=cv2.BORDER_REPLICATE)`)
+can push real facial content (chin, forehead, ear) outside the original
+crop bounds and backfill the gap with replicated edge pixels — confirmed
+causing MediaPipe's second detection pass to fail on a real large/close-up
+face where the *unrotated* canvas succeeded. Since `generate()`'s automatic
+no-rotation fallback already recovers any case where rotation fails, this
+means `align_rotation=True` was pure downside (wasted compute, inconsistent
+per-frame treatment) with no confirmed upside — see NOTICE.md's calibration
+log for the real test. Left in as an opt-in (`--align-rotation`), not
+deleted, in case a future fix (e.g. rotating within a padded, larger
+canvas) makes it a net positive.
+
+**Checkerboard/blur tendency is architectural, not a bug here.** The
+vendored `GeneratorUNet` (`vendor/pix2pix_generator.py`) is upstream's
+stock pix2pix U-Net: `UNetUp` stacks 7 `nn.ConvTranspose2d(kernel=4,
+stride=2)` upsampling stages, and only the *final* stage uses the
+resize-convolution fix known to reduce transposed-conv checkerboarding
+(Odena et al., "Deconvolution and Checkerboard Artifacts", Distill 2016).
+Kernel divisible by stride reduces but doesn't eliminate the artifact, and
+it can compound across stacked layers. Real-video testing on this
+project's footage shows a visible grid pattern with the real face still
+recognizable beneath it — direct high-resolution inspection of the paper's
+own published example figures shows opaque results with no comparable
+severity, so this project's small/blurry real-world crops and imperfect
+alignment (vs. RetinaFace's precise crop) are likely *amplifying* a milder
+inherent tendency, not that this severity is unavoidable. Fixing the
+tendency itself would need retraining or post-hoc super-resolution — out
+of scope; `blend_mode`/`sharpen_generated` below make compositing more
+*robust to* this quality ceiling, they don't remove it.
 
 **No identity-conditioning mechanism exists.** Unlike CIAGAN's 1200-class
 one-hot identity vector, pix2pix here is a deterministic
@@ -85,7 +111,7 @@ from typing import NamedTuple, Optional
 import cv2
 import numpy as np
 
-from .._compositing import poisson_composite
+from .._compositing import feathered_alpha_composite, poisson_composite
 from .._segmentation import load_head_segmentation, predict_head_mask
 
 logger = logging.getLogger(__name__)
@@ -174,6 +200,40 @@ def _rotation_matrix(points: np.ndarray, center: tuple[float, float]) -> np.ndar
     return cv2.getRotationMatrix2D(center, theta_deg, 1.0)
 
 
+def _enhance_for_detection(image_rgb: np.ndarray) -> np.ndarray:
+    """CLAHE-boosted copy of `image_rgb`, for feeding MediaPipe detection only.
+
+    Used only when `enhance_detection_input=True` (see `Backend`), and only
+    for the detection call that feeds the generator — never for
+    `predict_head_mask()`'s input, so a detection-quality experiment can't
+    get confounded with a segmentation-quality change. Since the dot canvas
+    is redrawn from scratch from the detected *points* (not derived from
+    pixel values), this contrast boost never reaches the generator's actual
+    input distribution — it only affects whether detection succeeds.
+    """
+    lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2LAB)
+    l_channel, a_channel, b_channel = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l_channel = clahe.apply(l_channel)
+    return cv2.cvtColor(cv2.merge((l_channel, a_channel, b_channel)), cv2.COLOR_LAB2RGB)
+
+
+def _sharpen(image: np.ndarray, amount: float = 1.0, sigma: float = 2.0) -> np.ndarray:
+    """Unsharp-mask sharpening of the generator's raw output.
+
+    Tested as a way to give `poisson_composite()`'s `cv2.seamlessClone` real
+    gradients to lock onto when the generated content has weak local
+    contrast (see NOTICE.md's anti-bleed-through entry). Named risk, not
+    assumed away: sharpening amplifies ANY high-frequency content, including
+    this architecture's own checkerboard tendency (see module docstring's
+    "Checkerboard tendency" note) — judge visually side-by-side against the
+    unsharpened result, never accept solely because it reduces see-through.
+    """
+    blurred = cv2.GaussianBlur(image, (0, 0), sigma)
+    sharpened = cv2.addWeighted(image, 1 + amount, blurred, -amount, 0)
+    return np.clip(sharpened, 0, 255).astype(image.dtype)
+
+
 class Backend:
     """GANonymization via vendored `GeneratorUNet` + `HeadSegmentationModel`.
 
@@ -187,8 +247,12 @@ class Backend:
         ctx_id: int = 0,
         segmentation_weights: Optional[Path] = None,
         img_size: int = 512,
-        align_rotation: bool = True,
+        align_rotation: bool = False,
         random_init: bool = False,
+        blend_mode: str = "poisson",
+        sharpen_generated: bool = False,
+        min_detection_confidence: float = 0.5,
+        enhance_detection_input: bool = False,
     ):
         if img_size != 512:
             # The paper's Face Extraction step and this backend's own
@@ -199,12 +263,23 @@ class Backend:
                 "released checkpoints and this backend's crop geometry are "
                 "both derived specifically for that size)"
             )
+        if blend_mode not in ("poisson", "feather"):
+            raise ValueError(f"blend_mode must be 'poisson' or 'feather', got {blend_mode!r}")
         self.weights = weights
         self.ctx_id = ctx_id
         self.segmentation_weights = segmentation_weights
         self.img_size = img_size
         self.align_rotation = align_rotation
         self.random_init = random_init
+        # Opt-in anti-transparency knobs (see module docstring's
+        # "Checkerboard/blur tendency" note and NOTICE.md's calibration
+        # log) — default to today's already-shipped behavior (poisson,
+        # unsharpened, 0.5 confidence, no contrast boost) until each is
+        # validated against real footage.
+        self.blend_mode = blend_mode
+        self.sharpen_generated = sharpen_generated
+        self.min_detection_confidence = min_detection_confidence
+        self.enhance_detection_input = enhance_detection_input
 
         self._model = None  # lazy load
         self._seg_model = None
@@ -253,7 +328,7 @@ class Backend:
         # (lib/transform/facial_landmarks_478_transformer.py), verified.
         self._face_mesh = mp.solutions.face_mesh.FaceMesh(
             static_image_mode=True, max_num_faces=1,
-            refine_landmarks=True, min_detection_confidence=0.5,
+            refine_landmarks=True, min_detection_confidence=self.min_detection_confidence,
         )
 
         from .vendor.pix2pix_generator import GeneratorUNet
@@ -358,13 +433,18 @@ class Backend:
 
         # Second, independent detection pass on the FINAL canvas — matches
         # the real upstream ordering, not a rescale of the first pass's
-        # points (see module docstring point 2).
-        points512 = self._facemesh_points(letterboxed_rgb)
+        # points (see module docstring point 2). Optionally fed a
+        # contrast-boosted copy (detection only — predict_head_mask() below
+        # still gets the unmodified image, see _enhance_for_detection()).
+        detection_input = _enhance_for_detection(letterboxed_rgb) if self.enhance_detection_input else letterboxed_rgb
+        points512 = self._facemesh_points(detection_input)
         if points512 is None:
             return None
 
         dot_canvas = _landmark_canvas(points512, self.img_size)
         generated512 = self._run_generator(dot_canvas)
+        if self.sharpen_generated:
+            generated512 = _sharpen(generated512)
         mask512 = predict_head_mask(self._seg_model, self._seg_resolution, letterboxed_rgb, self._device)
 
         gen_working = _letterbox_unresize(generated512, geom, _IMG_INTERP)
@@ -380,7 +460,8 @@ class Backend:
             gen_full_rgb, mask_full = gen_working, mask_working
 
         gen_full_bgr = cv2.cvtColor(gen_full_rgb, cv2.COLOR_RGB2BGR)
-        return poisson_composite(crop, gen_full_bgr, mask_full)
+        composite_fn = poisson_composite if self.blend_mode == "poisson" else feathered_alpha_composite
+        return composite_fn(crop, gen_full_bgr, mask_full)
 
     def generate(self, crop: np.ndarray, seed: int) -> Optional[np.ndarray]:
         """Anonymize the face in `crop` (BGR uint8). `seed` is accepted for
