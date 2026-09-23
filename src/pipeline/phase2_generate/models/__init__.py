@@ -70,17 +70,19 @@ DEFAULT_IMG_SIZE = {
 #  — re-check both together if you change either, see NOTICE.md.
 DEFAULT_CONTEXT_RATIO = {
     "ciagan": 0.15,
-    # NOT yet calibrated against real footage (starting value only).
-    # Deliberately looser than ciagan's tuned 0.15: full-head segmentation
-    # needs hair/ears/forehead actually present inside the crop to segment
-    # at all, unlike ciagan's landmark-only mask. ciagan's own
-    # noise-vs-context_ratio finding (above) was tied to dlib's detected
-    # inter-eye distance shifting with crop context, feeding a
-    # landmark-radius-derived affine transform — a mechanism specific to
-    # that geometry. ganonymization instead letterbox-resizes the WHOLE
-    # crop into a fixed 512 canvas, so that mechanism may not transfer;
-    # re-derive empirically rather than assuming it does or doesn't.
-    "ganonymization": 0.6,
+    # Calibrated via a real-video sweep on video-demo-2.mov (see
+    # models/ganonymization/NOTICE.md's calibration log) — NOT a value
+    # ciagan's own mechanism transfers to: ganonymization letterbox-resizes
+    # the WHOLE crop into a fixed 512 canvas (no landmark-radius-derived
+    # affine transform), and full-head segmentation needs hair/ears/
+    # forehead physically present in the crop to segment at all. The
+    # sweep ({0.15, 0.25, 0.35, 0.45, 0.6, 0.8}) was non-monotonic — a
+    # real dip at 0.25-0.45 — with coverage peaking at the highest value
+    # tested (0.8: 1226 "ok" vs 0.6's 1194, out of 2928 face-observations)
+    # and comparable visual quality between them. Values above 0.8 were
+    # not tested — flagged as an open question, not chased further this
+    # round.
+    "ganonymization": 0.8,
 }
 
 MODEL_NAMES = tuple(_MODULES)

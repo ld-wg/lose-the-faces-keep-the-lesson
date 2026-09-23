@@ -504,3 +504,51 @@ coverage improvement (1048 → 1194 out of 2928 face-observations on
 `0.2`/`0.1` remain available via `--min-detection-confidence` for anyone
 who wants to explore the non-monotonic behavior further, but are not
 recommended.
+
+### 2026-09-23 (round 2): `context_ratio` sweep — another non-monotonic result, new default adopted
+
+Ran on top of the already-adopted `align_rotation=True`,
+`min_detection_confidence=0.3`, `enhance_detection_input=True` defaults
+(context_ratio interacts with detection sensitivity, so sweeping it
+against a stale baseline would have wasted the effort — same lesson
+`ciagan/NOTICE.md` already recorded for its own parameter pair). Full
+`video-demo-2.mov` runs (2928 face-observations) at each value:
+
+| `context_ratio` | "ok" count |
+|---|---|
+| 0.15 | 1163 |
+| 0.25 | 1002 |
+| 0.35 | 1031 |
+| 0.45 | 1090 |
+| 0.6 (prior default) | 1194 |
+| **0.8** | **1226** |
+
+**Non-monotonic, honestly reported, not smoothed over**: there's a real
+dip in the 0.25-0.45 range, below even 0.15's result — not a simple
+"more context is better" or "less is better" curve. Not root-caused this
+round. Coverage is highest at the largest value tested (0.8); values
+above 0.8 were not swept.
+
+**Visually spot-checked** a frame/track succeeding at both 0.6 and 0.8
+(`generated/1/000100.png` in both runs) — comparable quality between the
+two (wider surrounding context visible at 0.8, no obvious detail loss on
+the face itself).
+
+**Adopted `context_ratio=0.8` as the new default** — a real, if modest
+(+32, ~2.7% relative on top of the already-improved 1194 baseline)
+coverage gain, with no observed quality cost. Whether pushing past 0.8
+continues the trend, and what root cause explains the 0.25-0.45 dip,
+are both open questions for a future round.
+
+### Round 2 summary
+
+Net coverage improvement this round: 1048 → 1226 "ok" out of 2928
+face-observations on `video-demo-2.mov` (+17% relative), from three
+independently-tested, real changes: `align_rotation` kept at `True` (not
+disabled, per the reversed decision above), `min_detection_confidence`
+lowered to `0.3`, `enhance_detection_input` enabled, and `context_ratio`
+raised to `0.8`. The anti-transparency compositing work (`blend_mode`,
+`sharpen_generated`) was tested and honestly found not to help — the
+"face shows through" and blur/checkerboard problems remain, understood
+now to share a root cause in the generator's own output quality on this
+project's real-world footage, out of scope for a compositing-level fix.
