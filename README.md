@@ -45,7 +45,7 @@ uv run python -m src.pipeline.phase2_generate.run --phase1-dir runs/phase1 --out
 # ganonymization — full-head coverage via a real segmentation model
 uv sync --extra phase2-ganonymization
 uv run python -m src.pipeline.phase2_generate.run --phase1-dir runs/phase1 --out runs/phase2 \
-    --model ganonymization --weights weights/ganonymization_pix2pix_25.ckpt \
+    --model ganonymization --weights weights/ganonymization_pix2pix_50.ckpt \
     --segmentation-weights weights/head_segmentation.ckpt
 ```
 
@@ -73,7 +73,7 @@ uv run python -m src.config
 | Stage | State |
 |---|---|
 | Detection + tracking | Implemented |
-| Generation + compositing | CIAGAN baseline implemented; GANonymization implemented, pending real-checkpoint calibration |
+| Generation + compositing | CIAGAN implemented + calibrated; GANonymization implemented + two rounds of real-video calibration (see its NOTICE.md) |
 | Temporal stabilization | Not started |
 | Evaluation | Not started |
 

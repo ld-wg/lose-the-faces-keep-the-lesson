@@ -455,9 +455,17 @@ compositing-stage leak. This means problems 2 ("face shows through") and
 root cause: generator output quality/character, not something fixable at
 the compositing layer. **Kept `blend_mode="poisson"` as the default**
 (no benefit to switching, and `feather` has a real, visible seam-quality
-cost) — the new flags stay available for future experiments (e.g.
-alongside a retrained or different checkpoint), documented here as a
-real negative result, not deleted.
+cost).
+
+**Update, same day, during the pre-merge cleanup pass**: `blend_mode`,
+`sharpen_generated`, `_sharpen()`, and `feathered_alpha_composite()` were
+subsequently *removed* from the codebase — confirmed-unused optionality
+around a disconfirmed fix, not a hypothesis worth preserving as live code.
+This finding itself is not lost — it's recorded here in full, and anyone
+revisiting the "face shows through" problem (e.g. alongside a retrained or
+different checkpoint) can reimplement the feathered-alpha approach cheaply
+from this description rather than needing to preserve dead code
+indefinitely against that possibility.
 
 ### 2026-09-23 (round 2): coverage tuning — a real, compounding win, with an honest non-monotonic surprise
 
