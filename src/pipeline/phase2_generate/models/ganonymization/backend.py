@@ -46,52 +46,40 @@ quietly wrong:
 
 **Rotation correction defaults ON (`align_rotation=True`) — tested both
 ways on real video, not assumed.** Upstream's real `FaceCrop(align=True)`
-wraps RetinaFace's own `alignment_procedure`, which *does* do eye-based
-in-plane rotation correction before the model ever sees the image
-(verified against `retinaface/commons/postprocess.py`). This project's own
-decision to skip RetinaFace (see NOTICE.md) means starting out *missing*
-that, so rotation was built in here too — but a real bug was found during
-calibration: rotating in-place within a fixed-size canvas
+wraps RetinaFace's own eye-based rotation correction (verified against
+`retinaface/commons/postprocess.py`); skipping RetinaFace (see NOTICE.md)
+means missing that unless rebuilt here. A real bug was found during
+calibration — rotating in-place within a fixed-size canvas
 (`cv2.warpAffine(..., borderMode=cv2.BORDER_REPLICATE)`) can push real
-facial content (chin, forehead, ear) outside the original crop bounds and
+facial content (chin, forehead, ear) out of the original crop bounds and
 backfill the gap with replicated edge pixels, confirmed causing
 MediaPipe's second detection pass to fail on a real large/close-up face
-where the *unrotated* canvas succeeded.
-
-That finding briefly motivated defaulting rotation OFF, reasoning that
-`generate()`'s automatic no-rotation fallback already recovers every case
-where rotation fails, so enabling it looked like pure downside (wasted
-compute) with no confirmed upside. **Directly tested on a full real
-video and disconfirmed**: comparing `align_rotation=True` vs `False` on
-identical footage (`video-demo-2.mov`, 2928 face-observations, verified
-deterministic — two identical runs produced byte-identical results)
-showed `True` is a strict superset — every case that succeeds without
-rotation also succeeds with it, plus 17 more (faces that only became
-detectable once leveled), and zero cases were lost. Spot-checked those 17
-recovered frames visually — normal output quality, not degenerate. So
-`align_rotation=True`'s only real cost is wasted compute on frames where
-it doesn't help (an extra failed detection attempt before falling back),
-never a quality or coverage regression — reverted back to the default
-matching upstream's own intent. See NOTICE.md's calibration log for the
-full, honest before/after.
+where the *unrotated* canvas succeeded — but a direct A/B test on the full
+`video-demo-2.mov` (2928 face-observations, verified deterministic)
+disconfirmed the natural conclusion that rotation should therefore default
+off: `True` is a strict superset of `False` (17 faces recovered, 0 lost,
+spot-checked as normal-quality output), since `generate()`'s automatic
+no-rotation fallback already absorbs the bug's cost — wasted compute on
+frames where rotation doesn't help, never a coverage or quality
+regression. See NOTICE.md's calibration log for the full test.
 
 **Checkerboard/blur tendency is architectural, not a bug here.** The
 vendored `GeneratorUNet` (`vendor/pix2pix_generator.py`) is upstream's
 stock pix2pix U-Net: `UNetUp` stacks 7 `nn.ConvTranspose2d(kernel=4,
 stride=2)` upsampling stages, and only the *final* stage uses the
-resize-convolution fix known to reduce transposed-conv checkerboarding
-(Odena et al., "Deconvolution and Checkerboard Artifacts", Distill 2016).
-Kernel divisible by stride reduces but doesn't eliminate the artifact, and
-it can compound across stacked layers. Real-video testing on this
-project's footage shows a visible grid pattern with the real face still
-recognizable beneath it — direct high-resolution inspection of the paper's
-own published example figures shows opaque results with no comparable
-severity, so this project's small/blurry real-world crops and imperfect
-alignment (vs. RetinaFace's precise crop) are likely *amplifying* a milder
-inherent tendency, not that this severity is unavoidable. Fixing the
-tendency itself would need retraining or post-hoc super-resolution — out
-of scope; `blend_mode`/`sharpen_generated` below make compositing more
-*robust to* this quality ceiling, they don't remove it.
+resize-convolution fix known to reduce (not eliminate) transposed-conv
+checkerboarding (Odena et al., "Deconvolution and Checkerboard Artifacts",
+Distill 2016), which can compound across stacked layers. Real-video
+testing shows a visible grid pattern with the real face still recognizable
+beneath it — worse than the paper's own published examples, so this
+project's small/blurry real-world crops and imperfect alignment (vs.
+RetinaFace's precise crop) are likely amplifying a milder inherent
+tendency. **Tested and ruled out as a compositing-level fix**: an
+alternative feathered-alpha blend and an unsharp-mask pre-composite step
+were both tried and found not to change the result (see NOTICE.md's
+anti-bleed-through entry) — the effect is the generator's own output, not
+something fixable in this backend without retraining or post-hoc
+super-resolution, both out of scope here.
 
 **No identity-conditioning mechanism exists.** Unlike CIAGAN's 1200-class
 one-hot identity vector, pix2pix here is a deterministic
@@ -114,7 +102,6 @@ not a new relaxation.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from pathlib import Path
 from typing import NamedTuple, Optional
@@ -122,8 +109,8 @@ from typing import NamedTuple, Optional
 import cv2
 import numpy as np
 
-from .._compositing import feathered_alpha_composite, poisson_composite
-from .._segmentation import load_head_segmentation, predict_head_mask
+from .._compositing import poisson_composite
+from .._segmentation import hash_and_log, load_or_random_head_segmentation, predict_head_mask, resolve_torch_device
 
 logger = logging.getLogger(__name__)
 
@@ -229,22 +216,6 @@ def _enhance_for_detection(image_rgb: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(cv2.merge((l_channel, a_channel, b_channel)), cv2.COLOR_LAB2RGB)
 
 
-def _sharpen(image: np.ndarray, amount: float = 1.0, sigma: float = 2.0) -> np.ndarray:
-    """Unsharp-mask sharpening of the generator's raw output.
-
-    Tested as a way to give `poisson_composite()`'s `cv2.seamlessClone` real
-    gradients to lock onto when the generated content has weak local
-    contrast (see NOTICE.md's anti-bleed-through entry). Named risk, not
-    assumed away: sharpening amplifies ANY high-frequency content, including
-    this architecture's own checkerboard tendency (see module docstring's
-    "Checkerboard tendency" note) — judge visually side-by-side against the
-    unsharpened result, never accept solely because it reduces see-through.
-    """
-    blurred = cv2.GaussianBlur(image, (0, 0), sigma)
-    sharpened = cv2.addWeighted(image, 1 + amount, blurred, -amount, 0)
-    return np.clip(sharpened, 0, 255).astype(image.dtype)
-
-
 class Backend:
     """GANonymization via vendored `GeneratorUNet` + `HeadSegmentationModel`.
 
@@ -260,8 +231,6 @@ class Backend:
         img_size: int = 512,
         align_rotation: bool = True,
         random_init: bool = False,
-        blend_mode: str = "poisson",
-        sharpen_generated: bool = False,
         min_detection_confidence: float = 0.3,
         enhance_detection_input: bool = True,
     ):
@@ -274,24 +243,16 @@ class Backend:
                 "released checkpoints and this backend's crop geometry are "
                 "both derived specifically for that size)"
             )
-        if blend_mode not in ("poisson", "feather"):
-            raise ValueError(f"blend_mode must be 'poisson' or 'feather', got {blend_mode!r}")
         self.weights = weights
         self.ctx_id = ctx_id
         self.segmentation_weights = segmentation_weights
         self.img_size = img_size
         self.align_rotation = align_rotation
         self.random_init = random_init
-        # See NOTICE.md's calibration log for what's actually validated here:
-        # blend_mode/sharpen_generated were tested and found NOT to fix the
-        # "face shows through" issue (kept at their conservative defaults —
-        # poisson, unsharpened — no reason to prefer the alternatives).
-        # min_detection_confidence/enhance_detection_input WERE validated
-        # (real coverage gain, spot-checked as genuine, not spurious, on
-        # video-demo-2.mov: 1048 -> 1194 "ok" combined) — their defaults
-        # below reflect that finding, not upstream's own values.
-        self.blend_mode = blend_mode
-        self.sharpen_generated = sharpen_generated
+        # Validated against real footage (video-demo-2.mov: 1048 -> 1194
+        # "ok" combined, spot-checked as genuine, not spurious) — see
+        # NOTICE.md's calibration log. Defaults below reflect that finding,
+        # not upstream's own values (0.5 confidence, no contrast boost).
         self.min_detection_confidence = min_detection_confidence
         self.enhance_detection_input = enhance_detection_input
 
@@ -328,14 +289,7 @@ class Backend:
                 "uv sync --extra phase2-ganonymization"
             ) from e
 
-        if self.ctx_id < 0:
-            device = torch.device("cpu")
-        elif torch.cuda.is_available():
-            device = torch.device("cuda")
-        elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
-            device = torch.device("mps")
-        else:
-            device = torch.device("cpu")
+        device = resolve_torch_device(self.ctx_id)
         self._device = device
 
         # Matches GANonymization's own FaceMesh construction
@@ -348,18 +302,11 @@ class Backend:
         from .vendor.pix2pix_generator import GeneratorUNet
         model = GeneratorUNet()
 
-        from .._vendor.head_segmentation_model import HeadSegmentationModel
-
         if self.random_init:
             logger.warning(
                 "ganonymization backend running with random_init=True: output is "
                 "NOT real anonymization — smoke-test only, do not use for a real run."
             )
-            seg_model = HeadSegmentationModel(
-                encoder_name="resnet18", encoder_depth=5,
-                pretrained=False, nn_image_input_resolution=self.img_size,
-            )
-            seg_resolution = self.img_size
         else:
             if self.weights is None or not Path(self.weights).is_file():
                 raise FileNotFoundError(
@@ -376,8 +323,7 @@ class Backend:
                 )
 
             weights_path = Path(self.weights)
-            sha256 = hashlib.sha256(weights_path.read_bytes()).hexdigest()
-            logger.info(f"Loading GANonymization generator from {weights_path} (sha256={sha256})")
+            hash_and_log(weights_path, "GANonymization generator")
             # Lightning checkpoint, not a bare state_dict — see module docstring.
             ckpt = torch.load(str(weights_path), map_location=device, weights_only=False)
             raw_state_dict = ckpt["state_dict"]
@@ -396,18 +342,12 @@ class Backend:
             model.load_state_dict(generator_state_dict, strict=True)
             logger.info(f"ganonymization generator: {len(generator_state_dict)} keys loaded, strict=True")
 
-            seg_weights_path = Path(self.segmentation_weights)
-            seg_sha256 = hashlib.sha256(seg_weights_path.read_bytes()).hexdigest()
-            logger.info(f"Loading head-segmentation model from {seg_weights_path} (sha256={seg_sha256})")
-            seg_model, seg_resolution = load_head_segmentation(seg_weights_path, device)
-
         model.eval()
         model.to(device)
-        seg_model.eval()
-        seg_model.to(device)
         self._model = model
-        self._seg_model = seg_model
-        self._seg_resolution = seg_resolution
+        self._seg_model, self._seg_resolution = load_or_random_head_segmentation(
+            self.segmentation_weights, self.random_init, device,
+        )
 
     def _facemesh_points(self, image_rgb: np.ndarray) -> Optional[np.ndarray]:
         """478x2 pixel-space points from `image_rgb`, or None if no face found."""
@@ -457,8 +397,6 @@ class Backend:
 
         dot_canvas = _landmark_canvas(points512, self.img_size)
         generated512 = self._run_generator(dot_canvas)
-        if self.sharpen_generated:
-            generated512 = _sharpen(generated512)
         mask512 = predict_head_mask(self._seg_model, self._seg_resolution, letterboxed_rgb, self._device)
 
         gen_working = _letterbox_unresize(generated512, geom, _IMG_INTERP)
@@ -474,8 +412,7 @@ class Backend:
             gen_full_rgb, mask_full = gen_working, mask_working
 
         gen_full_bgr = cv2.cvtColor(gen_full_rgb, cv2.COLOR_RGB2BGR)
-        composite_fn = poisson_composite if self.blend_mode == "poisson" else feathered_alpha_composite
-        return composite_fn(crop, gen_full_bgr, mask_full)
+        return poisson_composite(crop, gen_full_bgr, mask_full)
 
     def generate(self, crop: np.ndarray, seed: int) -> Optional[np.ndarray]:
         """Anonymize the face in `crop` (BGR uint8). `seed` is accepted for

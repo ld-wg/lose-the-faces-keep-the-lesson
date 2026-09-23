@@ -138,15 +138,6 @@ def main() -> None:
     p.add_argument("--refine-mask", action=argparse.BooleanOptionalAction, default=False,
                    help="ciagan: intersect its composite mask with a real head-segmentation model's "
                         "output, to clean up (not expand) the seam — opt-in, see models/ciagan/NOTICE.md")
-    p.add_argument("--blend-mode", type=str, default="poisson", choices=["poisson", "feather"],
-                   help="ganonymization: compositing strategy (default: poisson, matches shipped "
-                        "behavior). 'feather' avoids poisson's real-face-bleeds-through failure mode "
-                        "on low-contrast generated content — opt-in pending calibration, see "
-                        "models/ganonymization/NOTICE.md")
-    p.add_argument("--sharpen-generated", action=argparse.BooleanOptionalAction, default=False,
-                   help="ganonymization: unsharp-mask the generated face before compositing — may help "
-                        "poisson mode, may worsen this checkpoint's own checkerboard tendency, judge "
-                        "visually (see models/ganonymization/backend.py's _sharpen())")
     p.add_argument("--min-detection-confidence", type=float, default=0.3,
                    help="ganonymization: MediaPipe FaceMesh detection threshold (default: 0.3, not "
                         "upstream's 0.5 — real-video sweep found 0.3 improves coverage but going "
@@ -210,7 +201,6 @@ def main() -> None:
         backend_kwargs.update(
             img_size=img_size, segmentation_weights=segmentation_weights,
             align_rotation=args.align_rotation,
-            blend_mode=args.blend_mode, sharpen_generated=args.sharpen_generated,
             min_detection_confidence=args.min_detection_confidence,
             enhance_detection_input=args.enhance_detection_input,
         )
@@ -223,8 +213,8 @@ def main() -> None:
         p.error(f"--weights is required for --model {args.model} unless --random-init is set")
 
     if not args.random_init and needs_segmentation and segmentation_weights is None:
-        p.error(f"--segmentation-weights is required for --model {args.model}"
-                + (" with --refine-mask" if args.model == "ciagan" else "") + " unless --random-init is set")
+        suffix = " with --refine-mask" if args.model == "ciagan" else ""
+        p.error(f"--segmentation-weights is required for --model {args.model}{suffix} unless --random-init is set")
 
     stats: dict[int, dict] = {}  # track_id -> counts
     jsonl_path = phase1_dir / "detections.jsonl"
