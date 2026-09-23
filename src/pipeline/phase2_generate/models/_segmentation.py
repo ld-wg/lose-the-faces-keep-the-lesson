@@ -93,10 +93,12 @@ def load_head_segmentation(weights_path: Path, device) -> Tuple[object, int]:
     result = model.load_state_dict(state_dict, strict=False)
     import logging
     logger = logging.getLogger(__name__)
+    num_model_keys = len(state_dict) - len(result.unexpected_keys)
     logger.info(
-        f"head-segmentation state_dict load: {len(state_dict) - len(result.missing_keys)} "
-        f"of {len(state_dict)} keys matched; missing={result.missing_keys}, "
-        f"unexpected={result.unexpected_keys}"
+        f"head-segmentation state_dict load: {num_model_keys - len(result.missing_keys)} "
+        f"of {num_model_keys} real model keys matched (checkpoint also carried "
+        f"{len(result.unexpected_keys)} unrelated key(s), correctly ignored); "
+        f"missing={result.missing_keys}, unexpected={result.unexpected_keys}"
     )
     if result.missing_keys:
         raise RuntimeError(

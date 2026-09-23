@@ -168,10 +168,44 @@ raises `FileNotFoundError` with instructions). Download manually, e.g.
 command, not a project dependency — Google Drive's large-file confirmation
 redirect makes plain `curl`/`wget` unreliable here).
 
-*(SHA256 of both downloaded files, and `strict=True`/`strict=False`
-key-match results against the real files, to be recorded here after the
-real-checkpoint calibration run on serra1 — not yet performed as of this
-NOTICE's initial commit.)*
+**Verified on serra1, 2026-09-23** (downloaded via `curl`/`gdown` respectively):
+
+- `weights/ganonymization_pix2pix_25.ckpt`: 687,127,579 bytes, SHA256
+  `eba49bd525033b55022a91d6b4398ab088b51339fd6895db7afdd648d776eec9`.
+  A real PyTorch Lightning checkpoint (`state_dict`/`hyper_parameters`/
+  `optimizer_states`/...). `hyper_parameters` records `n_epochs: 50`
+  (the *configured training budget*, not this specific save), but
+  `ckpt["epoch"] == 24` confirms this file genuinely is the 25th-epoch
+  save (0-indexed) — i.e. really is the "25 epochs" checkpoint the
+  filename claims, not a naming mismatch. `state_dict`'s 17
+  `generator.*`-prefixed keys all loaded into the vendored `GeneratorUNet`
+  with `strict=True` — 17 is correct, not suspiciously low: `InstanceNorm2d`
+  defaults to `affine=False` (no learnable params), so each of the 15
+  down/up blocks contributes exactly one Conv2d/ConvTranspose2d weight
+  tensor (bias=False), plus the final block's Conv2d weight+bias = 17.
+- `weights/head_segmentation.ckpt`: 359,589,211 bytes, SHA256
+  `f40446ae67288b2721c942543cf24e7439fd116535b64e3d06778f580baf5b4a`.
+  Also a Lightning checkpoint. `hyper_parameters`: `encoder_name=resnet34`,
+  `encoder_depth=5`, `nn_image_input_resolution=512` — read dynamically
+  from the checkpoint by `_segmentation.py::load_head_segmentation()`, not
+  hardcoded. `state_dict` has 279 keys; 278 are real
+  `neural_net.*`-prefixed model keys (all matched, 0 missing) plus one
+  unrelated `criterion.weight` key (the training loss's class-weight
+  buffer, not part of the model) — correctly dropped by `strict=False`.
+  `load_head_segmentation()` now logs this exact breakdown and raises if
+  any *missing* key ever appears (which would mean a partially
+  random-initialized model silently passed through).
+
+**First real-checkpoint run** (10 frames, `runs/demo`, both checkpoints
+above): produced genuinely anonymized, non-random composited output —
+visually confirmed a face-shaped synthetic region pasted into what looks
+like a fuller head region than `ciagan`'s jaw-only mask (small sample,
+not a rigorous visual comparison). A seam is visible at the mask boundary.
+**Not yet evaluated**, and explicitly deferred pending further review:
+whether `_rotation_matrix()`'s sign convention is actually correct on a
+real tilted head, whether `context_ratio=0.6` needs recalibration, and
+seam/noise quality — the real calibration pass this NOTICE's "Calibration
+log" section below expects.
 
 ## Verified facts from reading the pinned source directly (not assumed)
 
@@ -233,12 +267,34 @@ NOTICE's initial commit.)*
 
 ## Calibration log
 
-*(To be filled in during the real-checkpoint calibration run on serra1 —
-see the project plan's Verification section. Expect several real,
-documented rounds of bugs before this is mergeable, the same bar CIAGAN's
-own four-round calibration was held to — not written as a single
-confident pass. In particular: whether `align_rotation` measurably helps
-or hurts on real tilted-head frames, whether `context_ratio=0.6` needs
-recalibration, whether the `generator.`-prefix and label-index assumptions
-above hold against the real downloaded files, and how often the
-rotation-then-refail fallback in `generate()` actually triggers.)*
+### 2026-09-23: checkpoints obtained, first real run confirms the pipeline works — full calibration paused for review
+
+Both checkpoints downloaded and verified on serra1 (see "Checkpoint
+status" above — sizes, SHA256s, and key-match counts all confirmed
+against the real files, not assumed). A first real run (10 frames of
+`runs/demo`, both checkpoints, `--ctx-id 0`) produced genuine, plausible
+anonymized output — not random-init garbage, a real face-shaped
+composited region with a visible seam, appearing to cover more of the
+head than `ciagan`'s jaw-only mask on casual visual inspection.
+
+**Paused here, deliberately, before a full calibration pass** — the
+project owner asked to review this checkpoint before continuing into the
+open-ended visual-tuning work CIAGAN's own four rounds required. Still
+open, not yet evaluated:
+
+- Whether `_rotation_matrix()`'s sign convention (derived algebraically in
+  its own docstring, not yet checked against a real tilted-head frame) is
+  actually correct — `--align-rotation`/`--no-align-rotation` should be
+  swept side-by-side on a real tilted head before trusting the derivation.
+- Whether `context_ratio=0.6` (an untuned starting guess, see
+  `models/DEFAULT_CONTEXT_RATIO`'s comment) needs adjustment.
+- Seam/noise quality at full-video scale, and whether the mask genuinely
+  achieves full-head coverage (hair/forehead/ears) or only looks that way
+  in the small sample reviewed so far.
+- How often the rotation-then-retry-unrotated fallback in `generate()`
+  actually triggers on real footage.
+
+Not a documented root cause or a tuned default yet — a status snapshot to
+resume from, in the same spirit as `ciagan/NOTICE.md`'s own dated entries
+(each one is a real, tested finding, not a guess), just mid-process here
+rather than complete.
