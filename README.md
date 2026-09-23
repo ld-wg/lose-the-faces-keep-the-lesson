@@ -53,6 +53,13 @@ uv run python -m src.pipeline.phase2_generate.run --phase1-dir runs/phase1 --out
 
 `ciagan` also has an opt-in `--refine-mask` flag that intersects its composite mask against the same head-segmentation model, to clean up (not expand) its seam at extreme angles — see `models/ciagan/NOTICE.md`.
 
+`run.py` only writes per-face crop PNGs, not a video. To watch the actual result, paste them back into the full source video with `compose_video.py`:
+
+```bash
+uv run python -m src.pipeline.phase2_generate.compose_video \
+    --phase1-dir runs/phase1 --phase2-dir runs/phase2 --out runs/phase2/output.mp4
+```
+
 ## Configuration
 
 Paths resolve via `src/config.py`: env vars (`PPY_WIDERFACE`, `PPY_DATASET_DIR`, `PPY_WEIGHTS_DIR`, `PPY_RUNS_DIR`) override `config.local.json`, which overrides the built-in defaults. Check your setup with:

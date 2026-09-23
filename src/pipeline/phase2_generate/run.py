@@ -26,8 +26,10 @@ Outputs (in --out dir):
     generated/<track_id>/<frame_id:06d>.png   one PNG per (frame, track) — the
                                                box-proportional context crop,
                                                lossless (this is the pixel
-                                               data a later compositing stage
-                                               consumes, not a debug artifact).
+                                               data `compose_video.py`
+                                               consumes to build a full
+                                               output video, not a debug
+                                               artifact).
     generation.jsonl    one ledger line per processed item: status is "ok",
                         "skipped_no_landmarks" (dlib found nothing usable —
                         passthrough of the original crop, unmodified),
@@ -67,6 +69,23 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 
+def crop_box(h: int, w: int, box: tuple[float, float, float, float], context_ratio: float
+             ) -> tuple[int, int, int, int]:
+    """The (cx1, cy1, cx2, cy2) pixel rectangle `_context_crop` cuts, exposed
+    separately so `compose_video.py` can recompute the exact same rectangle
+    to paste a generated crop back into its source frame — same formula,
+    single source of truth, not duplicated.
+    """
+    x1, y1, x2, y2 = box
+    box_w, box_h = x2 - x1, y2 - y1
+    pad_x, pad_y = context_ratio * box_w, context_ratio * box_h
+    cx1 = max(0, int(x1 - pad_x))
+    cy1 = max(0, int(y1 - pad_y))
+    cx2 = min(w, int(x2 + pad_x))
+    cy2 = min(h, int(y2 + pad_y))
+    return cx1, cy1, cx2, cy2
+
+
 def _context_crop(frame, box: tuple[float, float, float, float], context_ratio: float):
     """Cut a crop around `box`, padded proportionally to its own size.
 
@@ -76,13 +95,7 @@ def _context_crop(frame, box: tuple[float, float, float, float], context_ratio: 
     a fixed small pad broke CIAGAN's own portrait-crop assumption).
     """
     h, w = frame.shape[:2]
-    x1, y1, x2, y2 = box
-    box_w, box_h = x2 - x1, y2 - y1
-    pad_x, pad_y = context_ratio * box_w, context_ratio * box_h
-    cx1 = max(0, int(x1 - pad_x))
-    cy1 = max(0, int(y1 - pad_y))
-    cx2 = min(w, int(x2 + pad_x))
-    cy2 = min(h, int(y2 + pad_y))
+    cx1, cy1, cx2, cy2 = crop_box(h, w, box, context_ratio)
     return frame[cy1:cy2, cx1:cx2]
 
 
