@@ -441,6 +441,9 @@ predicted trade-off), not the interior's apparent transparency.
 Sharpening didn't meaningfully change the picture either, in either blend
 mode.
 
+*(Continued below: coverage-tuning results, which turned out to be this
+round's actual meaningful win.)*
+
 **Conclusion: the anti-bleed-through mechanism was mechanically sound but
 was not the actual (or not the dominant) cause here.** The real face
 "showing through" is most likely the *generator's own output* — its
@@ -455,3 +458,49 @@ the compositing layer. **Kept `blend_mode="poisson"` as the default**
 cost) — the new flags stay available for future experiments (e.g.
 alongside a retrained or different checkpoint), documented here as a
 real negative result, not deleted.
+
+### 2026-09-23 (round 2): coverage tuning — a real, compounding win, with an honest non-monotonic surprise
+
+Added `min_detection_confidence` (was hardcoded at MediaPipe's own default,
+0.5) and `enhance_detection_input` (CLAHE contrast boost, detection-input
+only — see `_enhance_for_detection()`'s docstring for why it can't leak
+into the generator's own input). Swept both on the full `video-demo-2.mov`
+(2928 face-observations, `align_rotation=True`, 50-epoch checkpoint):
+
+| Config | "ok" count | vs. baseline (1048) |
+|---|---|---|
+| baseline (confidence=0.5, no enhance) | 1048 | — |
+| confidence=0.3 | 1089 | +41 |
+| confidence=0.2 | 1029 | **−19** |
+| confidence=0.1 | 993 | **−55** |
+| enhance_detection_input alone (confidence=0.5) | 1098 | +50 |
+| confidence=0.3 + enhance_detection_input | **1194** | **+146** |
+
+**Honest surprise, not swept under the rug: lowering the confidence
+threshold is not monotonically beneficial.** 0.3 clearly helps, but 0.2
+and 0.1 are *worse than the 0.5 baseline*, not just worse than 0.3. Not
+fully root-caused this round (a plausible mechanism, not confirmed: at
+very low thresholds MediaPipe may accept a spurious/mislocated detection
+on the first (rotation-estimation) pass, computing a garbage rotation
+angle that genuinely corrupts the image for the second detection pass,
+in a way the automatic no-rotation fallback doesn't fully compensate for)
+— flagged as a real open question, not resolved.
+
+**Confidence=0.3's and enhance's recoveries were spot-checked, not just
+counted.** Pulled several frames newly recovered at confidence=0.3 that
+failed at 0.5 (e.g. `generated/9/000101.png`, `generated/17/000102.png`,
+`generated/13/000105.png`) and confirmed visually they're genuine,
+correctly-positioned faces — same quality profile as the rest of the
+output, not spurious detections on the wrong object.
+
+**The two knobs compound more than additively** (41 + 50 = 91 expected if
+independent; 146 observed) — a real positive interaction, not just two
+separate effects added up.
+
+**Adopted both as new defaults**: `min_detection_confidence=0.3`,
+`enhance_detection_input=True` — a genuine, validated ~14% relative
+coverage improvement (1048 → 1194 out of 2928 face-observations on
+`video-demo-2.mov`), the clearest concrete win of this whole round.
+`0.2`/`0.1` remain available via `--min-detection-confidence` for anyone
+who wants to explore the non-monotonic behavior further, but are not
+recommended.

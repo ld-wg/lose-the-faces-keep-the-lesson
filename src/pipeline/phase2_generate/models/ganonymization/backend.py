@@ -262,8 +262,8 @@ class Backend:
         random_init: bool = False,
         blend_mode: str = "poisson",
         sharpen_generated: bool = False,
-        min_detection_confidence: float = 0.5,
-        enhance_detection_input: bool = False,
+        min_detection_confidence: float = 0.3,
+        enhance_detection_input: bool = True,
     ):
         if img_size != 512:
             # The paper's Face Extraction step and this backend's own
@@ -282,11 +282,14 @@ class Backend:
         self.img_size = img_size
         self.align_rotation = align_rotation
         self.random_init = random_init
-        # Opt-in anti-transparency knobs (see module docstring's
-        # "Checkerboard/blur tendency" note and NOTICE.md's calibration
-        # log) — default to today's already-shipped behavior (poisson,
-        # unsharpened, 0.5 confidence, no contrast boost) until each is
-        # validated against real footage.
+        # See NOTICE.md's calibration log for what's actually validated here:
+        # blend_mode/sharpen_generated were tested and found NOT to fix the
+        # "face shows through" issue (kept at their conservative defaults —
+        # poisson, unsharpened — no reason to prefer the alternatives).
+        # min_detection_confidence/enhance_detection_input WERE validated
+        # (real coverage gain, spot-checked as genuine, not spurious, on
+        # video-demo-2.mov: 1048 -> 1194 "ok" combined) — their defaults
+        # below reflect that finding, not upstream's own values.
         self.blend_mode = blend_mode
         self.sharpen_generated = sharpen_generated
         self.min_detection_confidence = min_detection_confidence

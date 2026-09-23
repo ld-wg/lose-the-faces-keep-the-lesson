@@ -147,13 +147,16 @@ def main() -> None:
                    help="ganonymization: unsharp-mask the generated face before compositing — may help "
                         "poisson mode, may worsen this checkpoint's own checkerboard tendency, judge "
                         "visually (see models/ganonymization/backend.py's _sharpen())")
-    p.add_argument("--min-detection-confidence", type=float, default=0.5,
-                   help="ganonymization: MediaPipe FaceMesh detection threshold (default: 0.5, "
-                        "upstream's own value) — lowering trades recall for precision")
-    p.add_argument("--enhance-detection-input", action=argparse.BooleanOptionalAction, default=False,
+    p.add_argument("--min-detection-confidence", type=float, default=0.3,
+                   help="ganonymization: MediaPipe FaceMesh detection threshold (default: 0.3, not "
+                        "upstream's 0.5 — real-video sweep found 0.3 improves coverage but going "
+                        "lower, e.g. 0.1-0.2, makes it WORSE than the 0.5 baseline, non-monotonically; "
+                        "see models/ganonymization/NOTICE.md)")
+    p.add_argument("--enhance-detection-input", action=argparse.BooleanOptionalAction, default=True,
                    help="ganonymization: CLAHE-boost the (detection-only) input to the final FaceMesh "
                         "pass, to help detect small/blurry faces — never reaches the generator's own "
-                        "input, see models/ganonymization/backend.py's _enhance_for_detection()")
+                        "input (default: on — real-video test showed a real coverage gain, see "
+                        "models/ganonymization/backend.py's _enhance_for_detection())")
     p.add_argument("--ctx-id", type=int, default=0, help="0 for GPU/MPS, -1 for CPU")
     p.add_argument("--random-init", action="store_true",
                    help="Smoke test: random generator weights, output is NOT real anonymization")
