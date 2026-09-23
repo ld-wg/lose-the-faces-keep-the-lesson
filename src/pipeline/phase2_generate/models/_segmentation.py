@@ -83,7 +83,27 @@ def load_head_segmentation(weights_path: Path, device) -> Tuple[object, int]:
         nn_image_input_resolution=resolution,
     )
     state_dict = {k.replace("neural_net.", ""): v for k, v in ckpt["state_dict"].items()}
-    model.load_state_dict(state_dict, strict=False)
+    # strict=False is upstream's own choice (see _vendor/head_segmentation_model.py's
+    # docstring) — the real checkpoint's state_dict also carries a
+    # `criterion.weight` key (the training loss's class-weight buffer, not
+    # part of the model), which strict=False silently drops as
+    # "unexpected". Log the actual counts rather than trust that silence:
+    # any *missing* key (a real model parameter this checkpoint doesn't
+    # provide) would mean an incompletely-initialized model, quietly.
+    result = model.load_state_dict(state_dict, strict=False)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(
+        f"head-segmentation state_dict load: {len(state_dict) - len(result.missing_keys)} "
+        f"of {len(state_dict)} keys matched; missing={result.missing_keys}, "
+        f"unexpected={result.unexpected_keys}"
+    )
+    if result.missing_keys:
+        raise RuntimeError(
+            f"head-segmentation checkpoint is missing real model keys: {result.missing_keys} "
+            "— the model would be partially randomly-initialized, not a real fix to paper over "
+            "with strict=False. See models/ganonymization/NOTICE.md."
+        )
     model.to(device)
     model.eval()
     return model, resolution
