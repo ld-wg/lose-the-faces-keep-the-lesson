@@ -1,0 +1,14 @@
+                                 Human Head Segmentation License
+
+CODE:
+You can do what you want we don't care but if something doesn't work for you don't blame us.
+
+MODEL COMMERCIAL USAGE:
+The model was trained with the CelebA dataset. The authors of this dataset do not allow
+for commercial usage. Therefore, we (authors of this repo) only allow for commercial
+usage of source code. You can modify it, train your own head segmentation models,
+and whatever else you want with it, but we do not grand a commercial license for the model
+usage which we are providing by default with the repo.
+Please be fair 🤗😉.
+
+@Copyrights Wiktor Łazarski & Jakub Szumski

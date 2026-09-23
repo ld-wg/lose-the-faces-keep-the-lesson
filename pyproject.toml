@@ -66,6 +66,49 @@ phase2-ciagan = [
     "dlib>=19.24",
 ]
 
+# Phase 2 — GANonymization generation backend
+# (phase2_generate/models/ganonymization/). Two checkpoints: a pix2pix
+# generator (landmark-dots -> face) and a head-segmentation model (this
+# project's own full-head paste-back mask, plus ciagan's opt-in
+# --refine-mask — see models/ganonymization/NOTICE.md for provenance and
+# licensing, including a CelebA commercial-use flag on BOTH checkpoints).
+#
+# mediapipe: needs the legacy `mediapipe.solutions.face_mesh` API this
+# backend's landmark extraction depends on (verified against
+# hcmlab/GANonymization's own facial_landmarks_478_transformer.py, not
+# reconstructed from the paper). Reports say that API was removed in
+# mediapipe>=0.10.30 in favor of the newer Tasks API
+# (mediapipe.tasks.python.vision.FaceLandmarker) — NOT independently
+# confirmed against a real installed wheel as of this pin. VERIFY with a
+# real `uv sync --extra phase2-ganonymization` +
+# `python -c "from mediapipe.solutions import face_mesh"` on serra1 before
+# trusting this cap, the same standard already applied to onnxruntime-gpu's
+# CUDA range above.
+#
+# torch/torchvision: same CUDA-13-vs-serra1's-12.5-driver problem as
+# phase2-ciagan above — redirected to the same pytorch-cu124 index (see
+# [tool.uv.sources] below, extended with torchvision, not a new index).
+#
+# segmentation-models-pytorch: backs the vendored HeadSegmentationModel
+# (models/_vendor/head_segmentation_model.py) — deliberately depended on
+# directly instead of the upstream `head-segmentation` git package, whose
+# own setup.py installs its full unpinned requirements.txt (streamlit,
+# wandb, hydra-core, pytorch-lightning, albumentations, pandas, seaborn,
+# matplotlib, gdown, loguru) for functionality this project's own
+# reimplemented inference path (models/_segmentation.py) never uses — see
+# models/ganonymization/NOTICE.md's "What's vendored, and why". A normal,
+# wheel-published PyPI package (verified clean metadata, no
+# compile-from-source red flags like dlib's) — VERIFY that holds on serra1
+# too, not just from PyPI metadata.
+phase2-ganonymization = [
+    "torch>=2.2,<2.7; sys_platform == 'linux'",
+    "torch>=2.2; sys_platform == 'darwin'",
+    "torchvision>=0.17,<0.22; sys_platform == 'linux'",
+    "torchvision>=0.17; sys_platform == 'darwin'",
+    "segmentation-models-pytorch>=0.3,<0.6",
+    "mediapipe>=0.10,<0.10.30",
+]
+
 # SCRFD-34GF's conversion tool (models/scrfd_34gf/convert.py) is NOT set up
 # through this file: mmcv 1.3.x / mmdet 2.11.0 predate PEP 517 build
 # isolation and don't resolve cleanly through uv's project lock. It needs
@@ -88,9 +131,14 @@ dlib = ["cmake"]
 # CUDA-12.4 wheel index on Linux only, instead of the default PyPI index
 # (which resolves to a CUDA-13.0-only build serra1's driver can't run).
 # `explicit = true` keeps this index from being used for any other
-# package's resolution.
+# package's resolution. `torchvision` (phase2-ganonymization) needs the
+# same redirect for the same reason — its default wheel is built against
+# whatever CUDA version its own torch requirement resolves to.
 [tool.uv.sources]
 torch = [
+    { index = "pytorch-cu124", marker = "sys_platform == 'linux'" },
+]
+torchvision = [
     { index = "pytorch-cu124", marker = "sys_platform == 'linux'" },
 ]
 
