@@ -32,6 +32,16 @@ The detector is swappable with `--model`: `scrfd-10gf` (default), `scrfd-34gf`, 
 
 Each run writes `detections.jsonl` (per-frame boxes and confidence) and, for video, `tracks.json` (per-track seed for phase 2).
 
+### Phase 2 — generation
+
+```bash
+uv sync --extra phase2-ciagan
+uv run python -m src.pipeline.phase2_generate.run --phase1-dir runs/phase1 --out runs/phase2 \
+    --weights weights/ciagan_generator.pth --dlib-predictor weights/shape_predictor_68_face_landmarks.dat
+```
+
+`--phase1-dir` just needs `detections.jsonl` + `tracks.json` (no `--save-crops` required — Phase 2 reads pixels straight from the source video). Two files aren't in the repo and must be fetched manually before running for real: the CIAGAN checkpoint and dlib's `shape_predictor_68_face_landmarks.dat` — see `src/pipeline/phase2_generate/models/ciagan/NOTICE.md` for exact links, SHA256, and licensing notes. Without them, `--random-init` runs the same pipeline with random weights as a smoke test (not real anonymization).
+
 ## Configuration
 
 Paths resolve via `src/config.py`: env vars (`PPY_WIDERFACE`, `PPY_DATASET_DIR`, `PPY_WEIGHTS_DIR`, `PPY_RUNS_DIR`) override `config.local.json`, which overrides the built-in defaults. Check your setup with:
@@ -45,7 +55,7 @@ uv run python -m src.config
 | Stage | State |
 |---|---|
 | Detection + tracking | Implemented |
-| Generation + compositing | Not started |
+| Generation + compositing | CIAGAN baseline implemented |
 | Temporal stabilization | Not started |
 | Evaluation | Not started |
 
