@@ -414,3 +414,44 @@ fallback is accounted for — those frames land on identical output to
 MediaPipe detect some faces that the unrotated pass misses, which is
 exactly rotation's intended benefit — this was a case worth trusting the
 data over a plausible-sounding argument, not the other way around.
+
+### 2026-09-23 (round 2): anti-transparency compositing tested — disconfirmed as a compositing-level fix
+
+Added `blend_mode` ("poisson"/"feather") and `sharpen_generated` (see
+`_compositing.py::feathered_alpha_composite()` and
+`backend.py::_sharpen()`), on the hypothesis that `cv2.seamlessClone`'s
+harmonic-interpolation-toward-destination mechanism (weak source
+gradients → real face bleeds through) was the direct cause of the "face
+shows through" complaint.
+
+**Tested directly, not assumed.** Generated the same 10 real
+`(frame_id, track_id)` pairs — spread across 10 different tracks, real
+50-epoch checkpoint, `align_rotation=True` — under all four combinations
+(baseline poisson, feather alone, sharpen+poisson, sharpen+feather) and
+compared visually. **Result: no combination meaningfully reduced the
+"face shows through" look.** `feathered_alpha_composite()` should make the
+mask interior 100% generated content (alpha≈1 away from the boundary) —
+if the real face were bleeding through Poisson's gradient solve, feather
+mode should have shown a clean, opaque generated face there. It didn't:
+the grid pattern and recognizable underlying facial structure looked
+essentially the same as the poisson baseline in every sample checked
+(e.g. `2_1`, `12_9`, `105_17`) — feather only visibly changed the boundary
+seam (a harder, more visible transition at cloth/background edges, the
+predicted trade-off), not the interior's apparent transparency.
+Sharpening didn't meaningfully change the picture either, in either blend
+mode.
+
+**Conclusion: the anti-bleed-through mechanism was mechanically sound but
+was not the actual (or not the dominant) cause here.** The real face
+"showing through" is most likely the *generator's own output* — its
+checkerboard/blur tendency (see module docstring) combined with whatever
+this checkpoint actually learned to produce for out-of-distribution real
+crops — genuinely resembling/tracking the real face's structure, not a
+compositing-stage leak. This means problems 2 ("face shows through") and
+3 (blur/low detail), initially treated as separate, turn out to share a
+root cause: generator output quality/character, not something fixable at
+the compositing layer. **Kept `blend_mode="poisson"` as the default**
+(no benefit to switching, and `feather` has a real, visible seam-quality
+cost) — the new flags stay available for future experiments (e.g.
+alongside a retrained or different checkpoint), documented here as a
+real negative result, not deleted.
