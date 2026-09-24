@@ -135,9 +135,15 @@ def main() -> None:
                    help="ganonymization: level the crop by eye-line angle before landmark extraction "
                         "(default: on — real-video A/B test showed it's a strict coverage superset, "
                         "see models/ganonymization/backend.py's module docstring)")
-    p.add_argument("--refine-mask", action=argparse.BooleanOptionalAction, default=False,
+    p.add_argument("--refine-mask", action=argparse.BooleanOptionalAction, default=None,
                    help="ciagan: intersect its composite mask with a real head-segmentation model's "
-                        "output, to clean up (not expand) the seam — opt-in, see models/ciagan/NOTICE.md")
+                        "output, to clean up (not expand) the seam — opt-in (default: off), see "
+                        "models/ciagan/NOTICE.md. blanket: composite with a full-head segmentation "
+                        "mask instead of BLANKET's own face-only footprint — default-on for blanket "
+                        "(not just a seam cleanup there — it's how this project addresses BLANKET's "
+                        "own documented weak-identity-suppression limitation, see "
+                        "models/blanket/NOTICE.md). Unset (neither flag passed) resolves to "
+                        "model-specific defaults below.")
     p.add_argument("--min-detection-confidence", type=float, default=0.3,
                    help="ganonymization: MediaPipe FaceMesh detection threshold (default: 0.3, not "
                         "upstream's 0.5 — real-video sweep found 0.3 improves coverage but going "
@@ -148,6 +154,23 @@ def main() -> None:
                         "pass, to help detect small/blurry faces — never reaches the generator's own "
                         "input (default: on — real-video test showed a real coverage gain, see "
                         "models/ganonymization/backend.py's _enhance_for_detection())")
+    p.add_argument("--blanket-repo", type=str, default=None,
+                   help="blanket: path to a checkout of the sibling blanket-anonymizer-bridge repo "
+                        "(with .venv-identity/.venv-swap already set up) — required unless --random-init. "
+                        "See models/blanket/NOTICE.md")
+    p.add_argument("--blanket-identity-python", type=str, default=None,
+                   help="blanket: python interpreter for the IdentityGenerator venv "
+                        "(default: <blanket-repo>/.venv-identity/bin/python)")
+    p.add_argument("--blanket-swap-python", type=str, default=None,
+                   help="blanket: python interpreter for the FaceSwapper venv "
+                        "(default: <blanket-repo>/.venv-swap/bin/python)")
+    p.add_argument("--blanket-server-timeout", type=float, default=900.0,
+                   help="blanket: seconds to wait for either external server to become ready/respond "
+                        "before raising. Covers the WHOLE per-call round trip, not just startup — a "
+                        "cold SDXL+2 ControlNets+refiner pipeline load plus generation plus refinement "
+                        "took >180s and triggered a real client-side timeout on a shared/contended GPU "
+                        "(verified 2026-09-24, see models/blanket/NOTICE.md); 900s default leaves real "
+                        "margin, not just covering the one observed case")
     p.add_argument("--ctx-id", type=int, default=0, help="0 for GPU/MPS, -1 for CPU")
     p.add_argument("--random-init", action="store_true",
                    help="Smoke test: random generator weights, output is NOT real anonymization")
@@ -174,6 +197,15 @@ def main() -> None:
 
     img_size = args.img_size if args.img_size is not None else DEFAULT_IMG_SIZE.get(args.model, 512)
 
+    # --refine-mask has no single global default: ciagan defaults off (pure
+    # seam cleanup, opt-in), blanket defaults ON (the only way this project
+    # addresses BLANKET's own documented weak-identity-suppression
+    # limitation — see models/blanket/NOTICE.md). Explicit --refine-mask/
+    # --no-refine-mask always wins regardless of model.
+    refine_mask = args.refine_mask
+    if refine_mask is None:
+        refine_mask = args.model == "blanket"
+
     weights = Path(args.weights) if args.weights else None
     if weights is None and not args.random_init and args.model in DEFAULT_WEIGHTS_FILENAME:
         weights = CONFIG.weights_dir / DEFAULT_WEIGHTS_FILENAME[args.model]
@@ -182,20 +214,29 @@ def main() -> None:
     if dlib_predictor is None and args.model in DEFAULT_DLIB_PREDICTOR_FILENAME:
         dlib_predictor = CONFIG.weights_dir / DEFAULT_DLIB_PREDICTOR_FILENAME[args.model]
 
-    # Shared between ganonymization (required) and ciagan (opt-in via
-    # --refine-mask) — see models/DEFAULT_SEGMENTATION_WEIGHTS_FILENAME.
-    needs_segmentation = args.model == "ganonymization" or (args.model == "ciagan" and args.refine_mask)
+    # Shared between ganonymization (required), ciagan (opt-in via
+    # --refine-mask) and blanket (default-on, see models/blanket/NOTICE.md) —
+    # see models/DEFAULT_SEGMENTATION_WEIGHTS_FILENAME.
+    needs_segmentation = (
+        args.model == "ganonymization"
+        or (args.model == "ciagan" and refine_mask)
+        or (args.model == "blanket" and refine_mask)
+    )
     segmentation_weights = Path(args.segmentation_weights) if args.segmentation_weights else None
     if segmentation_weights is None and needs_segmentation:
         segmentation_weights = CONFIG.weights_dir / DEFAULT_SEGMENTATION_WEIGHTS_FILENAME
+
+    blanket_repo = Path(args.blanket_repo) if args.blanket_repo else None
+    blanket_identity_python = Path(args.blanket_identity_python) if args.blanket_identity_python else None
+    blanket_swap_python = Path(args.blanket_swap_python) if args.blanket_swap_python else None
 
     backend_kwargs: dict = {"random_init": args.random_init}
     if args.model == "ciagan":
         backend_kwargs.update(
             num_classes=args.num_classes, img_size=img_size,
             dlib_predictor=dlib_predictor, portrait_scale=args.portrait_scale,
-            refine_mask=args.refine_mask,
-            segmentation_weights=segmentation_weights if args.refine_mask else None,
+            refine_mask=refine_mask,
+            segmentation_weights=segmentation_weights if refine_mask else None,
         )
     elif args.model == "ganonymization":
         backend_kwargs.update(
@@ -203,6 +244,15 @@ def main() -> None:
             align_rotation=args.align_rotation,
             min_detection_confidence=args.min_detection_confidence,
             enhance_detection_input=args.enhance_detection_input,
+        )
+    elif args.model == "blanket":
+        backend_kwargs.update(
+            bridge_repo=blanket_repo,
+            identity_python=blanket_identity_python,
+            swap_python=blanket_swap_python,
+            server_timeout=args.blanket_server_timeout,
+            refine_mask=refine_mask,
+            segmentation_weights=segmentation_weights if refine_mask else None,
         )
 
     generator = FaceGenerator(model=args.model, weights=weights, ctx_id=args.ctx_id, **backend_kwargs)
@@ -215,6 +265,10 @@ def main() -> None:
     if not args.random_init and needs_segmentation and segmentation_weights is None:
         suffix = " with --refine-mask" if args.model == "ciagan" else ""
         p.error(f"--segmentation-weights is required for --model {args.model}{suffix} unless --random-init is set")
+
+    if not args.random_init and args.model == "blanket" and blanket_repo is None:
+        p.error("--blanket-repo is required for --model blanket unless --random-init is set "
+                "(path to a blanket-anonymizer-bridge checkout — see models/blanket/NOTICE.md)")
 
     stats: dict[int, dict] = {}  # track_id -> counts
     jsonl_path = phase1_dir / "detections.jsonl"

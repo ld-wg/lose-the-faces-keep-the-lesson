@@ -109,6 +109,23 @@ phase2-ganonymization = [
     "mediapipe>=0.10,<0.10.30",
 ]
 
+# Phase 2 — BLANKET generation backend (phase2_generate/models/blanket/).
+# Deliberately NOT its own optional-dependency group here: BLANKET's own
+# code (SDXL+ControlNet+refiner for identity generation, vendored FaceFusion
+# for the per-frame swap) never runs in THIS project's process at all — it
+# runs as two isolated external server processes inside the sibling
+# `blanket-anonymizer-bridge` repo's own two venvs (GPL-3.0 isolation, see
+# models/blanket/NOTICE.md), so none of those heavy dependencies belong in
+# this pyproject.toml. The ONLY dependency this backend adds to THIS
+# project is reused, not new: `--refine-mask` (default-on for blanket, see
+# run.py) calls the exact same `models/_segmentation.py` head-segmentation
+# path ganonymization already uses — install with
+# `uv sync --extra phase2-ganonymization` (torch/torchvision/
+# segmentation-models-pytorch; blanket needs none of that extra's
+# mediapipe pin, but there's no clean way to split one dependency out of an
+# existing extra, and duplicating the pins here would just be a second
+# place to keep in sync with the CUDA-ceiling comment above).
+
 # SCRFD-34GF's conversion tool (models/scrfd_34gf/convert.py) is NOT set up
 # through this file: mmcv 1.3.x / mmdet 2.11.0 predate PEP 517 build
 # isolation and don't resolve cleanly through uv's project lock. It needs
