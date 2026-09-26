@@ -330,6 +330,49 @@ stack on this specific footage's harder faces. Re-sweeping
 `context_ratio` might still be worth trying independently (not yet done),
 but the visual evidence here doesn't point to framing as the cause.
 
+### 2026-09-26: identity push in the swap embedding (contribution P2), β sweep
+
+Six arms on `video-demo-2.mov`. All share the frozen identities from
+`runs/blanket-identities-demo2`, so they differ only in the source embedding
+the inswapper is conditioned on. Coverage and skip reasons are identical in
+every arm (1153 anonymized; 1484 `identity_unusable`, 289 `swap_no_face`, 2
+`swap_iou_rejected`), which confirms the isolation. The track estimate is
+the pre-pass's `quality_mean`. About 37 min per arm, two arms in parallel
+(one per GPU), `--ctx-id -1`. Evaluated with `src/eval/evaluate.py`; the
+numbers below cover anonymized observations only (n = 1153 each). Closed-set
+rank-1 is over 24 tracks, so chance ≈ 0.04.
+
+| arm | FaceNet rank-1 | ArcFace rank-1 | FaceNet cos | ArcFace cos | consistency (FaceNet) | expression error | re-detected |
+|---|---|---|---|---|---|---|---|
+| `native` (BLANKET, w = −0.35 single-frame mix) | 0.597 | 0.913 | 0.533 | 0.367 | 0.791 | 0.087 | 0.995 |
+| `none` (w = 0, no push) | 0.645 | 0.935 | 0.530 | 0.370 | 0.791 | 0.084 | 0.995 |
+| `track` β = 0.2 | 0.540 | 0.823 | 0.513 | 0.324 | 0.791 | 0.086 | 0.995 |
+| `track` β = 0.35 | 0.428 | 0.647 | 0.492 | 0.291 | 0.783 | 0.086 | 0.995 |
+| `track` β = 0.5 | 0.375 | 0.440 | 0.464 | 0.262 | 0.778 | 0.086 | 0.995 |
+| `track` β = 0.8 | **0.297** | **0.272** | 0.410 | 0.214 | 0.764 | 0.085 | 0.995 |
+
+- **The push works, and it transfers to the held-out recognizer.**
+  Re-identification falls monotonically with β. The push target is an
+  ArcFace estimate, so the ArcFace drop is steeper (0.91 → 0.27). The
+  held-out FaceNet, never used in the push, still roughly halves
+  (0.60 → 0.30).
+- **At equal magnitude, the push in the right space is far stronger.**
+  `track` at β = 0.35 (the magnitude of BLANKET's own mix) reaches ArcFace
+  rank-1 0.65; `native` stays at 0.91, barely different from no push at all
+  (0.94). That is consistent with the measured `emap` mismatch
+  (bridge NOTICE.md): the native mix adds a vector unrelated to the target
+  identity in the swapper's conditioning space.
+- **No utility cost visible up to β = 0.8.** Expression error stays at
+  0.084–0.087, re-detection does not change, and flicker is flat. Within-track
+  consistency drops only slightly (0.79 → 0.76).
+- **Not saturated.** At β = 0.8 rank-1 is still far above chance. Stage 2
+  tries β 1.2 and 1.6, and at β = 0.8 compares the aggregation modes
+  (`first`, `best`, `mean`, `ema_adaptive` against this `quality_mean`).
+- **Caveat.** On this footage FaceNet's in-domain TAR at FAR 1% is 0.69 (vs
+  ArcFace 0.80), so its absolute numbers carry that uncertainty. The
+  comparison between arms is on identical faces and identities, which
+  makes it the robust part.
+
 ### 2026-09-26: seed candidates + Phase 1 boxes (contribution Step 3) — coverage barely moves, the bottleneck moves
 
 Run: `--identity-prepass --blanket-identity-cache runs/blanket-identities-demo2`,
