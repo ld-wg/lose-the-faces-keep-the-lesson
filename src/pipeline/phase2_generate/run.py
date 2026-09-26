@@ -165,6 +165,11 @@ def main() -> None:
                         "(and failures) across runs, so experiment arms share identical identities")
     p.add_argument("--blanket-swap-face-detector-score", type=float, default=None,
                    help="blanket: FaceFusion's face_detector_score in the swap stage (BLANKET ships 0.5)")
+    p.add_argument("--blanket-identity-gpu", type=str, default=None,
+                   help="blanket: CUDA_VISIBLE_DEVICES for the SDXL identity server (default: inherit). "
+                        "On a shared GPU, put it on a different device than the swap server")
+    p.add_argument("--blanket-swap-gpu", type=str, default=None,
+                   help="blanket: CUDA_VISIBLE_DEVICES for the FaceFusion swap server (default: inherit)")
     p.add_argument("--ctx-id", type=int, default=0, help="0 for GPU/MPS, -1 for CPU")
     p.add_argument("--random-init", action="store_true",
                    help="Smoke test: random generator weights, output is NOT real anonymization")
@@ -250,6 +255,8 @@ def main() -> None:
             max_identity_attempts=args.blanket_max_identity_attempts,
             identity_cache_dir=Path(args.blanket_identity_cache) if args.blanket_identity_cache else None,
             swap_face_detector_score=args.blanket_swap_face_detector_score,
+            identity_gpu=args.blanket_identity_gpu,
+            swap_gpu=args.blanket_swap_gpu,
         )
 
     generator = FaceGenerator(model=args.model, weights=weights, ctx_id=args.ctx_id, **backend_kwargs)
@@ -284,6 +291,10 @@ def main() -> None:
             mode=args.aggregation, k_candidates=args.seed_candidates, limit=args.limit,
             ema_alpha_floor=args.ema_alpha_floor,
         )
+        # The pre-pass's ONNX sessions are unreferenced now; collect them so
+        # their GPU memory is back before the generator loads (shared GPUs).
+        import gc
+        gc.collect()
     tracks = prepass.tracks if prepass is not None else {}
 
     with jsonl_path.open() as jf, ledger_path.open("w") as lf:

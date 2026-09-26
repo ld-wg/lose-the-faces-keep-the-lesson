@@ -76,6 +76,7 @@ from __future__ import annotations
 import atexit
 import json
 import logging
+import os
 import shutil
 import socket
 import subprocess
@@ -117,7 +118,8 @@ class _RpcClient:
     """
 
     def __init__(self, socket_path: Path, python: Path, server_script: Path,
-                 cwd: Path, extra_args: list[str], timeout: float, label: str):
+                 cwd: Path, extra_args: list[str], timeout: float, label: str,
+                 gpu: Optional[str] = None):
         self.socket_path = socket_path
         self.python = python
         self.server_script = server_script
@@ -125,6 +127,7 @@ class _RpcClient:
         self.extra_args = extra_args
         self.timeout = timeout
         self.label = label
+        self.gpu = gpu  # CUDA_VISIBLE_DEVICES for the server process; None = inherit
         self._proc: Optional[subprocess.Popen] = None
         self._sock: Optional[socket.socket] = None
 
@@ -145,7 +148,11 @@ class _RpcClient:
             )
         cmd = [str(self.python), str(self.server_script), "--socket", str(self.socket_path), *self.extra_args]
         logger.info(f"{self.label}: starting external server ({' '.join(cmd)})")
-        self._proc = subprocess.Popen(cmd, cwd=str(self.cwd))
+        env = None
+        if self.gpu is not None:
+            env = {**os.environ, "CUDA_VISIBLE_DEVICES": self.gpu}
+            logger.info(f"{self.label}: CUDA_VISIBLE_DEVICES={self.gpu}")
+        self._proc = subprocess.Popen(cmd, cwd=str(self.cwd), env=env)
         atexit.register(self._shutdown)
 
         deadline = time.monotonic() + self.timeout
@@ -290,6 +297,12 @@ class Backend:
         max_identity_attempts: int = 3,
         identity_cache_dir: Optional[Path] = None,
         swap_face_detector_score: Optional[float] = None,
+        # GPU placement of the two servers (CUDA_VISIBLE_DEVICES), for shared
+        # machines: on serra1 another user's job can hold 20 of each GPU's
+        # 24 GB, and SDXL + FaceFusion + this process's own models on one GPU
+        # ran out of memory (2026-09-25, see NOTICE.md).
+        identity_gpu: Optional[str] = None,
+        swap_gpu: Optional[str] = None,
     ):
         del weights  # accepted only for FaceGenerator's uniform construction contract, unused here
         self.ctx_id = ctx_id
@@ -329,6 +342,7 @@ class Backend:
                 socket_path=identity_socket, python=identity_python,
                 server_script=self.bridge_repo / "identity_server.py", cwd=self.bridge_repo,
                 extra_args=[], timeout=self.server_timeout, label="blanket/identity",
+                gpu=identity_gpu,
             )
             swap_args = [] if swap_face_detector_score is None else [
                 "--face-detector-score", str(swap_face_detector_score)]
@@ -336,6 +350,7 @@ class Backend:
                 socket_path=swap_socket, python=swap_python,
                 server_script=self.bridge_repo / "swap_server.py", cwd=self.bridge_repo,
                 extra_args=swap_args, timeout=self.server_timeout, label="blanket/swap",
+                gpu=swap_gpu,
             )
         else:
             self._identity_client = None
