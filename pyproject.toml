@@ -126,6 +126,18 @@ phase2-ganonymization = [
 # existing extra, and duplicating the pins here would just be a second
 # place to keep in sync with the CUDA-ceiling comment above).
 
+# Evaluation harness (src/eval/). torch backs only the held-out FaceNet
+# evaluator (src/eval/heldout.py); its model definition is vendored
+# instead of depending on the facenet-pytorch package, whose latest release
+# pins torch<2.3 (see src/eval/_vendor/inception_resnet_v1.py). Same Linux
+# cap and cu124 redirect as the phase2 extras above. The identity pre-pass
+# (src/pipeline/identity/) and the ArcFace/SCRFD side of the harness run on
+# the base insightface/onnxruntime dependencies and need nothing from here.
+eval = [
+    "torch>=2.2,<2.7; sys_platform == 'linux'",
+    "torch>=2.2; sys_platform == 'darwin'",
+]
+
 # SCRFD-34GF's conversion tool (models/scrfd_34gf/convert.py) is NOT set up
 # through this file: mmcv 1.3.x / mmdet 2.11.0 predate PEP 517 build
 # isolation and don't resolve cleanly through uv's project lock. It needs
