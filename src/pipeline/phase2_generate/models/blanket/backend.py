@@ -220,8 +220,13 @@ class _IdentityCache:
     swap-only experiments (Step 4) cost minutes instead of an hour. Failures
     are cached too, so a rerun never repeats an SDXL attempt.
 
-    Stores synthetic identity images only — never a real crop or an
-    embedding. `index.json` records the settings the identities were made
+    What it stores: each identity image is BLANKET's output, i.e. the
+    candidate crop with only the target face inpainted, so its *background
+    is real footage*: hair, clothing, and sometimes other people's faces at
+    the crop's edges. Treat the directory like `run.py`'s `generated/`
+    output, which carries the same real backgrounds: under `runs/`
+    (gitignored), on serra1 only, deleted with the run. No embedding is
+    stored. `index.json` records the settings the identities were made
     with; a directory made with different settings is refused rather than
     silently mixed.
     """
