@@ -28,7 +28,7 @@ ARCFACE_DST = np.array(
 ARCFACE_SIZE = 112
 
 
-def _umeyama_similarity(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
+def fit_similarity(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
     """2x3 similarity matrix (rotation, uniform scale, translation) mapping src onto dst."""
     src = np.asarray(src, dtype=np.float64)
     dst = np.asarray(dst, dtype=np.float64)
@@ -58,7 +58,7 @@ def template(size: int, margin: float = 0.0) -> np.ndarray:
 def similarity_matrix(landmarks: Sequence[Sequence[float]], size: int = ARCFACE_SIZE,
                       margin: float = 0.0) -> np.ndarray:
     lm = np.asarray(landmarks, dtype=np.float32).reshape(5, 2)
-    return _umeyama_similarity(lm, template(size, margin))
+    return fit_similarity(lm, template(size, margin))
 
 
 def warp(image: np.ndarray, landmarks: Sequence[Sequence[float]], size: int = ARCFACE_SIZE,
