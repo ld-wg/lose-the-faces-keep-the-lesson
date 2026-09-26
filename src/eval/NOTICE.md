@@ -55,6 +55,48 @@ guidance model.
 
 ## Calibration log
 
+### 2026-09-25: baseline table, three backends on `video-demo-2.mov` (Step 2)
+
+`python -m src.eval.evaluate --expression` over the existing runs:
+`phase2-ciagan-demo2`, `phase2-ganon-demo2-ctx0.8` and `phase2-blanket-demo2`.
+2928 observations, 400 s on serra1.
+
+**Evaluator sanity** (in-domain, FAR 1%, 996 genuine / 10500 impostor pairs):
+
+| recognizer | threshold | TAR | genuine mean | impostor mean |
+|---|---|---|---|---|
+| ArcFace | 0.527 | 0.795 | 0.672 | 0.158 |
+| FaceNet | 0.777 | 0.692 | 0.808 | 0.331 |
+
+FaceNet recognizes the real faces of this footage less well than ArcFace
+(TAR 0.69 vs 0.80). It was 0.93 on the first 20 frames, where faces are
+larger; the small, blurry faces later in the video pull it down. It is
+still clearly above chance, but its privacy numbers carry that caveat.
+
+**Anonymized observations only:**
+
+| backend | coverage | FaceNet cos | FaceNet rank-1 | ArcFace cos | ArcFace rank-1 | consistency (FaceNet) | expression error |
+|---|---|---|---|---|---|---|---|
+| ciagan | 1.000 | 0.137 | 0.117 | 0.037 | 0.070 | 0.671 | 0.191 |
+| ganonymization | 0.419 | 0.269 | 0.067 | 0.160 | 0.063 | 0.498 | 0.135 |
+| blanket | 0.382 | 0.535 | 0.695 | 0.366 | 0.933 | 0.751 | 0.080 |
+
+Rank-1 is closed-set over the video's 24 tracks, so chance is about 0.04.
+Over all observations with passthrough counted as a leak, rank-1
+(FaceNet) is 0.117 / 0.592 / 0.864 respectively.
+
+- **BLANKET keeps expression best and suppresses identity worst.** ArcFace
+  still re-identifies 93% of its anonymized faces (FaceNet 70%). The
+  swapped face keeps the real person's identity signal. This quantifies
+  the 2.5/5 perceived de-identification in its own user study, and it is
+  exactly what P2 (Step 4) targets.
+- **CIAGAN is the most private and the most expression-damaging.**
+- **GANonymization is private on the faces it anonymizes, but covers only
+  42% of them.** Its within-track consistency is the lowest (0.50): it has
+  no identity input, so every frame is a new face.
+- **Re-detection after anonymization:** ciagan 0.93, ganonymization 0.61,
+  blanket 1.00.
+
 ### 2026-09-25: identity pre-pass validated on `video-demo-2.mov` (Step 1)
 
 `python -m src.eval.identity_report` on Phase 1 run `demo2`: 244 frames,
