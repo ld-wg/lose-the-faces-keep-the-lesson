@@ -94,6 +94,8 @@ def main() -> None:
     p.add_argument("--link-cos", type=float, default=0.3,
                    help="report disjoint-in-time track pairs above this cosine as re-link candidates")
     p.add_argument("--no-pose", action="store_true", help="skip the 3D-68 pose model (pose term = 1)")
+    p.add_argument("--ema-alphas", type=float, nargs="+", default=[0.5, 0.7, 0.8, 0.9, 0.95],
+                   help="α_f values to sweep for ema_adaptive (Deep OC-SORT uses 0.95)")
     p.add_argument("--limit", type=int, default=None)
     args = p.parse_args()
 
@@ -170,23 +172,47 @@ def main() -> None:
     report["cross_track"] = {"cooccurring_pairs_cos": _stats(cooccur),
                              "relink_candidates": sorted(relink, key=lambda r: -r["cos"])}
 
-    # 6. modes on held-out halves, and convergence
+    # 6. modes on held-out halves, and convergence. Two criteria: the plain
+    # mean cosine to the held-out frames (which favors `mean` by
+    # construction — the mean direction maximizes average cosine), and the
+    # same weighted by each held-out frame's quality, closer to an
+    # attacker whose gallery holds good photos of the person.
     per_mode = {m: [] for m in MODES}
+    per_mode_q = {m: [] for m in MODES}
+    ema_sweep = {a: [] for a in args.ema_alphas}
+    ema_sweep_q = {a: [] for a in args.ema_alphas}
     conv = {m: {n: [] for n in CONVERGENCE_NS} for m in MODES}
     for obs in obs_by_track.values():
         if len(obs) < 6:
             continue
         half_a, half_b = obs[0::2], obs[1::2]
         units_b = np.stack([o.unit for o in half_b])
+        w_b = np.array([o.quality for o in half_b])
+        w_b = w_b if w_b.sum() > 0 else np.ones_like(w_b)
+
+        def score(est):
+            cos = units_b @ est
+            return float(cos.mean()), float((cos * w_b).sum() / w_b.sum())
+
         for m in MODES:
-            est = aggregate(half_a, m, outlier_cos=args.outlier_cos).embedding
-            per_mode[m].append(float((units_b @ est).mean()))
+            plain, weighted = score(aggregate(half_a, m, outlier_cos=args.outlier_cos).embedding)
+            per_mode[m].append(plain)
+            per_mode_q[m].append(weighted)
             for n in CONVERGENCE_NS:
                 if len(half_a) >= n:
                     est_n = aggregate(half_a[:n], m, outlier_cos=args.outlier_cos).embedding
-                    conv[m][n].append(float((units_b @ est_n).mean()))
+                    conv[m][n].append(score(est_n)[0])
+        for a in args.ema_alphas:
+            plain, weighted = score(aggregate(half_a, "ema_adaptive", outlier_cos=args.outlier_cos,
+                                              ema_alpha_floor=a).embedding)
+            ema_sweep[a].append(plain)
+            ema_sweep_q[a].append(weighted)
     report["modes_heldout_half"] = {
         "per_mode_mean_cos": {m: _r(np.mean(v)) if v else None for m, v in per_mode.items()},
+        "per_mode_quality_weighted_cos": {m: _r(np.mean(v)) if v else None for m, v in per_mode_q.items()},
+        "ema_alpha_floor_sweep": {str(a): {"mean_cos": _r(np.mean(ema_sweep[a])),
+                                           "quality_weighted_cos": _r(np.mean(ema_sweep_q[a]))}
+                                  for a in args.ema_alphas if ema_sweep[a]},
         "num_tracks": len(per_mode["mean"]),
         "convergence_mean_cos": {m: {str(n): _r(np.mean(v)) if v else None for n, v in d.items()}
                                  for m, d in conv.items()},
@@ -196,6 +222,8 @@ def main() -> None:
     out_path.write_text(json.dumps(report, indent=2))
     logger.info(f"wrote {out_path}")
     logger.info(f"held-out-half cosine by mode: {report['modes_heldout_half']['per_mode_mean_cos']}")
+    logger.info(f"  quality-weighted: {report['modes_heldout_half']['per_mode_quality_weighted_cos']}")
+    logger.info(f"  ema α_f sweep: {report['modes_heldout_half']['ema_alpha_floor_sweep']}")
     logger.info(f"quality vs agreement (pooled): {report['quality_vs_agreement']['pooled_spearman']}")
 
 
