@@ -94,6 +94,11 @@ logger = logging.getLogger(__name__)
 
 _CONNECT_RETRY_INTERVAL = 0.5  # seconds between socket-connect attempts while a server boots
 
+#: Swap-stage identity push (contribution P2). "native" = BLANKET unchanged
+#: (fixed push away from the current frame's real face), "none" = no push
+#: (control), "track" = push away from the track-level real-identity estimate.
+SWAP_MODES = ("native", "none", "track")
+
 
 class _ExternalServiceError(RuntimeError):
     """Raised on an explicit `{"error": ...}` RPC reply, a timeout, or a dead process.
@@ -285,6 +290,10 @@ class Backend:
         max_identity_attempts: int = 3,
         identity_cache_dir: Optional[Path] = None,
         swap_face_detector_score: Optional[float] = None,
+        # Identity push in the swap embedding (contribution plan, Step 4 —
+        # P2); see the bridge's swap_server.py for the three modes.
+        swap_mode: str = "native",
+        push_beta: float = 0.35,
     ):
         del weights  # accepted only for FaceGenerator's uniform construction contract, unused here
         self.ctx_id = ctx_id
@@ -294,6 +303,10 @@ class Backend:
         self.refine_mask = refine_mask
         self.segmentation_weights = segmentation_weights
         self.max_identity_attempts = max_identity_attempts
+        if swap_mode not in SWAP_MODES:
+            raise ValueError(f"unknown swap_mode {swap_mode!r}, choose from {SWAP_MODES}")
+        self.swap_mode = swap_mode
+        self.push_beta = push_beta
         self.last_skip_reason: Optional[str] = None
         self._failed: dict[int, str] = {}  # seed -> reason, seed-candidate mode only
         # Absolute: the swap server runs with BLANKET's repo root as its working
@@ -480,8 +493,17 @@ class Backend:
             swapped = crop.copy()
         else:
             crop_path = self._write_png(crop, "frame_in.png")
+            push = None
+            if self.swap_mode == "track":
+                p = getattr(context, "push_embedding", None)
+                if p is None:
+                    raise ValueError("swap_mode 'track' needs the identity pre-pass (run.py --identity-prepass)")
+                # Real-identity estimate: sent only in this mode, over the
+                # local socket, never logged (LGPD — see context.py).
+                push = [float(v) for v in p]
             reply = self._swap_client.call("swap_with_reason", identity_path=identity_path,
-                                           crop_path=str(crop_path))
+                                           crop_path=str(crop_path), mode=self.swap_mode,
+                                           push=push, beta=self.push_beta)
             swapped_path = reply["path"]
             if swapped_path is None:
                 # identity_unusable / swap_no_face / swap_iou_rejected — see
