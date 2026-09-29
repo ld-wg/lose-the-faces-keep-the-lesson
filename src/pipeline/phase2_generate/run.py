@@ -170,6 +170,14 @@ def main() -> None:
                         "On a shared GPU, put it on a different device than the swap server")
     p.add_argument("--blanket-swap-gpu", type=str, default=None,
                    help="blanket: CUDA_VISIBLE_DEVICES for the FaceFusion swap server (default: inherit)")
+    p.add_argument("--blanket-swap-mode", choices=("native", "none", "track"), default="native",
+                   help="blanket: identity push in the swap embedding (contribution P2). native = "
+                        "BLANKET unchanged (fixed push away from the current frame's real face); none = "
+                        "no push; track = push away from the pre-pass's track-level real identity "
+                        "(needs --identity-prepass)")
+    p.add_argument("--blanket-push-beta", type=float, default=0.35,
+                   help="blanket --blanket-swap-mode track: push strength (0.35 = the magnitude of "
+                        "BLANKET's own native push)")
     p.add_argument("--ctx-id", type=int, default=0, help="0 for GPU/MPS, -1 for CPU")
     p.add_argument("--random-init", action="store_true",
                    help="Smoke test: random generator weights, output is NOT real anonymization")
@@ -257,7 +265,12 @@ def main() -> None:
             swap_face_detector_score=args.blanket_swap_face_detector_score,
             identity_gpu=args.blanket_identity_gpu,
             swap_gpu=args.blanket_swap_gpu,
+            swap_mode=args.blanket_swap_mode,
+            push_beta=args.blanket_push_beta,
         )
+        if args.blanket_swap_mode == "track" and not args.identity_prepass:
+            p.error("--blanket-swap-mode track needs --identity-prepass (the push target is the "
+                    "pre-pass's track-level real identity)")
 
     generator = FaceGenerator(model=args.model, weights=weights, ctx_id=args.ctx_id, **backend_kwargs)
     if args.random_init:
