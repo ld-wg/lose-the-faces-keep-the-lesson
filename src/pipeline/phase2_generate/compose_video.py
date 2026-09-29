@@ -37,7 +37,7 @@ import cv2
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from config import CONFIG  # noqa: E402
 
-from .run import crop_box  # noqa: E402
+from .cropping import crop_box  # noqa: E402
 from ..contracts import Frame, Manifest  # noqa: E402
 
 
