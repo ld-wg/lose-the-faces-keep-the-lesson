@@ -17,7 +17,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _common import SERIES, Experiment  # noqa: E402
 
-RECOGNIZERS = {"facenet": "FaceNet (held-out)", "arcface": "ArcFace (guidance)"}
+RECOGNIZERS = {"facenet": "FaceNet", "arcface": "ArcFace"}   # roles go in the caption: held-out / guidance
 BRIDGE = Path(os.environ.get("BLANKET_REPO", Path.home() / "projects" / "blanket-anonymizer-bridge"))
 
 
@@ -42,11 +42,10 @@ def mechanism_check(exp: Experiment, crops: Path, faces: int) -> None:
     exp.metric("e0/mechanism/emap-direction-cos-mean", m["emap_direction_cos"]["mean"])
     exp.metric("e0/mechanism/faces", m["faces"])
     exp.table("mechanism", ["Check", "Value"], [
-        ["Recognizer equivalence, mean cosine (FaceFusion vs buffalo_l, identical crops)",
-         m["recognizer_equivalence_cos"]["mean"]],
+        ["Recognizer equivalence, mean cosine", m["recognizer_equivalence_cos"]["mean"]],
         ["Recognizer equivalence, minimum cosine", m["recognizer_equivalence_cos"]["min"]],
-        ["inswapper emap: Frobenius distance of E^T E to identity, / sqrt(512)", m["emap_orthogonality"]],
-        ["Mean cosine between an embedding and its emap projection", m["emap_direction_cos"]["mean"]],
+        ["emap distance from orthogonal", m["emap_orthogonality"]],
+        ["emap direction change, mean cosine", m["emap_direction_cos"]["mean"]],
         ["Faces checked", m["faces"]],
     ], align="lr")
 
@@ -71,7 +70,7 @@ with Experiment(__file__) as exp:
         for rec, label in RECOGNIZERS.items():
             c = calibration[rec]
             rows.append([video.name, label, c["threshold"], c["tar"], c["genuine_mean"], c["impostor_mean"],
-                         f"{c['n_genuine']} / {c['n_impostor']}"])
+                         f"{c['n_genuine']}/{c['n_impostor']}"])
             exp.metric(f"e0/{video.name}/{rec}.threshold", c["threshold"])
             exp.metric(f"e0/{video.name}/{rec}.tar", c["tar"])
             exp.metric(f"e0/{video.name}/{rec}.genuine-mean", c["genuine_mean"])
@@ -91,8 +90,7 @@ with Experiment(__file__) as exp:
     exp.note("noise_floor", "pending: needs the utility probes")
 
     exp.table("recognizers",
-              ["Video", "Recognizer", "Threshold", f"TAR @ FAR {far:.0%}", "Genuine mean", "Impostor mean",
-               "Pairs (gen. / imp.)"], rows, align="llrrrrr")
+              ["Video", "Recognizer", "Threshold", "TAR", "Genuine", "Impostor", "Pairs"], rows, align="llrrrrr")
 
     # Genuine vs impostor similarity, pooled over videos, with each video's threshold.
     hist_rows = []
