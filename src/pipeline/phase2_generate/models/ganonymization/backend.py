@@ -414,10 +414,10 @@ class Backend:
         gen_full_bgr = cv2.cvtColor(gen_full_rgb, cv2.COLOR_RGB2BGR)
         return poisson_composite(crop, gen_full_bgr, mask_full)
 
-    def generate(self, crop: np.ndarray, seed: int) -> Optional[np.ndarray]:
-        """Anonymize the face in `crop` (BGR uint8). `seed` is accepted for
-        Backend-contract compatibility but has no effect — see
-        `identity_class()`.
+    def generate(self, crop: np.ndarray, seed: int, context=None) -> Optional[np.ndarray]:
+        """Anonymize the face in `crop` (BGR uint8). `seed` and `context` are
+        accepted for Backend-contract compatibility but have no effect — see
+        `identity_class()`; this generator has no identity input.
 
         Returns a same-shape/dtype BGR image, or None if no usable
         landmarks could be extracted on either detection pass (caller

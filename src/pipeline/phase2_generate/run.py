@@ -54,7 +54,8 @@ import cv2
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from config import CONFIG  # noqa: E402
 
-from .cropping import context_crop as _context_crop, crop_box  # noqa: E402,F401 — crop_box re-exported
+from .context import FaceContext  # noqa: E402
+from .cropping import context_crop as _context_crop, crop_box  # noqa: E402,F401 — re-exported
 from .generator import FaceGenerator  # noqa: E402
 from .models import (  # noqa: E402
     DEFAULT_CONTEXT_RATIO,
@@ -65,6 +66,8 @@ from .models import (  # noqa: E402
     MODEL_NAMES,
 )
 from ..contracts import Frame, Manifest  # noqa: E402
+from ..identity.aggregate import MODES as AGGREGATION_MODES  # noqa: E402
+from ..identity.align import shift as shift_landmarks  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -142,6 +145,31 @@ def main() -> None:
                         "took >180s and triggered a real client-side timeout on a shared/contended GPU "
                         "(verified 2026-09-24, see models/blanket/NOTICE.md); 900s default leaves real "
                         "margin, not just covering the one observed case")
+    p.add_argument("--identity-prepass", action=argparse.BooleanOptionalAction, default=False,
+                   help="run the track-level identity pre-pass first (src/pipeline/identity/): "
+                        "per-track real-identity estimate and best-quality seed crops, passed to the "
+                        "backend as context. Off by default so the frozen baselines stay reproducible")
+    p.add_argument("--aggregation", choices=AGGREGATION_MODES, default="quality_mean",
+                   help="identity pre-pass: how a track's frames are combined (see identity/aggregate.py)")
+    p.add_argument("--seed-candidates", type=int, default=5,
+                   help="identity pre-pass: best-quality real crops kept per track")
+    p.add_argument("--ema-alpha-floor", type=float, default=0.8,
+                   help="identity pre-pass, --aggregation ema_adaptive: α_f (0.8 was best on "
+                        "video-demo-2; Deep OC-SORT's 0.95 stays anchored to the first frame, see "
+                        "src/eval/NOTICE.md)")
+    p.add_argument("--blanket-max-identity-attempts", type=int, default=3,
+                   help="blanket with --identity-prepass: seed candidates tried per track before "
+                        "giving up (each attempt is one SDXL generation)")
+    p.add_argument("--blanket-identity-cache", type=str, default=None,
+                   help="blanket with --identity-prepass: directory persisting generated identities "
+                        "(and failures) across runs, so experiment arms share identical identities")
+    p.add_argument("--blanket-swap-face-detector-score", type=float, default=None,
+                   help="blanket: FaceFusion's face_detector_score in the swap stage (BLANKET ships 0.5)")
+    p.add_argument("--blanket-identity-gpu", type=str, default=None,
+                   help="blanket: CUDA_VISIBLE_DEVICES for the SDXL identity server (default: inherit). "
+                        "On a shared GPU, put it on a different device than the swap server")
+    p.add_argument("--blanket-swap-gpu", type=str, default=None,
+                   help="blanket: CUDA_VISIBLE_DEVICES for the FaceFusion swap server (default: inherit)")
     p.add_argument("--ctx-id", type=int, default=0, help="0 for GPU/MPS, -1 for CPU")
     p.add_argument("--random-init", action="store_true",
                    help="Smoke test: random generator weights, output is NOT real anonymization")
@@ -224,6 +252,11 @@ def main() -> None:
             server_timeout=args.blanket_server_timeout,
             refine_mask=refine_mask,
             segmentation_weights=segmentation_weights if refine_mask else None,
+            max_identity_attempts=args.blanket_max_identity_attempts,
+            identity_cache_dir=Path(args.blanket_identity_cache) if args.blanket_identity_cache else None,
+            swap_face_detector_score=args.blanket_swap_face_detector_score,
+            identity_gpu=args.blanket_identity_gpu,
+            swap_gpu=args.blanket_swap_gpu,
         )
 
     generator = FaceGenerator(model=args.model, weights=weights, ctx_id=args.ctx_id, **backend_kwargs)
@@ -247,6 +280,23 @@ def main() -> None:
     t0 = time.time()
     num_frames = 0
 
+    prepass = None
+    if args.identity_prepass:
+        from ..identity.embedder import ArcFaceEmbedder, PoseEstimator
+        from ..identity.prepass import run_prepass
+
+        prepass = run_prepass(
+            jsonl_path, video_path, identities, context_ratio,
+            embedder=ArcFaceEmbedder(ctx_id=args.ctx_id), pose_estimator=PoseEstimator(ctx_id=args.ctx_id),
+            mode=args.aggregation, k_candidates=args.seed_candidates, limit=args.limit,
+            ema_alpha_floor=args.ema_alpha_floor,
+        )
+        # The pre-pass's ONNX sessions are unreferenced now; collect them so
+        # their GPU memory is back before the generator loads (shared GPUs).
+        import gc
+        gc.collect()
+    tracks = prepass.tracks if prepass is not None else {}
+
     with jsonl_path.open() as jf, ledger_path.open("w") as lf:
         for line in jf:
             if args.limit is not None and num_frames >= args.limit:
@@ -269,7 +319,7 @@ def main() -> None:
                 s = stats.setdefault(face.track_id, {
                     "seed": identity.seed if identity else None,
                     "num_frames_generated": 0, "num_frames_passthrough": 0,
-                    "num_frames_skipped_no_identity": 0,
+                    "num_frames_skipped_no_identity": 0, "passthrough_reasons": {},
                 })
 
                 if identity is None:
@@ -284,15 +334,28 @@ def main() -> None:
                     }) + "\n")
                     continue
 
-                crop = _context_crop(video_frame, face.box, context_ratio)
+                fh, fw = video_frame.shape[:2]
+                cx1, cy1, cx2, cy2 = crop_box(fh, fw, face.box, context_ratio)
+                crop = video_frame[cy1:cy2, cx1:cx2]
+                x1, y1, x2, y2 = face.box
+                context = FaceContext(
+                    frame_id=frame_rec.frame_id,
+                    box_in_crop=(x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1),
+                    landmarks_in_crop=shift_landmarks(face.landmarks, cx1, cy1) if face.landmarks else None,
+                    track=tracks.get(face.track_id),
+                )
                 out_track_dir = generated_dir / str(face.track_id)
                 out_track_dir.mkdir(exist_ok=True)
                 out_path = out_track_dir / f"{frame_rec.frame_id:06d}.png"
 
-                out_img = generator.generate(crop, identity.seed)
+                out_img = generator.generate(crop, identity.seed, context=context)
+                reason = None
                 if out_img is None:
                     status = "skipped_no_landmarks"
+                    reason = generator.last_skip_reason
                     s["num_frames_passthrough"] += 1
+                    key = reason or "unspecified"
+                    s["passthrough_reasons"][key] = s["passthrough_reasons"].get(key, 0) + 1
                     cv2.imwrite(str(out_path), crop)
                 else:
                     status = "ok"
@@ -301,7 +364,7 @@ def main() -> None:
 
                 lf.write(json.dumps({
                     "frame_id": frame_rec.frame_id, "track_id": face.track_id,
-                    "status": status, "output_path": str(out_path.relative_to(out_dir)),
+                    "status": status, "reason": reason, "output_path": str(out_path.relative_to(out_dir)),
                     "model": args.model, "seed": identity.seed,
                     "identity_class": generator.identity_class(identity.seed),
                 }) + "\n")
@@ -330,10 +393,16 @@ def main() -> None:
              "identity_class": generator.identity_class(s["seed"]) if s["seed"] is not None else None,
              "num_frames_generated": s["num_frames_generated"],
              "num_frames_passthrough": s["num_frames_passthrough"],
-             "num_frames_skipped_no_identity": s["num_frames_skipped_no_identity"]}
+             "num_frames_skipped_no_identity": s["num_frames_skipped_no_identity"],
+             "passthrough_reasons": s["passthrough_reasons"]}
             for tid, s in stats.items()
         ],
         "num_frames": num_frames, "fps": round(fps, 2),
+        # No embeddings here — TrackIdentity.summary() is scalars and frame ids only (LGPD).
+        "identity_prepass": None if prepass is None else {
+            "aggregation": args.aggregation, "seed_candidates": args.seed_candidates,
+            "ema_alpha_floor": args.ema_alpha_floor, **prepass.summary(),
+        },
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(run_manifest, indent=2))
 

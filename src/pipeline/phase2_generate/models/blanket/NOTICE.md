@@ -330,6 +330,57 @@ stack on this specific footage's harder faces. Re-sweeping
 `context_ratio` might still be worth trying independently (not yet done),
 but the visual evidence here doesn't point to framing as the cause.
 
+### 2026-09-26: seed candidates + Phase 1 boxes (contribution Step 3) — coverage barely moves, the bottleneck moves
+
+Run: `--identity-prepass --blanket-identity-cache runs/blanket-identities-demo2`,
+3 attempts per track. Each attempt is one SDXL generation from one of the
+track's best-quality crops, with Phase 1's box instead of BLANKET's YOLO,
+followed by `check_identity`. Took about 2 h 20 min on serra1 with the GPUs
+shared.
+
+**Result: 1153/2928 anonymized (39.4%), vs 1119 (38.2%) for the baseline.**
+13 of 24 tracks got a usable identity. The other 11 failed all 3 attempts
+with `identity_unusable`, never `identity_no_face`.
+
+| cause | baseline (2026-09-24) | this run |
+|---|---|---|
+| identity never generated (BLANKET's YOLO saw no face) | 598 | 0 |
+| identity generated but FaceFusion finds no face in it | 943 | 1484 |
+| per-frame swap misses (`swap_no_face` / `swap_iou_rejected`) | 268 | 289 / 2 |
+
+The Phase 1 box removes the "never generated" cause completely. Those
+tracks now reach SDXL, and their identities are unusable instead. Three
+hypotheses for why were tested on the failed images themselves, without
+any new SDXL run:
+
+- **Resolution — disconfirmed.** Identities are resized back to crop size
+  (sometimes ~110 px), so this was the first suspect. But upscaling the
+  failed images ×2 or ×4 does not make FaceFusion detect a face at its 0.5
+  threshold. One failed image is 645×406, and usable ones are as small as
+  153×136.
+- **Head pose / quality ranking — disconfirmed.** Pitch and yaw
+  (buffalo_l 3D-68) at the candidate frames do not separate the groups.
+  Usable tracks 1–3 have candidates at pitch −19° to −24° (heads down);
+  unusable tracks 6, 10, 11, 14, 17 and 18 are near 0°. Candidate quality
+  does not separate them either: track 7 fails at 0.66, track 9 works at
+  0.17.
+- **Detector confidence — the lead to follow.** At face_detector_score
+  0.3 instead of 0.5, about half of the failed images yield one face. The
+  generated faces seem to be atypical enough to score low with FaceFusion's
+  `yolo_face`. Visual inspection of two failed images shows faces covered
+  by a hand or bowed over a desk, reproduced faithfully by the openpose and
+  canny ControlNets. The planned `--blanket-swap-face-detector-score`
+  sweep is the next step. Failures are cached and their images dropped
+  from the cache directory, so that sweep needs a fresh cache (≈2 h of
+  SDXL) or a re-check over the bridge's `output/identities/`.
+
+**GPU contention finding.** Another user's training job holds 20 of 24 GB on
+both of serra1's GPUs. The first two attempts at this run went out of
+memory with SDXL, FaceFusion and this process's head-segmentation model on
+one GPU; the swap server alone takes about 3.1 GB. The working
+configuration is `--blanket-identity-gpu 1 --blanket-swap-gpu 0 --ctx-id -1`
+(pre-pass and segmentation on CPU).
+
 ### 2026-09-24: `video-demo-2.mov` full run completes — 1119/2928 (38%), failure modes attributed
 
 Third attempt (after the seamlessClone and IoU-filter fixes below)
