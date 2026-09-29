@@ -76,6 +76,7 @@ from __future__ import annotations
 import atexit
 import json
 import logging
+import os
 import shutil
 import socket
 import subprocess
@@ -117,7 +118,8 @@ class _RpcClient:
     """
 
     def __init__(self, socket_path: Path, python: Path, server_script: Path,
-                 cwd: Path, extra_args: list[str], timeout: float, label: str):
+                 cwd: Path, extra_args: list[str], timeout: float, label: str,
+                 gpu: Optional[str] = None):
         self.socket_path = socket_path
         self.python = python
         self.server_script = server_script
@@ -125,6 +127,7 @@ class _RpcClient:
         self.extra_args = extra_args
         self.timeout = timeout
         self.label = label
+        self.gpu = gpu  # CUDA_VISIBLE_DEVICES for the server process; None = inherit
         self._proc: Optional[subprocess.Popen] = None
         self._sock: Optional[socket.socket] = None
 
@@ -145,7 +148,11 @@ class _RpcClient:
             )
         cmd = [str(self.python), str(self.server_script), "--socket", str(self.socket_path), *self.extra_args]
         logger.info(f"{self.label}: starting external server ({' '.join(cmd)})")
-        self._proc = subprocess.Popen(cmd, cwd=str(self.cwd))
+        env = None
+        if self.gpu is not None:
+            env = {**os.environ, "CUDA_VISIBLE_DEVICES": self.gpu}
+            logger.info(f"{self.label}: CUDA_VISIBLE_DEVICES={self.gpu}")
+        self._proc = subprocess.Popen(cmd, cwd=str(self.cwd), env=env)
         atexit.register(self._shutdown)
 
         deadline = time.monotonic() + self.timeout
@@ -205,6 +212,57 @@ class _RpcClient:
                 self._proc.kill()
 
 
+class _IdentityCache:
+    """Seed-candidate identities persisted across runs (`--blanket-identity-cache DIR`).
+
+    SDXL output is not reproducible across runs even with a fixed seed
+    (observed on track 3, see NOTICE.md), so two experiment arms that each
+    regenerate identities would differ in the identity *and* the variable
+    under test. Freezing the identities once removes that confound and makes
+    swap-only experiments (Step 4) cost minutes instead of an hour. Failures
+    are cached too, so a rerun never repeats an SDXL attempt.
+
+    What it stores: each identity image is BLANKET's output, i.e. the
+    candidate crop with only the target face inpainted, so its *background
+    is real footage*: hair, clothing, and sometimes other people's faces at
+    the crop's edges. Treat the directory like `run.py`'s `generated/`
+    output, which carries the same real backgrounds: under `runs/`
+    (gitignored), on serra1 only, deleted with the run. No embedding is
+    stored. `index.json` records the settings the identities were made
+    with; a directory made with different settings is refused rather than
+    silently mixed.
+    """
+
+    VERSION = 1
+
+    def __init__(self, directory: Path, max_attempts: int):
+        self.dir = directory
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.index_path = self.dir / "index.json"
+        self.settings = {"version": self.VERSION, "identity_source": "seed_candidates",
+                         "max_attempts": max_attempts}
+        if self.index_path.is_file():
+            index = json.loads(self.index_path.read_text())
+            if index.get("settings") != self.settings:
+                raise ValueError(
+                    f"identity cache {self.dir} was built with {index.get('settings')}, not "
+                    f"{self.settings} — use a fresh --blanket-identity-cache directory"
+                )
+            self.entries: dict[str, dict] = index.get("entries", {})
+        else:
+            self.entries = {}
+
+    def get(self, seed: int) -> Optional[dict]:
+        entry = self.entries.get(str(seed))
+        if entry and entry["status"] == "ok" and not Path(entry["path"]).is_file():
+            return None  # image deleted by hand — regenerate
+        return entry
+
+    def put(self, seed: int, entry: dict) -> None:
+        self.entries[str(seed)] = entry
+        self.index_path.write_text(json.dumps({"settings": self.settings, "entries": self.entries}, indent=2))
+
+
 class Backend:
     """BLANKET via two isolated external processes (`IdentityGenerator`, `FaceSwapper`).
 
@@ -233,6 +291,18 @@ class Backend:
         server_timeout: float = 900.0,
         refine_mask: bool = True,
         segmentation_weights: Optional[Path] = None,
+        # Seed-candidate identity generation (contribution plan, Step 3):
+        # used only when generate() receives a context whose track carries
+        # seed candidates (run.py --identity-prepass).
+        max_identity_attempts: int = 3,
+        identity_cache_dir: Optional[Path] = None,
+        swap_face_detector_score: Optional[float] = None,
+        # GPU placement of the two servers (CUDA_VISIBLE_DEVICES), for shared
+        # machines: on serra1 another user's job can hold 20 of each GPU's
+        # 24 GB, and SDXL + FaceFusion + this process's own models on one GPU
+        # ran out of memory (2026-09-25, see NOTICE.md).
+        identity_gpu: Optional[str] = None,
+        swap_gpu: Optional[str] = None,
     ):
         del weights  # accepted only for FaceGenerator's uniform construction contract, unused here
         self.ctx_id = ctx_id
@@ -241,6 +311,13 @@ class Backend:
         self.server_timeout = server_timeout
         self.refine_mask = refine_mask
         self.segmentation_weights = segmentation_weights
+        self.max_identity_attempts = max_identity_attempts
+        self.last_skip_reason: Optional[str] = None
+        self._failed: dict[int, str] = {}  # seed -> reason, seed-candidate mode only
+        # Absolute: the swap server runs with BLANKET's repo root as its working
+        # directory, so a relative image path would resolve somewhere else there.
+        self._cache = (_IdentityCache(Path(identity_cache_dir).resolve(), max_identity_attempts)
+                       if identity_cache_dir else None)
 
         self._scratch_dir = Path(tempfile.mkdtemp(prefix="blanket_ipc_"))
         atexit.register(shutil.rmtree, self._scratch_dir, ignore_errors=True)
@@ -265,11 +342,15 @@ class Backend:
                 socket_path=identity_socket, python=identity_python,
                 server_script=self.bridge_repo / "identity_server.py", cwd=self.bridge_repo,
                 extra_args=[], timeout=self.server_timeout, label="blanket/identity",
+                gpu=identity_gpu,
             )
+            swap_args = [] if swap_face_detector_score is None else [
+                "--face-detector-score", str(swap_face_detector_score)]
             self._swap_client = _RpcClient(
                 socket_path=swap_socket, python=swap_python,
                 server_script=self.bridge_repo / "swap_server.py", cwd=self.bridge_repo,
-                extra_args=[], timeout=self.server_timeout, label="blanket/swap",
+                extra_args=swap_args, timeout=self.server_timeout, label="blanket/swap",
+                gpu=swap_gpu,
             )
         else:
             self._identity_client = None
@@ -326,24 +407,107 @@ class Backend:
         self._identity_cache[seed] = identity_path
         return identity_path
 
-    def generate(self, crop: np.ndarray, seed: int) -> Optional[np.ndarray]:
+    def _identity_from_candidates(self, seed: int, candidates: list) -> Optional[str]:
+        """Seed-candidate mode (contribution plan, Step 3): build the track's
+        identity from its best-quality real crops, in order, instead of from
+        whichever crop arrives first.
+
+        Each attempt passes Phase 1's own box to the identity server (skipping
+        BLANKET's YOLO, which found no face at all in 11 of 24 tracks on
+        video-demo-2) and asks the swap server whether FaceFusion finds a
+        face in the result — an unusable identity (5 long tracks, 943 lost
+        observations on video-demo-2) now triggers the next candidate instead
+        of passing the whole track through. The outcome, success or failure,
+        is cached per seed: attempts are deterministic in which crops they
+        use, so retrying every frame would only repeat the same SDXL calls.
+        """
+        if seed in self._identity_cache:
+            return self._identity_cache[seed]
+        if seed in self._failed:
+            return None
+        if self._cache is not None:
+            entry = self._cache.get(seed)
+            if entry is not None:
+                if entry["status"] == "ok":
+                    self._identity_cache[seed] = entry["path"]
+                    return entry["path"]
+                self._failed[seed] = entry["status"]
+                return None
+
+        if self.random_init:
+            path = str(self._write_png(candidates[0].crop, f"seed_{seed}_random.png"))
+            self._identity_cache[seed] = path
+            return path
+
+        reasons = []
+        for attempt, cand in enumerate(candidates[: self.max_identity_attempts]):
+            crop_path = self._write_png(cand.crop, f"seed_{seed}_cand{attempt}.png")
+            generated = self._identity_client.call(
+                "generate", crop_path=str(crop_path), seed=seed,
+                box=[float(v) for v in cand.box_in_crop], tag=f"c{attempt}",
+            )
+            if generated is None:
+                reasons.append("identity_no_face")
+                continue
+            path = generated
+            if self._cache is not None:
+                path = str(self._cache.dir / f"seed_{seed}_c{attempt}.jpg")
+                shutil.copyfile(generated, path)
+            if not self._swap_client.call("check_identity", identity_path=path):
+                reasons.append("identity_unusable")
+                if self._cache is not None:
+                    Path(path).unlink(missing_ok=True)
+                continue
+            logger.info(f"blanket: seed {seed} identity from candidate {attempt} "
+                        f"(frame {cand.frame_id}, quality {cand.quality:.3f})")
+            self._identity_cache[seed] = path
+            if self._cache is not None:
+                self._cache.put(seed, {"status": "ok", "path": path,
+                                       "candidate_frame": cand.frame_id, "attempt": attempt})
+            return path
+
+        status = "identity_unusable" if "identity_unusable" in reasons else "identity_no_face"
+        logger.info(f"blanket: seed {seed} has no usable identity after {len(reasons)} attempt(s): {reasons}")
+        self._failed[seed] = status
+        if self._cache is not None:
+            self._cache.put(seed, {"status": status, "path": None, "attempts": reasons})
+        return None
+
+    def generate(self, crop: np.ndarray, seed: int, context=None) -> Optional[np.ndarray]:
         """Anonymize the face in `crop` (BGR uint8, context-padded box already
         cut by `run.py`). Returns a same-shape/dtype BGR image, or `None` if
-        no usable face could be found (caller falls back to passthrough).
+        no usable face could be found (caller falls back to passthrough);
+        `last_skip_reason` then says why.
+
+        With a `context` whose track has seed candidates (run.py
+        --identity-prepass), the identity comes from `_identity_from_candidates`;
+        otherwise from the first crop BLANKET's own detector accepts, as before.
         """
-        identity_path = self._seed_identity_path(crop, seed)
-        if identity_path is None:
-            return None
+        self.last_skip_reason = None
+        track = getattr(context, "track", None)
+        if track is not None and track.seed_candidates:
+            identity_path = self._identity_from_candidates(seed, track.seed_candidates)
+            if identity_path is None:
+                self.last_skip_reason = self._failed.get(seed, "identity_no_face")
+                return None
+        else:
+            identity_path = self._seed_identity_path(crop, seed)
+            if identity_path is None:
+                self.last_skip_reason = "identity_no_face"
+                return None
 
         if self.random_init:
             swapped = crop.copy()
         else:
             crop_path = self._write_png(crop, "frame_in.png")
-            swapped_path = self._swap_client.call("swap", identity_path=identity_path, crop_path=str(crop_path))
+            reply = self._swap_client.call("swap_with_reason", identity_path=identity_path,
+                                           crop_path=str(crop_path))
+            swapped_path = reply["path"]
             if swapped_path is None:
-                # FaceFusion's own internal yolo_face redetection found nothing
-                # in this crop — legitimate "skip this frame", same contract as
-                # ciagan/ganonymization's own no-landmarks case.
+                # identity_unusable / swap_no_face / swap_iou_rejected — see
+                # the bridge's swap_server.py. Legitimate "skip this frame",
+                # same contract as ciagan/ganonymization's no-landmarks case.
+                self.last_skip_reason = reply["reason"]
                 return None
             swapped = cv2.imread(str(swapped_path))
             if swapped is None:

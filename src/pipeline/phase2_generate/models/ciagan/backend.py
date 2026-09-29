@@ -345,8 +345,9 @@ class Backend:
         shape = self._dlib_predictor(crop, rect)
         return np.array([[shape.part(i).x, shape.part(i).y] for i in range(68)], dtype=np.float64)
 
-    def generate(self, crop: np.ndarray, seed: int) -> Optional[np.ndarray]:
+    def generate(self, crop: np.ndarray, seed: int, context=None) -> Optional[np.ndarray]:
         """Anonymize the face in `crop` (BGR uint8), seeded by `seed`.
+        `context` (`phase2_generate/context.py`) is accepted and not used yet.
 
         `seed` should be `Identity.seed` (contracts.derive_seed) — same seed
         always maps to the same identity class (see `identity_class()`), so
