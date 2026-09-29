@@ -138,6 +138,13 @@ eval = [
     "torch>=2.2; sys_platform == 'darwin'",
 ]
 
+# Paper experiments (experiments/): figures only. Tables, the \result{} keys and
+# the statistics use the stdlib + numpy. Pair it with the eval extra, which the
+# experiments call through src.eval.
+experiments = [
+    "matplotlib>=3.8",
+]
+
 # SCRFD-34GF's conversion tool (models/scrfd_34gf/convert.py) is NOT set up
 # through this file: mmcv 1.3.x / mmdet 2.11.0 predate PEP 517 build
 # isolation and don't resolve cleanly through uv's project lock. It needs

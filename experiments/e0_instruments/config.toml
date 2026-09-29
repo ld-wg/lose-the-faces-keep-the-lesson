@@ -1,0 +1,22 @@
+# E0 — instrument validation. Every input and parameter of this experiment.
+# Machine-specific settings (GPU placement, bridge path) come from the
+# environment; see experiments/README.md.
+
+[inputs]
+videos = ["demo1", "demo2", "demo3"]
+
+[detect]                 # Phase 1, identical to E2/E3
+model = "scrfd-10gf"
+conf = 0.3
+det_size = 640
+
+[recognizers]
+far = 0.01               # false-accept rate that sets the in-domain threshold
+histogram_bins = 40      # for the score-distribution figure
+
+[mechanism]
+enabled = true
+faces = 300              # real face crops sampled from the first video
+
+[noise_floor]
+enabled = false          # needs the utility probes (emotion, pose, gaze, attributes)

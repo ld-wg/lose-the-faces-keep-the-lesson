@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# bin/eval <anonymize-folder> [more anonymize folders of the same video...] [-- flags...]
+#   Privacy and utility metrics (src.eval.evaluate), one table for all folders.
+#   All folders must come from the same detect folder. Flags after -- pass through.
+#   env  CTX_ID
+# Prints the new results/ folder last.
+source "$(dirname "$0")/_lib.sh"
+[[ $# -ge 1 ]] || { sed -n '2,6p' "$0" >&2; exit 1; }
+
+dirs=() flags=()
+while [[ $# -gt 0 ]]; do
+  if [[ $1 == -- ]]; then shift; flags=("$@"); break; fi
+  dirs+=("$(cd "$1" && pwd)"); shift
+done
+
+det=$(json_get "${dirs[0]}/run_manifest.json" phase1_dir)
+video=$(json_get "${dirs[0]}/run_manifest.json" video)
+for d in "${dirs[@]}"; do
+  [[ $(json_get "$d/run_manifest.json" phase1_dir) == "$det" ]] || die "$d uses a different detect folder"
+done
+if [[ -n ${CTX_ID:-} ]]; then flags+=(--ctx-id "$CTX_ID"); fi
+
+out=$(new_dir eval "${#dirs[@]}runs" "$(stem "$video")")
+args=()
+for d in "${dirs[@]}"; do args+=(--phase2-dir "$d"); done
+run "$out" eval uv run python -m src.eval.evaluate \
+  --phase1-dir "$det" --video "$video" --out "$out" --expression "${args[@]}" ${flags[@]+"${flags[@]}"}

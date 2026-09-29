@@ -1,0 +1,48 @@
+# E2 — generators in their original form. Every input and parameter.
+# GPU placement for BLANKET comes from the environment (IDENTITY_GPU, SWAP_GPU, CTX_ID).
+
+[inputs]
+videos = ["demo1", "demo2", "demo3"]
+
+[detect]
+model = "scrfd-10gf"
+conf = 0.3
+det_size = 640
+
+[[arms]]
+name = "blur"
+backend = "censor"
+mode = "blur"
+
+[[arms]]
+name = "mosaic"
+backend = "censor"
+mode = "mosaic"
+
+[[arms]]
+name = "ciagan"
+backend = "ciagan"
+
+[[arms]]
+name = "ganonymization"
+backend = "ganonymization"
+
+[[arms]]
+name = "blanket"
+backend = "blanket"
+identity_prepass = false  # original BLANKET: identity from the first usable crop
+swap_mode = "native"      # FaceFusion's own mix, as shipped
+
+[eval]
+far = 0.01
+recognizers = ["facenet", "arcface"]
+utility = ["expression", "pose", "gaze", "emotion", "attributes"]
+bootstrap = 2000
+seed = 0
+
+[eval.strata]
+face_size_px = [0, 48, 96, 1000000]   # sqrt(box area) bins
+abs_yaw_deg = [0, 20, 45, 90]
+
+[tables]
+main = ["coverage", "facenet.rank1", "arcface.rank1", "emotion.agreement", "expression.error", "consistency"]

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# bin/detect <video> [model] [flags...]
+#   Phase 1 (detection + tracking) on one video.
+#   <video>  a path, or a short name in data/videos/ (demo1, demo2, demo3)
+#   [model]  scrfd-10gf (default), scrfd-34gf, yolo-facev2-s
+#   flags    passed through to src.pipeline.phase1_detect.run (e.g. --conf 0.4)
+# Prints the new results/ folder last:  det=$(bin/detect demo3 | tail -1)
+source "$(dirname "$0")/_lib.sh"
+[[ $# -ge 1 ]] || { sed -n '2,8p' "$0" >&2; exit 1; }
+
+video=$(video_path "$1"); shift
+model=scrfd-10gf
+if [[ $# -gt 0 && $1 != -* ]]; then model=$1; shift; fi
+
+dir=$(new_dir detect "$model" "$(stem "$video")")
+run "$dir" detect uv run python -m src.pipeline.phase1_detect.run \
+  --input "$video" --out "$dir" --model "$model" "$@"

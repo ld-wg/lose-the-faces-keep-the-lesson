@@ -157,7 +157,10 @@ def _mean(values) -> Optional[float]:
     return _r(np.mean(v)) if v else None
 
 
-def calibrate(reals: list[RealObs], far: float, rng: np.random.Generator) -> dict:
+def calibrate(reals: list[RealObs], far: float, rng: np.random.Generator,
+              scores: Optional[list[dict]] = None) -> dict:
+    """In-domain thresholds per recognizer. When `scores` is given, every
+    genuine / impostor similarity is appended to it (scalars only) for plotting."""
     by_track: dict[int, list[RealObs]] = defaultdict(list)
     for r in reals:
         by_track[r.track_id].append(r)
@@ -186,6 +189,9 @@ def calibrate(reals: list[RealObs], far: float, rng: np.random.Generator) -> dic
                     "genuine_mean": _r(g.mean()) if g.size else None,
                     "impostor_mean": _r(imp.mean()) if imp.size else None,
                     "n_genuine": int(g.size), "n_impostor": int(imp.size)}
+        if scores is not None:
+            scores.extend({"recognizer": rec, "kind": "genuine", "score": round(float(s), 5)} for s in g)
+            scores.extend({"recognizer": rec, "kind": "impostor", "score": round(float(s), 5)} for s in imp)
     return out
 
 
@@ -288,7 +294,11 @@ def _markdown(report: dict) -> str:
 def main() -> None:
     p = argparse.ArgumentParser(description="Evaluate Phase 2 runs against their Phase 1 source")
     p.add_argument("--phase1-dir", required=True)
-    p.add_argument("--phase2-dir", action="append", required=True, help="repeatable")
+    p.add_argument("--phase2-dir", action="append", default=[], help="repeatable")
+    p.add_argument("--calibration-only", action="store_true",
+                   help="only the real faces: in-domain thresholds and TAR per recognizer, no Phase 2 run")
+    p.add_argument("--scores-out", default=None,
+                   help="write every genuine / impostor similarity to this CSV (scalars only, no embeddings)")
     p.add_argument("--video", default=None, help="default: tracks.json's video.source")
     p.add_argument("--out", default=None, help="output dir (default: runs/eval/<phase1-dir name>)")
     p.add_argument("--far", type=float, default=0.01)
@@ -298,6 +308,8 @@ def main() -> None:
     p.add_argument("--limit", type=int, default=None, help="stop after this many frames (testing)")
     args = p.parse_args()
 
+    if not args.phase2_dir and not args.calibration_only:
+        p.error("give at least one --phase2-dir, or --calibration-only")
     phase1_dir = Path(args.phase1_dir)
     manifest = Manifest.load(phase1_dir / "tracks.json")
     identities = {i.track_id for i in manifest.identities}
@@ -381,7 +393,12 @@ def main() -> None:
     cap.release()
 
     rng = np.random.default_rng(0)
-    calibration = calibrate(reals, args.far, rng)
+    scores: Optional[list[dict]] = [] if args.scores_out else None
+    calibration = calibrate(reals, args.far, rng, scores)
+    if scores is not None:
+        with open(args.scores_out, "w") as f:
+            f.write("recognizer,kind,score\n")
+            f.writelines(f"{s['recognizer']},{s['kind']},{s['score']}\n" for s in scores)
     report = {
         "phase1_dir": str(phase1_dir), "video": video, "num_frames": num_frames,
         "num_real_observations": len(reals),

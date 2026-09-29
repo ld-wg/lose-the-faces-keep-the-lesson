@@ -1,0 +1,42 @@
+# E3 — with and without our ideas (C2, seed candidates, P2). Every input and parameter.
+# GPU placement for BLANKET comes from the environment (IDENTITY_GPU, SWAP_GPU, CTX_ID).
+
+[inputs]
+videos = ["demo1", "demo2", "demo3"]
+
+[detect]
+model = "scrfd-10gf"
+conf = 0.3
+det_size = 640
+
+[e3a]                                  # C2: track-level real identity
+modes = ["first", "best", "mean", "quality_mean", "ema_adaptive"]
+ema_alpha_floors = [0.5, 0.7, 0.8, 0.9, 0.95]
+outlier_cos = 0.2
+link_cos = 0.3
+
+[e3b]                                  # seed candidates + Phase 1 boxes
+arms = [
+  { name = "original",   identity_prepass = false },
+  { name = "candidates", identity_prepass = true, seed_candidates = 5, max_identity_attempts = 3 },
+]
+
+[e3c]                                  # P2: push strength
+identity_prepass = true
+aggregation = "quality_mean"
+modes = ["native", "none"]             # references: BLANKET's own mix, no push
+betas = [0.2, 0.35, 0.5, 0.8, 1.2, 1.6]
+reference = "native"                   # paired comparisons against this arm
+
+[e3d]                                  # P2: push target
+beta = 1.2                             # operating point: best held-out result (exploratory)
+aggregations = ["quality_mean", "mean", "best", "first", "ema_adaptive"]
+ema_alpha_floor = 0.8
+reference = "first"
+
+[eval]
+far = 0.01
+recognizers = ["facenet", "arcface"]
+utility = ["expression", "pose", "gaze", "emotion", "attributes"]
+bootstrap = 2000
+seed = 0

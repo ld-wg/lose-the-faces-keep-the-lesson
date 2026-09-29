@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# bin/video <anonymize-folder>
+#   Paste the generated crops back into the full video: <folder>/output.mp4.
+#   The detect folder and the source video come from the run's manifest.
+source "$(dirname "$0")/_lib.sh"
+[[ $# -eq 1 ]] || { sed -n '2,4p' "$0" >&2; exit 1; }
+
+dir=$(cd "$1" && pwd)
+[[ -f $dir/run_manifest.json ]] || die "$dir is not an anonymize folder (no run_manifest.json)"
+det=$(json_get "$dir/run_manifest.json" phase1_dir)
+video=$(json_get "$dir/run_manifest.json" video)
+
+run "$dir" video uv run python -m src.pipeline.phase2_generate.compose_video \
+  --phase1-dir "$det" --phase2-dir "$dir" --video "$video" --out "$dir/output.mp4"
