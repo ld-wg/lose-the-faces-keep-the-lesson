@@ -15,6 +15,7 @@ import importlib
 _MODULES = {
     "ciagan": "ciagan",
     "ganonymization": "ganonymization",
+    "blanket": "blanket",
 }
 
 #: model name -> expected weights filename under CONFIG.weights_dir.
@@ -29,6 +30,12 @@ _MODULES = {
 #  confirmed side-by-side on the same real crop, not assumed. Pass
 #  `--weights weights/ganonymization_pix2pix_25.ckpt` explicitly if
 #  reproducing the paper's own reported numbers is the goal.
+#  blanket: deliberately absent. Unlike ciagan/ganonymization, there is no
+#  single checkpoint this project manages under CONFIG.weights_dir — all of
+#  BLANKET's own checkpoints (SDXL inpainting + refiner + 2 ControlNets,
+#  inswapper_128, GFPGAN) are resolved entirely inside the two external
+#  venvs of the sibling blanket-anonymizer-bridge repo, outside this
+#  project's control. See models/blanket/NOTICE.md.
 DEFAULT_WEIGHTS_FILENAME = {
     "ciagan": "ciagan_generator.pth",
     "ganonymization": "ganonymization_pix2pix_50.ckpt",
@@ -36,9 +43,12 @@ DEFAULT_WEIGHTS_FILENAME = {
 
 #: Expected head-segmentation checkpoint filename under CONFIG.weights_dir.
 #  A plain string, not a per-model dict: it's the same shared checkpoint
-#  and model class (models/_vendor/head_segmentation_model.py) for both
-#  ganonymization (required — its primary compositing mask) and ciagan
-#  (opt-in, via --refine-mask — see models/ciagan/NOTICE.md).
+#  and model class (models/_vendor/head_segmentation_model.py) for
+#  ganonymization (required — its primary compositing mask), ciagan
+#  (opt-in, via --refine-mask — see models/ciagan/NOTICE.md), and blanket
+#  (default-on --refine-mask — see models/blanket/NOTICE.md; here it's the
+#  only way to address BLANKET's own documented weak-identity-suppression
+#  limitation, not just a seam cleanup).
 DEFAULT_SEGMENTATION_WEIGHTS_FILENAME = "head_segmentation.ckpt"
 
 #: model name -> expected dlib shape-predictor filename under CONFIG.weights_dir
@@ -56,6 +66,12 @@ DEFAULT_DLIB_PREDICTOR_FILENAME = {
 DEFAULT_IMG_SIZE = {
     "ciagan": 128,
     "ganonymization": 512,
+    # blanket: informational only, NOT enforced by this backend (unlike the
+    # other two) — verified against BLANKET's own real
+    # stable_diffusion_parameters.yaml: SDXL inpainting at 896x896. The
+    # actual resize happens entirely inside the external IdentityGenerator
+    # process, outside this project's control.
+    "blanket": 896,
 }
 
 #: model name -> crop padding as a multiple of the detected box's own
@@ -83,6 +99,12 @@ DEFAULT_CONTEXT_RATIO = {
     # not tested — flagged as an open question, not chased further this
     # round.
     "ganonymization": 0.8,
+    # blanket: starting point only, borrowed from ganonymization's own
+    # calibrated value for the same reason (--refine-mask's full-head
+    # segmentation needs hair/forehead physically present in the crop) —
+    # NOT itself calibrated against real blanket output yet. Re-sweep once
+    # a real run exists, see models/blanket/NOTICE.md's calibration log.
+    "blanket": 0.8,
 }
 
 MODEL_NAMES = tuple(_MODULES)
