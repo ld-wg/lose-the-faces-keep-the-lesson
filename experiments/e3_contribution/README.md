@@ -16,7 +16,7 @@ pairwise.
 | Part | Question | Arms | Metrics |
 |---|---|---|---|
 | **E3a** · C2 | Does the whole-track estimate represent the person better than one frame? | aggregation modes `first`, `best`, `mean`, `quality_mean`, `ema_adaptive` (α_f sweep) | cosine to the unseen half of the track (plain and quality-weighted); convergence vs frames seen; Spearman quality × agreement (pooled, within track); cross-track floor |
-| **E3b** · seed candidates | Do quality-ranked seed crops and Phase 1 boxes fix BLANKET's coverage? | BLANKET original vs with candidates | coverage by cause; privacy and utility as controls |
+| **E3b** · seed candidates and Phase 1 detection | Do quality-ranked seed crops, and swapping the face Phase 1 found (plus the lenient identity detector), fix BLANKET's coverage? | BLANKET original; with candidates; with candidates and `detection = phase1` (DECISIONS.md 36) | coverage by cause; privacy and utility as controls |
 | **E3c** · P2 strength | How far does the push cut re-identification, and at what utility cost? | `native`, `none`, `track` with β ∈ {0.2, 0.35, 0.5, 0.8, 1.2, 1.6} | E2's metric set, plus the transfer gap (ArcFace − FaceNet rank-1) |
 | **E3d** · P2 target | Does the aggregated identity make a better push target than one frame? | at β 1.2: targets `quality_mean`, `mean`, `best`, `first`, `ema_adaptive` | as E3c |
 
@@ -28,7 +28,7 @@ apply to it.
 | File | Content |
 |---|---|
 | `latex/tab-e3-aggregation.tex` | E3a: cosine to unseen frames per mode, per video and pooled |
-| `latex/tab-e3-coverage.tex` | E3b: coverage by cause, original vs candidates |
+| `latex/tab-e3-coverage.tex` | E3b: coverage by cause, original vs candidates vs Phase 1 detection |
 | `latex/tab-e3-p2-strength.tex` | E3c: privacy and utility per arm, with paired intervals vs `native` |
 | `latex/tab-e3-p2-target.tex` | E3d |
 | `latex/fig-e3-p2-curve.pdf` (+ `.csv`) | FaceNet and ArcFace rank-1 vs β, with expression and emotion as guards |

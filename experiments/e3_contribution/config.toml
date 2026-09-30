@@ -6,7 +6,7 @@ videos = ["demo1", "demo2", "demo3"]
 
 [detect]
 model = "scrfd-10gf"
-conf = 0.3
+conf = 0.1   # DECISIONS.md 35: the pipeline default; below 0.5 only extends tracks
 det_size = 640
 
 [e3a]                                  # C2: track-level real identity
@@ -15,10 +15,11 @@ ema_alpha_floors = [0.5, 0.7, 0.8, 0.9, 0.95]
 outlier_cos = 0.2
 link_cos = 0.3
 
-[e3b]                                  # seed candidates + Phase 1 boxes
+[e3b]                                  # seed candidates + Phase 1 detection in the swap
 arms = [
-  { name = "original",   identity_prepass = false },
-  { name = "candidates", identity_prepass = true, seed_candidates = 5, max_identity_attempts = 3 },
+  { name = "original",   identity_prepass = false, detection = "upstream" },
+  { name = "candidates", identity_prepass = true, seed_candidates = 5, max_identity_attempts = 3, detection = "upstream" },
+  { name = "phase1",     identity_prepass = true, seed_candidates = 5, max_identity_attempts = 3, detection = "phase1" },
 ]
 
 [e3c]                                  # P2: push strength

@@ -6,7 +6,7 @@ videos = ["demo1", "demo2", "demo3"]
 
 [detect]
 model = "scrfd-10gf"
-conf = 0.3
+conf = 0.1   # DECISIONS.md 35: the pipeline default; below 0.5 only extends tracks
 det_size = 640
 
 [[arms]]
@@ -32,6 +32,7 @@ name = "blanket"
 backend = "blanket"
 identity_prepass = false  # original BLANKET: identity from the first usable crop
 swap_mode = "native"      # FaceFusion's own mix, as shipped
+detection = "upstream"    # BLANKET's own yolo_face re-detection (DECISIONS.md 36)
 
 [eval]
 far = 0.01
@@ -46,3 +47,4 @@ abs_yaw_deg = [0, 20, 45, 90]
 
 [tables]
 main = ["coverage", "facenet.rank1", "arcface.rank1", "emotion.agreement", "expression.error", "consistency"]
+exposure = ["generated", "reused", "filled"]   # final-video composition, all face boxes
