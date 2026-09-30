@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# bin/audit <detect-folder> [anonymize-folder] [flags...]
+#   Exposure audit (src.eval.audit): which faces stay real, and why. Colors every
+#   face on the video: generated, failed (with the backend's reason), or a gap
+#   where the track lost the face. Without an anonymize folder: detection only.
+#   flags  passed through (e.g. --background <anonymize-folder>/output.mp4)
+# Prints the new results/ folder last.
+source "$(dirname "$0")/_lib.sh"
+[[ $# -ge 1 ]] || { sed -n '2,7p' "$0" >&2; exit 1; }
+
+det=$(cd "$1" && pwd); shift
+args=(--phase1-dir "$det")
+label=detect
+if [[ $# -gt 0 && $1 != -* ]]; then
+  args+=(--phase2-dir "$(cd "$1" && pwd)"); label=$(json_get "$1/run_manifest.json" model); shift
+fi
+video=$(json_get "$det/tracks.json" video source)
+out=$(new_dir audit "$label" "$(stem "$video")")
+run "$out" audit uv run python -m src.eval.audit "${args[@]}" --out "$out" "$@"
