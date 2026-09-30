@@ -30,6 +30,14 @@ from typing import Optional
 Box = tuple[float, float, float, float]  # (x1, y1, x2, y2), source-frame pixels
 Landmarks = list[tuple[float, float]]    # 5-point: eyes, nose, mouth corners
 
+# Where a Face came from. Only "detector" faces were seen by the detector in
+# that frame (and carry landmarks); the others are Phase 1's recall post-pass
+# (phase1_detect/fill.py) placing a box where a face almost certainly is, so
+# the final video hides it: "interpolated" (inside a track's gap),
+# "dilated" (a few frames before/after a track) and "unconfirmed" (a track
+# too short to get a synthetic identity).
+SOURCES = ("detector", "interpolated", "dilated", "unconfirmed")
+
 
 def derive_seed(video_source: str, track_id: int) -> int:
     """Deterministic per-track seed. Same (video, track_id) -> same seed, always."""
@@ -45,15 +53,23 @@ class Face:
     confidence: float
     landmarks: Optional[Landmarks] = None
     crop_path: Optional[str] = None  # relative to the run dir, e.g. "crops/000123_4.jpg"
+    source: str = "detector"         # one of SOURCES
+
+    @property
+    def detected(self) -> bool:
+        return self.source == "detector"
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "track_id": self.track_id,
             "box": [round(v, 1) for v in self.box],
             "conf": round(self.confidence, 3),
             "landmarks": [[round(x, 1), round(y, 1)] for x, y in self.landmarks] if self.landmarks else None,
             "crop_path": self.crop_path,
         }
+        if self.source != "detector":
+            d["source"] = self.source
+        return d
 
     @staticmethod
     def from_dict(d: dict) -> "Face":
@@ -64,6 +80,7 @@ class Face:
             confidence=d["conf"],
             landmarks=[tuple(p) for p in lm] if lm else None,
             crop_path=d.get("crop_path"),
+            source=d.get("source", "detector"),
         )
 
 

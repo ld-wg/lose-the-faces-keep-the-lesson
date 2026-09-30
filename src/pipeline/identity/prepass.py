@@ -84,8 +84,8 @@ def run_prepass(
             h, w = frame.shape[:2]
 
             for face in frame_rec.faces:
-                if face.track_id not in identities:
-                    continue
+                if face.track_id not in identities or not face.detected:
+                    continue  # post-pass boxes (fill.py) carry no face evidence
                 if not face.landmarks:
                     skipped += 1
                     continue
