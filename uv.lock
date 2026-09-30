@@ -1070,6 +1070,9 @@ eval = [
     { name = "torch", version = "2.6.0+cu124", source = { registry = "https://download.pytorch.org/whl/cu124" }, marker = "sys_platform == 'linux'" },
     { name = "torch", version = "2.14.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
 ]
+experiments = [
+    { name = "matplotlib" },
+]
 phase2-ciagan = [
     { name = "dlib" },
     { name = "torch", version = "2.6.0+cu124", source = { registry = "https://download.pytorch.org/whl/cu124" }, marker = "sys_platform == 'linux'" },
@@ -1092,6 +1095,7 @@ yolo-facev2-convert = [
 requires-dist = [
     { name = "dlib", marker = "extra == 'phase2-ciagan'", specifier = ">=19.24" },
     { name = "insightface", specifier = ">=0.7.3" },
+    { name = "matplotlib", marker = "extra == 'experiments'", specifier = ">=3.8" },
     { name = "mediapipe", marker = "extra == 'phase2-ganonymization'", specifier = ">=0.10,<0.10.30" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin'", specifier = ">=1.16.0" },
@@ -1109,7 +1113,7 @@ requires-dist = [
     { name = "torchvision", marker = "sys_platform == 'darwin' and extra == 'phase2-ganonymization'", specifier = ">=0.17" },
     { name = "torchvision", marker = "sys_platform == 'linux' and extra == 'phase2-ganonymization'", specifier = ">=0.17,<0.22", index = "https://download.pytorch.org/whl/cu124" },
 ]
-provides-extras = ["yolo-facev2-convert", "phase2-ciagan", "phase2-ganonymization", "eval"]
+provides-extras = ["yolo-facev2-convert", "phase2-ciagan", "phase2-ganonymization", "eval", "experiments"]
 
 [[package]]
 name = "markupsafe"

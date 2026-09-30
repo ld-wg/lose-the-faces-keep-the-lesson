@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# bin/anonymize <detect-folder> <model> [flags...]
+#   Phase 2 (generation) over a bin/detect result. The video comes from it.
+#   <model>  ciagan, ganonymization, blanket
+#   flags    passed through to src.pipeline.phase2_generate.run
+#            (e.g. --identity-prepass --blanket-swap-mode track --blanket-push-beta 1.2)
+#   env      BLANKET_REPO, IDENTITY_GPU, SWAP_GPU, CTX_ID (machine defaults; serra1: 1, 0, -1)
+# Prints the new results/ folder last.
+source "$(dirname "$0")/_lib.sh"
+[[ $# -ge 2 ]] || { sed -n '2,9p' "$0" >&2; exit 1; }
+
+det=$(cd "$1" && pwd); model=$2; shift 2
+[[ -f $det/tracks.json ]] || die "$det is not a detect folder (no tracks.json)"
+video=$(json_get "$det/tracks.json" video source)
+
+extra=()
+if [[ $model == blanket ]]; then
+  extra+=(--blanket-repo "${BLANKET_REPO:-$HOME/projects/blanket-anonymizer-bridge}")
+  if [[ -n ${IDENTITY_GPU:-} ]]; then extra+=(--blanket-identity-gpu "$IDENTITY_GPU"); fi
+  if [[ -n ${SWAP_GPU:-} ]]; then extra+=(--blanket-swap-gpu "$SWAP_GPU"); fi
+fi
+if [[ -n ${CTX_ID:-} ]]; then extra+=(--ctx-id "$CTX_ID"); fi
+
+dir=$(new_dir anonymize "$model" "$(stem "$video")")
+run "$dir" anonymize uv run python -m src.pipeline.phase2_generate.run \
+  --phase1-dir "$det" --video "$video" --model "$model" --out "$dir" ${extra[@]+"${extra[@]}"} "$@"

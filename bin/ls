@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# bin/ls — the results/ folders created by bin/, newest last, with a one-line summary.
+source "$(dirname "$0")/_lib.sh"
+[[ -d $RESULTS ]] || { echo "no results yet ($RESULTS)"; exit 0; }
+
+python3 - "$RESULTS" <<'EOF'
+import json, sys
+from pathlib import Path
+
+for d in sorted(p for p in Path(sys.argv[1]).iterdir() if p.is_dir()):
+    note = ""
+    if (d / "tracks.json").is_file():
+        t = json.loads((d / "tracks.json").read_text())
+        note = f"{t['video']['frame_count']} frames, {len(t['identities'])} tracks"
+    elif (d / "generation.jsonl").is_file():
+        lines = (d / "generation.jsonl").read_text().splitlines()
+        ok = sum('"status": "ok"' in l for l in lines)
+        note = f"{ok}/{len(lines)} anonymized" + ("  + video" if (d / "output.mp4").is_file() else "")
+    elif (d / "eval.json").is_file():
+        e = json.loads((d / "eval.json").read_text())
+        note = "  ".join(f"{name}: FaceNet rank-1 {m['recognizers']['facenet']['anonymized_only']['rank1_rate']}"
+                         for name, m in e["runs"].items())
+    print(f"{d.name:<60} {note}")
+EOF

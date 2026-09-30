@@ -1,0 +1,23 @@
+# E1 — face detectors. Every input and parameter of this experiment.
+# The WIDER FACE location is machine-specific: CONFIG.widerface_root
+# (config.local.json or PPY_WIDERFACE).
+
+[inputs]
+videos = ["demo1", "demo2", "demo3"]
+widerface_split = "val"
+
+[arms]
+models = ["scrfd-10gf", "scrfd-34gf", "yolo-facev2-s"]
+
+[detect]                  # identical for every arm
+conf = 0.3
+det_size = 640
+
+[widerface]
+iou = 0.5                 # official protocol
+fppi = [0.01, 0.1]        # recall at these false positives per image
+latency_warmup = 20       # images discarded before timing
+latency_images = 500      # images timed
+
+[videos]
+short_track_frames = 10   # fragmentation proxy: tracks shorter than this
