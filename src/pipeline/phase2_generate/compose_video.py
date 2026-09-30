@@ -67,23 +67,26 @@ def _load_ledger(ledger_path: Path) -> dict[tuple[int, int], dict]:
 
 
 def _region(box, expand: float, w: int, h: int):
-    """The box expanded `expand` times, clipped to the frame, and the ellipse
-    inscribed in the unclipped expanded box, in region coordinates."""
+    """The ellipse inscribed in the box expanded `expand` times, and the frame
+    region holding it plus its feathered edge (clipped to the frame), with the
+    ellipse in region coordinates: (cx, cy, half-width, half-height, feather)."""
     x1, y1, x2, y2 = box
     cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
     hw, hh = (x2 - x1) * expand / 2, (y2 - y1) * expand / 2
-    rx1, ry1 = max(0, int(cx - hw)), max(0, int(cy - hh))
-    rx2, ry2 = min(w, int(np.ceil(cx + hw))), min(h, int(np.ceil(cy + hh)))
-    return (rx1, ry1, rx2, ry2), (cx - rx1, cy - ry1, hw, hh)
+    feather = max(1.0, 0.1 * min(hw, hh))
+    pad = 3 * feather  # the soft edge fades out inside the region, not at its border
+    rx1, ry1 = max(0, int(cx - hw - pad)), max(0, int(cy - hh - pad))
+    rx2, ry2 = min(w, int(np.ceil(cx + hw + pad))), min(h, int(np.ceil(cy + hh + pad)))
+    return (rx1, ry1, rx2, ry2), (cx - rx1, cy - ry1, hw, hh, feather)
 
 
 def _alpha(shape, ellipse) -> np.ndarray:
     """Feathered ellipse: 1 inside, soft only outside the ellipse's edge."""
-    cx, cy, hw, hh = ellipse
+    cx, cy, hw, hh, feather = ellipse
     mask = np.zeros(shape, np.float32)
     cv2.ellipse(mask, (int(round(cx)), int(round(cy))), (max(1, int(hw)), max(1, int(hh))),
                 0, 0, 360, 1.0, -1)
-    mask = cv2.GaussianBlur(mask, (0, 0), max(1.0, 0.1 * min(hw, hh)))
+    mask = cv2.GaussianBlur(mask, (0, 0), feather)
     return np.clip(2 * mask, 0, 1)[..., None]
 
 
