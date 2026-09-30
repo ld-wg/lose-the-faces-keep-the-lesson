@@ -106,10 +106,12 @@ with Experiment(__file__) as exp:
                 hist_rows += [{"recognizer": rec, "kind": kind, "bin_left": round(float(a), 4),
                                "bin_right": round(float(b), 4), "density": round(float(d), 5)}
                               for a, b, d in zip(edges[:-1], edges[1:], density)]
-            for r in rows:
-                if r[1] == label:
-                    ax.axvline(r[2], color="#0b0b0b", linewidth=0.8, linestyle=(0, (3, 2)))
+            for i, r in enumerate(r for r in rows if r[1] == label):
+                ax.axvline(r[2], color="#0b0b0b", linewidth=0.8, linestyle=(0, (3, 2)),
+                           label="threshold at FAR 1% (one per video)" if i == 0 else "_nolegend_")
             ax.set_title(label)
             ax.set_xlabel("cosine similarity")
         axes[0].set_ylabel("density")
-        axes[0].legend(frameon=False, loc="upper left")
+        # One legend above both panels, clear of the data and the threshold lines.
+        fig.legend(*axes[0].get_legend_handles_labels(), loc="lower center",
+                   bbox_to_anchor=(0.5, 1.0), ncol=3, frameon=False)
