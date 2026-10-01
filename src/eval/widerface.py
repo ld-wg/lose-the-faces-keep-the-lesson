@@ -154,13 +154,16 @@ def official_ap(preds: dict, gt, iou: float = 0.5) -> dict:
 
 
 def operating_points(preds: dict, gt, conf_at: float, fppi: list[float], iou: float = 0.5) -> dict:
-    """Hard set, raw scores: P/R/F1 at `conf_at`; recall at each FPPI target."""
+    """Hard set, raw scores: P/R/F1 at `conf_at`; recall at each FPPI target. Only
+    images present in `preds` count (all of them, unless --limit)."""
     boxes_all, events, files, keep = gt
     matches = []   # (score, 1 if true positive, 0 if false positive); predictions on ignored faces dropped
     n_faces = n_images = 0
     for i in range(len(events)):
         event = str(events[i][0][0])
         for j in range(len(files[i][0])):
+            if str(files[i][0][j][0][0]) not in preds.get(event, {}):
+                continue
             n_images += 1
             gt_boxes = boxes_all[i][0][j][0].astype(np.float64)
             keep_idx = keep["hard"][i][0][j][0].ravel() - 1
@@ -179,7 +182,8 @@ def operating_points(preds: dict, gt, conf_at: float, fppi: list[float], iou: fl
             for h in range(len(p)):   # score order
                 cand = np.where((ov[h] >= iou) & ~used)[0] if len(g) else []
                 if len(cand):
-                    k = cand[np.argmax(ov[h, cand])]
+                    pool = cand[valid[cand]] if valid[cand].any() else cand
+                    k = pool[np.argmax(ov[h, pool])]
                     used[k] = True
                     if valid[k]:
                         matches.append((pred[h, 4], 1))

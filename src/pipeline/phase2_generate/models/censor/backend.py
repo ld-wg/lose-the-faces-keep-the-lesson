@@ -53,6 +53,7 @@ class Backend:
             face[:] = cv2.GaussianBlur(cv2.GaussianBlur(face, (0, 0), sigma), (0, 0), sigma)
         else:
             cells = max(1, self.mosaic_blocks)
-            small = cv2.resize(face, (max(1, round(face.shape[1] * cells / side)), cells), interpolation=cv2.INTER_AREA)
+            small = cv2.resize(face, (max(1, round(face.shape[1] * cells / side)),
+                                      max(1, round(face.shape[0] * cells / side))), interpolation=cv2.INTER_AREA)
             face[:] = cv2.resize(small, (face.shape[1], face.shape[0]), interpolation=cv2.INTER_NEAREST)
         return out

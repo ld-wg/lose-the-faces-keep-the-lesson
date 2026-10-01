@@ -79,12 +79,15 @@ with Experiment(__file__) as exp:
 
         p2 = lambda beta, agg, extra=None: {**base, "swap_mode": "track", "push_beta": beta,  # noqa: E731
                                             "aggregation": agg, **(extra or {})}
+        # one folder per distinct (beta, target) setting, shared by e3c/e3d/e3e/e3g
+        p2_name = lambda beta, agg, extra=None: (f"p2-b{beta}-{agg}"  # noqa: E731
+                                                 + (f"-a{extra['ema_alpha_floor']}" if extra and "ema_alpha_floor" in extra else ""))
         if "e3c" in PARTS:
             c = cfg["e3c"]
             arms = {m: run({**base, "name": f"c-{m}", "swap_mode": m, "aggregation": c["aggregation"]})
                     for m in c["modes"]}
             for beta in c["betas"]:
-                arms[f"β {beta}"] = run({**p2(beta, c["aggregation"]), "name": f"c-track-b{beta}"})
+                arms[f"β {beta}"] = run({**p2(beta, c["aggregation"]), "name": p2_name(beta, c["aggregation"])})
             part_eval("e3c", arms)
 
         if "e3d" in PARTS:
@@ -92,8 +95,7 @@ with Experiment(__file__) as exp:
             arms = {}
             for agg in d["aggregations"]:
                 extra = {"ema_alpha_floor": d["ema_alpha_floor"]} if agg == "ema_adaptive" else {}
-                name = f"c-track-b{d['beta']}" if agg == cfg["e3c"]["aggregation"] else f"d-{agg}"
-                arms[agg] = run({**p2(d["beta"], agg, extra), "name": name})
+                arms[agg] = run({**p2(d["beta"], agg, extra), "name": p2_name(d["beta"], agg, extra)})
             part_eval("e3d", arms)
 
         if "e3e" in PARTS:
@@ -111,18 +113,22 @@ with Experiment(__file__) as exp:
                         tau = json.loads((cal / "eval.json").read_text())["calibration"]["arcface"]["threshold"]
                         exp.metric(f"e3e/{video.name}/gate-tau", tau)
                     extra["privacy_gate"] = tau
-                default = f"c-track-b{e['beta']}" if not extra and e["aggregation"] == cfg["e3c"]["aggregation"] else f"e-{arm['name']}"
-                arms[arm["name"]] = run({**p2(e["beta"], e["aggregation"], extra), "name": default})
+                if extra.get("privacy_gate", 0) is None:
+                    exp.note(f"e3e/{video.name}/gate", "skipped: no in-domain ArcFace threshold (no impostor pairs)")
+                    continue
+                name = p2_name(e["beta"], e["aggregation"]) if not extra else f"e-{arm['name']}-{e['aggregation']}"
+                arms[arm["name"]] = run({**p2(e["beta"], e["aggregation"], extra), "name": name})
             part_eval("e3e", arms)
 
         if "e3g" in PARTS:
             g = cfg["e3g"]
-            arms = {"P2": run({**p2(g["beta"], g["aggregation"]), "name": f"c-track-b{g['beta']}"})}
+            arms = {"P2": run({**p2(g["beta"], g["aggregation"]), "name": p2_name(g["beta"], g["aggregation"])})}
             for scale in g["scales"]:
                 # guided identities are a different population: their own frozen cache
                 arms[f"P1 c {scale} + P2"] = run({
                     **p2(g["beta"], g["aggregation"], {"p1_scale": scale, "p1_tau": g["tau"], "p1_window": g["window"]}),
-                    "name": f"g-p1-c{scale}", "identity_cache": str(exp.cache / video.name / f"blanket-p1-c{scale}")})
+                    "name": f"g-p1-c{scale}-{g['aggregation']}",
+                    "identity_cache": str(exp.cache / video.name / f"blanket-p1-c{scale}")})
             part_eval("e3g", arms)
 
         if "e3f" in PARTS:

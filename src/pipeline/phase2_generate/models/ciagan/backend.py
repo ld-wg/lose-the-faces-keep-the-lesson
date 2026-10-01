@@ -381,8 +381,10 @@ class Backend:
         from ...identity.fr_torch import TorchArcFace, affine_sample
 
         e_real = getattr(context, "push_embedding", None) if context is not None else None
-        if e_real is None:
-            raise ValueError("ciagan push_mode 'track' needs the identity pre-pass (run.py --identity-prepass)")
+        if e_real is None or self.push_steps <= 0:
+            # a track the pre-pass never embedded (no landmarked detection): the seed's own code
+            self.last_push = {"skipped": "no_track_identity" if e_real is None else "no_steps"}
+            return onehot
         device = self._device
         if self._arcface is None:
             self._model.requires_grad_(False)
@@ -421,7 +423,10 @@ class Backend:
         if track_id is not None:
             self._codes[track_id] = (context.frame_id, z)
         code = torch.softmax(z, dim=1)
-        self.last_push = {"cos_start": round(cos0, 4), "cos_end": round(float(cos), 4), "steps": step + 1,
+        with torch.no_grad():   # the cosine of the code actually returned
+            gen = self._model(input_gen, onehot=code)
+            emb = self._arcface(affine_sample(gen * mask_t + face128_t * (1 - mask_t), out_to_in, align.ARCFACE_SIZE))[0]
+        self.last_push = {"cos_start": round(cos0, 4), "cos_end": round(float(emb @ target), 4), "steps": step + 1,
                           "p_seed": round(float((code * onehot).sum()), 4)}
         return code
 

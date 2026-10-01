@@ -140,7 +140,8 @@ def metric_keys(exp: Experiment, prefix: str, rows: Sequence[dict], metrics: Seq
 
 def paired_rows(rows_by_arm: dict[str, list[dict]], reference: str, metric: str,
                 ev: dict) -> list[list]:
-    """Each arm against the reference on the same faces: Δ ± CI, McNemar p for binary metrics."""
+    """Each arm against the reference on the same faces: Δ ± CI, whether the interval
+    excludes zero, the track-level sign-flip p, and the number of faces."""
     ref = rows_by_arm[reference]
     out = []
     for name, rows in rows_by_arm.items():
@@ -148,8 +149,7 @@ def paired_rows(rows_by_arm: dict[str, list[dict]], reference: str, metric: str,
             continue
         d = paired_obs(rows, ref, metric, n=ev["bootstrap"], seed=ev["seed"])
         out.append([name, None if d["diff"] is None else (d["diff"], d["half"]),
-                    "yes" if d["excludes_zero"] else "no",
-                    "" if d["mcnemar_p"] is None else d["mcnemar_p"], d["n"]])
+                    "yes" if d["excludes_zero"] else "no", d["p"], d["n"]])
     return out
 
 

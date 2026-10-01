@@ -500,7 +500,8 @@ class Backend:
                             "landmarks5": [[float(x), float(y)] for x, y in cand.landmarks_in_crop]}
             generated = self._identity_client.call(
                 "generate", crop_path=str(crop_path), seed=seed,
-                box=[float(v) for v in cand.box_in_crop], tag=f"c{attempt}", guidance_args=guidance,
+                box=[float(v) for v in cand.box_in_crop], tag=f"c{attempt}",
+                **({"guidance_args": guidance} if guidance is not None else {}),
             )
             if generated is None:
                 reasons.append("identity_no_face")

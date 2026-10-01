@@ -134,6 +134,7 @@ def _versions() -> dict:
 
 
 _LATEX_ESCAPES = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#",
+                  "|": r"\textbar{}", "<": r"\textless{}", ">": r"\textgreater{}",
                   "_": r"\_", "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
                   # inputenc's utf8 (the SBC template) has no Greek or math symbols
                   "β": r"$\beta$", "τ": r"$\tau$", "Δ": r"$\Delta$", "≥": r"$\geq$", "≤": r"$\leq$",
@@ -273,17 +274,38 @@ def _track_sums(rows: Sequence[dict], metric: str) -> tuple[list, np.ndarray, np
     return keys, np.array([sums[k][0] for k in keys]), np.array([sums[k][1] for k in keys], dtype=float)
 
 
-def obs_ci(rows: Sequence[dict], metric: str, *, n: int = 2000, seed: int = 0,
-           level: float = 0.95) -> tuple[Optional[float], Optional[float], int]:
-    """(mean, half-width of the 95% interval, n faces), resampling whole tracks."""
+def obs_interval(rows: Sequence[dict], metric: str, *, n: int = 2000, seed: int = 0,
+                 level: float = 0.95) -> tuple[Optional[float], Optional[float], Optional[float], int]:
+    """(mean, low, high, n faces): a percentile bootstrap resampling whole tracks."""
     keys, s, c = _track_sums(rows, metric)
     if not keys or c.sum() == 0:
-        return None, None, 0
+        return None, None, None, 0
     est = float(s.sum() / c.sum())
     pick = np.random.default_rng(seed).integers(0, len(keys), (n, len(keys)))
     boots = s[pick].sum(1) / np.maximum(c[pick].sum(1), 1)
     lo, hi = np.percentile(boots, [(1 - level) / 2 * 100, (1 + level) / 2 * 100])
-    return est, float((hi - lo) / 2), int(c.sum())
+    return est, float(lo), float(hi), int(c.sum())
+
+
+def obs_ci(rows: Sequence[dict], metric: str, *, n: int = 2000, seed: int = 0,
+           level: float = 0.95) -> tuple[Optional[float], Optional[float], int]:
+    """(mean, half-width of the 95% interval, n faces), for tables: the half-width
+    summarizes an interval that may be asymmetric; tests use obs_interval."""
+    est, lo, hi, m = obs_interval(rows, metric, n=n, seed=seed, level=level)
+    return (None, None, 0) if est is None else (est, (hi - lo) / 2, m)
+
+
+def track_signflip_p(rows: Sequence[dict], metric: str, *, n: int = 10000, seed: int = 0) -> Optional[float]:
+    """Two-sided p of a paired difference, with tracks as the unit: random sign
+    flips of the per-track mean differences (frames of a track are not
+    independent, so a per-frame test such as McNemar would be far too optimistic)."""
+    keys, s, c = _track_sums(rows, metric)
+    if len(keys) < 2:
+        return None
+    d = s / np.maximum(c, 1)
+    observed = abs(d.mean())
+    signs = np.random.default_rng(seed).choice([-1.0, 1.0], size=(n, len(d)))
+    return float(((np.abs((signs * d).mean(1)) >= observed - 1e-12).sum() + 1) / (n + 1))
 
 
 def privacy_gain_ci(rows: Sequence[dict], rec: str = "facenet", *, n: int = 2000,
@@ -307,8 +329,8 @@ def privacy_gain_ci(rows: Sequence[dict], rec: str = "facenet", *, n: int = 2000
 def paired_obs(rows_a: Sequence[dict], rows_b: Sequence[dict], metric: str, *, n: int = 2000,
                seed: int = 0) -> dict:
     """Arm A minus arm B on the faces both scored (joined on video, frame, track):
-    mean difference with a track-bootstrap 95% interval, plus McNemar's p for
-    binary metrics (rank1, rank5, verified, agreements)."""
+    mean difference with a track-bootstrap 95% interval, whether that interval
+    excludes zero, and a track-level sign-flip p."""
     key = lambda r: (r.get("video"), r["frame_id"], r["track_id"])  # noqa: E731
     b_by = {key(r): r for r in rows_b}
     diffs, xa, xb = [], [], []
@@ -319,11 +341,10 @@ def paired_obs(rows_a: Sequence[dict], rows_b: Sequence[dict], metric: str, *, n
             diffs.append({"video": r.get("video"), "track_id": r["track_id"], "d": va - vb})
             xa.append(va)
             xb.append(vb)
-    est, half, m = obs_ci(diffs, "d", n=n, seed=seed)
-    binary = bool(xa) and set(xa) | set(xb) <= {0.0, 1.0}
-    return {"diff": est, "half": half, "n": m,
-            "excludes_zero": est is not None and half is not None and abs(est) > half,
-            "mcnemar_p": mcnemar_p(np.array(xa) > 0.5, np.array(xb) > 0.5) if binary else None}
+    est, lo, hi, m = obs_interval(diffs, "d", n=n, seed=seed)
+    return {"diff": est, "half": None if est is None else (hi - lo) / 2, "low": lo, "high": hi, "n": m,
+            "excludes_zero": est is not None and (lo > 0 or hi < 0),
+            "p": track_signflip_p(diffs, "d", seed=seed)}
 
 
 def strata(rows: Sequence[dict], key: str, edges: Sequence[float]) -> list[tuple[str, list[dict]]]:

@@ -372,7 +372,8 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
         for o in obs:
             real = real_by_key[(o.frame_id, o.track_id)]
             cos = float(o.emb[rec] @ real.emb[rec])
-            rank = gallery.rank(rec, o.emb[rec], real)
+            # the noise floor's probe (the next real frame) is in its own track's gallery: no rank
+            rank = None if run_name == NOISE_FLOOR else gallery.rank(rec, o.emb[rec], real)
             per_obs.append((o, cos, rank))
             obs_rows[(o.frame_id, o.track_id)].update({
                 f"{rec}_cos": round(cos, 5), f"{rec}_rank": rank,

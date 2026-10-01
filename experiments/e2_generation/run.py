@@ -43,7 +43,9 @@ with Experiment(__file__) as exp:
             metric_keys(exp, f"e2/{video.name}/{name}/generated", [r for r in arm_rows if r["anonymized"]],
                         GENERATED_KEYS, ev)
             if name != NOISE:
-                consistency.setdefault(name, []).append(report["runs"][name]["recognizers"]["facenet"]["consistency_mean"])
+                c = report["runs"][name]["recognizers"]["facenet"]["consistency_mean"]
+                if c is not None:
+                    consistency.setdefault(name, []).append(c)
                 fps.setdefault(name, []).append(json.loads((out / name / "run_manifest.json").read_text())["fps"])
 
     names = [a["name"] for a in arms]
