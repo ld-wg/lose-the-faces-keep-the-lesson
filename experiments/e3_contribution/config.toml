@@ -22,6 +22,13 @@ arms = [
   { name = "phase1",     identity_prepass = true, seed_candidates = 5, max_identity_attempts = 3, detection = "phase1" },
 ]
 
+[blanket]                              # shared by E3c-E3e: the pipeline of #11, identities frozen per video
+backend = "blanket"
+identity_prepass = true
+seed_candidates = 5
+max_identity_attempts = 3
+detection = "phase1"
+
 [e3c]                                  # P2: push strength
 identity_prepass = true
 aggregation = "quality_mean"
@@ -35,9 +42,33 @@ aggregations = ["quality_mean", "mean", "best", "first", "ema_adaptive"]
 ema_alpha_floor = 0.8
 reference = "first"
 
+[e3e]                                  # policies of the fail-closed pipeline (open points 2 and 3, 2026-09-30)
+beta = 1.2
+aggregation = "quality_mean"
+reference = "p2"
+arms = [
+  { name = "p2" },                                # every detection swapped
+  { name = "hide-low", generate_min_conf = 0.5 }, # detections below 0.5 hidden, not swapped
+  { name = "gate", privacy_gate = "arcface" },    # swap rejected if ArcFace cos(real, swapped) >= the video's τ
+]
+
+[e3f]                                  # P3: CIAGAN identity-code push
+aggregation = "quality_mean"
+steps = 10
+lambda = 1.0
+taus = [0.2, 0.0]                      # hinge threshold: stop at cos 0.2 / push to orthogonal
+reference = "ciagan"
+
+[e3g]                                  # P1: SDXL identity guidance, on top of P2 (go/no-go: bridge tools/p1_spike.py)
+beta = 1.2
+aggregation = "quality_mean"
+scales = [0.1]                         # step on the predicted clean latent, unit-RMS gradient
+tau = 0.2
+window = 3                             # the last 3 of the base pass's 7 UNet steps
+
 [eval]
 far = 0.01
 recognizers = ["facenet", "arcface"]
-utility = ["expression", "pose", "gaze", "emotion", "attributes"]
+utility = ["expression", "pose", "gaze", "emotion", "attributes"]   # gaze: a stated limitation, skipped
 bootstrap = 2000
 seed = 0

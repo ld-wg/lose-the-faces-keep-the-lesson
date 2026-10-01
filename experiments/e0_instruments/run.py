@@ -15,9 +15,12 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _common import SERIES, Experiment  # noqa: E402
+from _common import SERIES, Experiment, load_obs, obs_ci  # noqa: E402
 
 RECOGNIZERS = {"facenet": "FaceNet", "arcface": "ArcFace"}   # roles go in the caption: held-out / guidance
+NOISE = {"expression": "Expression error", "pose_err": "Head-pose error (°)", "emotion_agree": "Emotion agreement",
+         "age_err": "Age difference (years)", "gender_agree": "Gender agreement",
+         "facenet.cos": "FaceNet cosine", "arcface.cos": "ArcFace cosine"}
 BRIDGE = Path(os.environ.get("BLANKET_REPO", Path.home() / "projects" / "blanket-anonymizer-bridge"))
 
 
@@ -53,7 +56,8 @@ def mechanism_check(exp: Experiment, crops: Path, faces: int) -> None:
 with Experiment(__file__) as exp:
     cfg = exp.config
     det, far, bins = cfg["detect"], cfg["recognizers"]["far"], cfg["recognizers"]["histogram_bins"]
-    rows, scores = [], []
+    rows, scores, noise = [], [], []
+    floor = cfg["noise_floor"]["enabled"]
 
     for i, video in enumerate(exp.videos()):
         out = exp.results / video.name
@@ -64,7 +68,11 @@ with Experiment(__file__) as exp:
                    *(["--save-crops"] if mechanism_here else []))
         exp.module(f"calibrate {video.name}", "src.eval.evaluate",
                    "--phase1-dir", out / "detect", "--video", video.path, "--calibration-only",
-                   "--far", far, "--out", out / "eval", "--scores-out", out / "eval" / "scores.csv", *ctx_args())
+                   "--far", far, "--out", out / "eval", "--scores-out", out / "eval" / "scores.csv",
+                   *(["--utility", ",".join(cfg["noise_floor"]["utility"]), "--noise-floor",
+                      "--obs-out", out / "eval" / "obs.csv"] if floor else []), *ctx_args())
+        if floor:
+            noise += [r for r in load_obs(out / "eval" / "obs.csv", video=video.name) if r["run"] == "_noise_floor"]
 
         calibration = json.loads((out / "eval" / "eval.json").read_text())["calibration"]
         for rec, label in RECOGNIZERS.items():
@@ -85,9 +93,20 @@ with Experiment(__file__) as exp:
             finally:
                 shutil.rmtree(crops, ignore_errors=True)   # real faces: never kept
 
-    if cfg["noise_floor"]["enabled"]:
-        raise NotImplementedError("utility noise floors need the utility probes (see README)")
-    exp.note("noise_floor", "pending: needs the utility probes")
+    if floor:
+        # What "no change" looks like for each probe: the same metric between consecutive
+        # real frames of a track (E2/E3 utility results are read against these).
+        table = []
+        for metric, label in NOISE.items():
+            est, half, n = obs_ci(noise, metric)
+            if est is None:
+                continue
+            table.append([label, (est, half), n])
+            exp.metric(f"e0/noise/{metric}", round(est, 3))
+            exp.metric(f"e0/noise/{metric}.ci", round(half, 3))
+        exp.table("noise-floor", ["Metric (consecutive real frames)", "Value", "Pairs"], table, align="lrr")
+    else:
+        exp.note("noise_floor", "disabled in config.toml")
 
     exp.table("recognizers",
               ["Video", "Recognizer", "Threshold", "TAR", "Genuine", "Impostor", "Pairs"], rows, align="llrrrrr")

@@ -44,6 +44,7 @@ seed = 0
 [eval.strata]
 face_size_px = [0, 48, 96, 1000000]   # sqrt(box area) bins
 abs_yaw_deg = [0, 20, 45, 90]
+det_conf = [0.1, 0.5, 1.01]               # open point 1: primary privacy measure on >= 0.5
 
 [tables]
 main = ["coverage", "facenet.rank1", "arcface.rank1", "emotion.agreement", "expression.error", "consistency"]
