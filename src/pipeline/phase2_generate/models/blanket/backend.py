@@ -245,7 +245,7 @@ class _IdentityCache:
 
     VERSION = 1
 
-    def __init__(self, directory: Path, max_attempts: int, lenient: bool = False):
+    def __init__(self, directory: Path, max_attempts: int, lenient: bool = False, p1: Optional[dict] = None):
         self.dir = directory
         # With the swap server's lenient identity detector, a failure recorded
         # without it may now succeed, so it is retried; successes stay frozen
@@ -256,6 +256,8 @@ class _IdentityCache:
         self.index_path = self.dir / "index.json"
         self.settings = {"version": self.VERSION, "identity_source": "seed_candidates",
                          "max_attempts": max_attempts}
+        if p1 is not None:   # guided identities are a different population: never mixed with unguided ones
+            self.settings["p1"] = p1
         if self.index_path.is_file():
             index = json.loads(self.index_path.read_text())
             if index.get("settings") != self.settings:
@@ -332,6 +334,13 @@ class Backend:
         # BLANKET's own yolo_face re-detection and IoU filter (the bridge's
         # swap_server.py docstring has the measurements).
         detection: str = "phase1",
+        # P1 (contribution plan D8, Step 6): ArcFace guidance inside the SDXL
+        # identity generation, away from the track's real identity (bridge
+        # p1_guidance.py). 0 = off; > 0 = step size on the predicted clean
+        # latent (unit-RMS gradient), over the last `p1_window` steps (0 = all).
+        p1_scale: float = 0.0,
+        p1_tau: float = 0.2,
+        p1_window: int = 3,
     ):
         del weights  # accepted only for FaceGenerator's uniform construction contract, unused here
         self.ctx_id = ctx_id
@@ -348,12 +357,13 @@ class Backend:
         if detection not in DETECTIONS:
             raise ValueError(f"unknown detection {detection!r}, choose from {DETECTIONS}")
         self.detection = detection
+        self.p1 = {"scale": p1_scale, "tau": p1_tau, "window": p1_window} if p1_scale > 0 else None
         self.last_skip_reason: Optional[str] = None
         self._failed: dict[int, str] = {}  # seed -> reason, seed-candidate mode only
         # Absolute: the swap server runs with BLANKET's repo root as its working
         # directory, so a relative image path would resolve somewhere else there.
         self._cache = (_IdentityCache(Path(identity_cache_dir).resolve(), max_identity_attempts,
-                                      lenient=detection == "phase1")
+                                      lenient=detection == "phase1", p1=self.p1)
                        if identity_cache_dir else None)
 
         self._scratch_dir = Path(tempfile.mkdtemp(prefix="blanket_ipc_"))
@@ -378,7 +388,7 @@ class Backend:
             self._identity_client = _RpcClient(
                 socket_path=identity_socket, python=identity_python,
                 server_script=self.bridge_repo / "identity_server.py", cwd=self.bridge_repo,
-                extra_args=[], timeout=self.server_timeout, label="blanket/identity",
+                extra_args=["--p1"] if self.p1 else [], timeout=self.server_timeout, label="blanket/identity",
                 gpu=identity_gpu,
             )
             swap_args = [] if swap_face_detector_score is None else [
@@ -446,7 +456,7 @@ class Backend:
         self._identity_cache[seed] = identity_path
         return identity_path
 
-    def _identity_from_candidates(self, seed: int, candidates: list) -> Optional[str]:
+    def _identity_from_candidates(self, seed: int, candidates: list, e_real=None) -> Optional[str]:
         """Seed-candidate mode (contribution plan, Step 3): build the track's
         identity from its best-quality real crops, in order, instead of from
         whichever crop arrives first.
@@ -481,9 +491,16 @@ class Backend:
         reasons = []
         for attempt, cand in enumerate(candidates[: self.max_identity_attempts]):
             crop_path = self._write_png(cand.crop, f"seed_{seed}_cand{attempt}.png")
+            guidance = None
+            if self.p1 is not None:
+                if e_real is None:
+                    raise ValueError("P1 needs the track identity (run.py --identity-prepass)")
+                # e_real goes over the local socket and stays in the server's memory (LGPD)
+                guidance = {**self.p1, "e_real": [float(v) for v in e_real],
+                            "landmarks5": [[float(x), float(y)] for x, y in cand.landmarks_in_crop]}
             generated = self._identity_client.call(
                 "generate", crop_path=str(crop_path), seed=seed,
-                box=[float(v) for v in cand.box_in_crop], tag=f"c{attempt}",
+                box=[float(v) for v in cand.box_in_crop], tag=f"c{attempt}", guidance_args=guidance,
             )
             if generated is None:
                 reasons.append("identity_no_face")
@@ -525,7 +542,7 @@ class Backend:
         self.last_skip_reason = None
         track = getattr(context, "track", None)
         if track is not None and track.seed_candidates:
-            identity_path = self._identity_from_candidates(seed, track.seed_candidates)
+            identity_path = self._identity_from_candidates(seed, track.seed_candidates, track.embedding)
             if identity_path is None:
                 self.last_skip_reason = self._failed.get(seed, "identity_no_face")
                 return None

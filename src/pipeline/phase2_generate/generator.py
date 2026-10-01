@@ -66,6 +66,11 @@ class FaceGenerator:
         return self._backend.generate(crop, seed, context=context)
 
     @property
+    def last_push(self) -> Optional[dict]:
+        """Scalars of the backend's last identity push (ciagan P3), if any."""
+        return getattr(self._backend, "last_push", None)
+
+    @property
     def last_skip_reason(self) -> Optional[str]:
         """Why the last `generate()` returned None, if the backend says
         (e.g. blanket's "identity_unusable"); None otherwise."""

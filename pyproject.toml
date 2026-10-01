@@ -64,6 +64,10 @@ phase2-ciagan = [
     "torch>=2.2,<2.7; sys_platform == 'linux'",
     "torch>=2.2; sys_platform == 'darwin'",
     "dlib>=19.24",
+    # Differentiable ArcFace for the P3 identity push (src/pipeline/identity/fr_torch.py):
+    # converts the w600k_r50.onnx already on disk, so gradients come from the same
+    # embedding space the pre-pass and FaceFusion use. Apache-2.0.
+    "onnx2torch>=1.5",
 ]
 
 # Phase 2 — GANonymization generation backend

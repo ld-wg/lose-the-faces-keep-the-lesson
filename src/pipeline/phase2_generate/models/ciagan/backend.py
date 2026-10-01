@@ -215,6 +215,15 @@ class Backend:
         portrait_scale: float = 1.0,
         segmentation_weights: Optional[Path] = None,
         refine_mask: bool = False,
+        # P3 (contribution plan D9, Step 5): per-frame optimization of the
+        # identity code away from the track's real identity. "none" = the
+        # seed's one-hot, unchanged; "track" needs the identity pre-pass.
+        push_mode: str = "none",
+        push_steps: int = 10,
+        push_lr: float = 0.5,
+        push_tau: float = 0.2,
+        push_lambda: float = 1.0,
+        push_init_logit: float = 9.3,
     ):
         if img_size != 128:
             # The architecture itself branches on `img_size == 128` (extra
@@ -250,6 +259,14 @@ class Backend:
         self._seg_model = None
         self._seg_resolution = None
         self._device = None
+        if push_mode not in ("none", "track"):
+            raise ValueError(f"ciagan push_mode {push_mode!r}: choose from none, track")
+        self.push_mode = push_mode
+        self.push_steps, self.push_lr, self.push_tau = push_steps, push_lr, push_tau
+        self.push_lambda, self.push_init_logit = push_lambda, push_init_logit
+        self._arcface = None
+        self._codes: dict[int, tuple[int, object]] = {}  # track -> (last frame, logits) for the warm start
+        self.last_push: Optional[dict] = None             # scalars of the last optimization (for logs)
 
     def identity_class(self, seed: int) -> int:
         """Deterministic identity-vector index for `seed`. Collisions across
@@ -345,9 +362,72 @@ class Backend:
         shape = self._dlib_predictor(crop, rect)
         return np.array([[shape.part(i).x, shape.part(i).y] for i in range(68)], dtype=np.float64)
 
+    def _push_code(self, input_gen, face128_t, mask_t, m: np.ndarray, points68: np.ndarray, onehot, context):
+        """P3: a few Adam steps on the identity code's logits, minimizing
+        relu(cos(ArcFace(output), e_real) − tau) + lambda·||softmax(z) − onehot||².
+
+        The code stays a probability vector over the 1200 training identities
+        (softmax), fed to the vendored generator as its `onehot` input, so it
+        stays inside their convex hull (the off-hull risk, D9). Logits start
+        at the seed's class with p ≈ 0.9 (a saturated softmax has no
+        gradient) or at the track's previous frame. The output is aligned for
+        ArcFace exactly as the pre-pass aligned the real face: Phase 1's 5
+        points (dlib-derived if absent) through the canvas transform `m`.
+        """
+        import cv2
+        import torch
+
+        from ...identity import align
+        from ...identity.fr_torch import TorchArcFace, affine_sample
+
+        e_real = getattr(context, "push_embedding", None) if context is not None else None
+        if e_real is None:
+            raise ValueError("ciagan push_mode 'track' needs the identity pre-pass (run.py --identity-prepass)")
+        device = self._device
+        if self._arcface is None:
+            self._model.requires_grad_(False)
+            self._arcface = TorchArcFace(device)
+        lm5 = context.landmarks_in_crop or [points68[36:42].mean(0), points68[42:48].mean(0),
+                                            points68[30], points68[48], points68[54]]
+        # aligned 112 -> 128 canvas: m ∘ S⁻¹, with S: crop -> aligned
+        s_inv = cv2.invertAffineTransform(align.similarity_matrix(lm5))
+        out_to_in = (np.vstack([m, [0, 0, 1]]) @ np.vstack([s_inv, [0, 0, 1]]))[:2]
+        target = torch.as_tensor(np.asarray(e_real, np.float32), device=device)
+        target = target / target.norm()
+
+        track_id = context.track.track_id if context.track is not None else None
+        prev = self._codes.get(track_id)
+        if prev is not None and context.frame_id - prev[0] <= 5:
+            z = prev[1].clone().requires_grad_(True)
+        else:
+            z = (onehot * self.push_init_logit).clone().requires_grad_(True)
+        opt = torch.optim.Adam([z], lr=self.push_lr)
+        cos0 = cos = None
+        for step in range(self.push_steps):
+            code = torch.softmax(z, dim=1)
+            gen = self._model(input_gen, onehot=code)
+            composite = gen * mask_t + face128_t * (1 - mask_t)
+            emb = self._arcface(affine_sample(composite, out_to_in, align.ARCFACE_SIZE))[0]
+            cos = emb @ target
+            cos0 = float(cos) if cos0 is None else cos0
+            hinge = torch.relu(cos - self.push_tau)
+            if float(hinge) == 0.0:
+                break
+            loss = hinge + self.push_lambda * ((code - onehot) ** 2).sum()
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+        z = z.detach()
+        if track_id is not None:
+            self._codes[track_id] = (context.frame_id, z)
+        code = torch.softmax(z, dim=1)
+        self.last_push = {"cos_start": round(cos0, 4), "cos_end": round(float(cos), 4), "steps": step + 1,
+                          "p_seed": round(float((code * onehot).sum()), 4)}
+        return code
+
     def generate(self, crop: np.ndarray, seed: int, context=None) -> Optional[np.ndarray]:
         """Anonymize the face in `crop` (BGR uint8), seeded by `seed`.
-        `context` (`phase2_generate/context.py`) is accepted and not used yet.
+        `context` (`phase2_generate/context.py`) is used only by push_mode 'track' (P3).
 
         `seed` should be `Identity.seed` (contracts.derive_seed) — same seed
         always maps to the same identity class (see `identity_class()`), so
@@ -360,6 +440,7 @@ class Backend:
         import torch
 
         self._load()
+        self.last_push = None
         points = self._landmarks68(crop)
         if points is None:
             return None
@@ -383,6 +464,9 @@ class Backend:
 
         onehot = torch.zeros(1, self.num_classes, dtype=torch.float32, device=device)
         onehot[0, self.identity_class(seed)] = 1.0
+        if self.push_mode == "track":
+            onehot = self._push_code(input_gen, face_t.unsqueeze(0).to(device), mask_t.to(device), m,
+                                     points, onehot, context)
 
         with torch.no_grad():
             gen_out = self._model(input_gen, onehot=onehot)[0]

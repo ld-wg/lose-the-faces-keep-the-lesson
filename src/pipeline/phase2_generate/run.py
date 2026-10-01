@@ -36,9 +36,12 @@ Outputs (in --out dir):
                         "skipped_no_frame" (the source video ended before this
                         frame_id), "skipped_no_identity" (track_id missing
                         from tracks.json — a Phase 1 data-integrity gap) or
-                        "failsafe" (a Phase 1 post-pass box, not a detection:
-                        `reason` is its source; nothing is generated and
-                        compose_video.py hides it).
+                        "failsafe" (not generated, hidden by compose_video.py:
+                        a Phase 1 post-pass box, `reason` = its source; or a
+                        detection below --generate-min-conf, `reason` =
+                        "low_conf") or "gated" (generated, but --privacy-gate
+                        found it still too close to the real face; the crop
+                        is kept for evaluation, compose_video.py hides it).
     run_manifest.json   run-level summary: config + per-identity frame counts.
 """
 
@@ -181,6 +184,33 @@ def main() -> None:
     p.add_argument("--blanket-push-beta", type=float, default=0.35,
                    help="blanket --blanket-swap-mode track: push strength (0.35 = the magnitude of "
                         "BLANKET's own native push)")
+    p.add_argument("--ciagan-push", choices=("none", "track"), default="none",
+                   help="ciagan: P3, optimize the identity code per frame away from the pre-pass's "
+                        "track identity (needs --identity-prepass)")
+    p.add_argument("--ciagan-push-steps", type=int, default=10, help="ciagan --ciagan-push: Adam steps per frame")
+    p.add_argument("--ciagan-push-lr", type=float, default=0.5, help="ciagan --ciagan-push: Adam step size on the logits")
+    p.add_argument("--ciagan-push-tau", type=float, default=0.2,
+                   help="ciagan --ciagan-push: hinge threshold on ArcFace cos(output, real); stops below it")
+    p.add_argument("--ciagan-push-lambda", type=float, default=1.0,
+                   help="ciagan --ciagan-push: weight of ||code − seed one-hot||² (keeps the pseudonym)")
+    p.add_argument("--generate-min-conf", type=float, default=0.0,
+                   help="detections below this confidence are not generated, only hidden by the "
+                        "fail-safe (status failsafe, reason low_conf); 0 generates every detection")
+    p.add_argument("--privacy-gate", type=float, default=None, metavar="TAU",
+                   help="reject a generated face whose ArcFace cosine to the real face is still >= TAU "
+                        "(status gated; the fail-safe hides it). Typically the in-domain ArcFace "
+                        "threshold at FAR 1%% from E0. Off by default")
+    p.add_argument("--censor-mode", choices=("blur", "mosaic"), default="blur",
+                   help="censor: blur or mosaic of the detected box (E2 baseline)")
+    p.add_argument("--mosaic-blocks", type=int, default=8,
+                   help="censor --censor-mode mosaic: cells across the box's shorter side")
+    p.add_argument("--blanket-p1-scale", type=float, default=0.0,
+                   help="blanket: P1, ArcFace guidance in the SDXL identity generation away from the track's "
+                        "real identity; step size on the predicted clean latent (0 = off)")
+    p.add_argument("--blanket-p1-tau", type=float, default=0.2,
+                   help="blanket P1: hinge threshold on ArcFace cos(identity, real); stops pushing below it")
+    p.add_argument("--blanket-p1-window", type=int, default=3,
+                   help="blanket P1: guide the last N denoising steps of the base pass (0 = all; 7 run)")
     p.add_argument("--blanket-detection", choices=("phase1", "upstream"), default="phase1",
                    help="blanket: which face detection the swap uses. phase1 = this project's own "
                         "detection (box and 5 points) for the target face, plus FaceFusion's lenient "
@@ -252,7 +282,12 @@ def main() -> None:
             dlib_predictor=dlib_predictor, portrait_scale=args.portrait_scale,
             refine_mask=refine_mask,
             segmentation_weights=segmentation_weights if refine_mask else None,
+            push_mode=args.ciagan_push, push_steps=args.ciagan_push_steps, push_lr=args.ciagan_push_lr,
+            push_tau=args.ciagan_push_tau, push_lambda=args.ciagan_push_lambda,
         )
+        if args.ciagan_push == "track" and not args.identity_prepass:
+            p.error("--ciagan-push track needs --identity-prepass (the push target is the "
+                    "pre-pass's track-level real identity)")
     elif args.model == "ganonymization":
         backend_kwargs.update(
             img_size=img_size, segmentation_weights=segmentation_weights,
@@ -260,6 +295,8 @@ def main() -> None:
             min_detection_confidence=args.min_detection_confidence,
             enhance_detection_input=args.enhance_detection_input,
         )
+    elif args.model == "censor":
+        backend_kwargs.update(mode=args.censor_mode, mosaic_blocks=args.mosaic_blocks)
     elif args.model == "blanket":
         backend_kwargs.update(
             bridge_repo=blanket_repo,
@@ -276,7 +313,10 @@ def main() -> None:
             swap_mode=args.blanket_swap_mode,
             push_beta=args.blanket_push_beta,
             detection=args.blanket_detection,
+            p1_scale=args.blanket_p1_scale, p1_tau=args.blanket_p1_tau, p1_window=args.blanket_p1_window,
         )
+        if args.blanket_p1_scale > 0 and not args.identity_prepass:
+            p.error("--blanket-p1-scale needs --identity-prepass (the guidance target is the track identity)")
         if args.blanket_swap_mode == "track" and not args.identity_prepass:
             p.error("--blanket-swap-mode track needs --identity-prepass (the push target is the "
                     "pre-pass's track-level real identity)")
@@ -318,6 +358,17 @@ def main() -> None:
         import gc
         gc.collect()
     tracks = prepass.tracks if prepass is not None else {}
+
+    gate_embedder = None
+    if args.privacy_gate is not None:
+        from ..identity.aggregate import normalize
+        from ..identity.embedder import ArcFaceEmbedder
+
+        _arcface = ArcFaceEmbedder(ctx_id=args.ctx_id)
+
+        def gate_embedder(image, landmarks):
+            # in memory only: the two embeddings are compared and dropped (LGPD)
+            return normalize(_arcface.embed(image, landmarks))
 
     with jsonl_path.open() as jf, ledger_path.open("w") as lf:
         for line in jf:
@@ -370,6 +421,15 @@ def main() -> None:
                     }) + "\n")
                     continue
 
+                if face.confidence < args.generate_min_conf:
+                    s["num_frames_failsafe"] += 1
+                    lf.write(json.dumps({
+                        "frame_id": frame_rec.frame_id, "track_id": face.track_id,
+                        "status": "failsafe", "reason": "low_conf", "output_path": None,
+                        "model": args.model, "seed": identity.seed, "identity_class": None,
+                    }) + "\n")
+                    continue
+
                 fh, fw = video_frame.shape[:2]
                 cx1, cy1, cx2, cy2 = crop_box(fh, fw, face.box, context_ratio)
                 crop = video_frame[cy1:cy2, cx1:cx2]
@@ -395,15 +455,25 @@ def main() -> None:
                     cv2.imwrite(str(out_path), crop)
                 else:
                     status = "ok"
-                    s["num_frames_generated"] += 1
+                    if gate_embedder is not None and face.landmarks:
+                        cos = float(gate_embedder(video_frame, face.landmarks)
+                                    @ gate_embedder(out_img, context.landmarks_in_crop))
+                        if cos >= args.privacy_gate:
+                            status, reason = "gated", "privacy_gate"
+                            s["num_frames_gated"] = s.get("num_frames_gated", 0) + 1
+                    if status == "ok":
+                        s["num_frames_generated"] += 1
                     cv2.imwrite(str(out_path), out_img)
 
-                lf.write(json.dumps({
+                record = {
                     "frame_id": frame_rec.frame_id, "track_id": face.track_id,
                     "status": status, "reason": reason, "output_path": str(out_path.relative_to(out_dir)),
                     "model": args.model, "seed": identity.seed,
                     "identity_class": generator.identity_class(identity.seed),
-                }) + "\n")
+                }
+                if generator.last_push is not None:
+                    record["push"] = generator.last_push  # scalars only (cosines, steps)
+                lf.write(json.dumps(record) + "\n")
 
             if num_frames % 100 == 0:
                 logger.info(f"frame {num_frames}")
@@ -423,6 +493,7 @@ def main() -> None:
         "phase1_dir": str(phase1_dir), "video": video_path, "model": args.model,
         "weights": str(weights) if weights else None, "random_init": args.random_init,
         "context_ratio": context_ratio, "img_size": img_size,
+        "generate_min_conf": args.generate_min_conf, "privacy_gate": args.privacy_gate,
         "backend_config": backend_config,
         "identities": [
             {"track_id": tid, "seed": s["seed"],
@@ -431,6 +502,7 @@ def main() -> None:
              "num_frames_passthrough": s["num_frames_passthrough"],
              "num_frames_skipped_no_identity": s["num_frames_skipped_no_identity"],
              "num_frames_failsafe": s["num_frames_failsafe"],
+             "num_frames_gated": s.get("num_frames_gated", 0),
              "passthrough_reasons": s["passthrough_reasons"]}
             for tid, s in stats.items()
         ],
