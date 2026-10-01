@@ -54,6 +54,10 @@ the latter still needs a correction pass):
   redetection always happens internally via FaceFusion's own `yolo_face`.
   This project's own Phase 1 detections cannot be substituted there without
   patching BLANKET's source, which this backend deliberately does not do.
+  Instead (2026-09-30, `detection="phase1"`, the default), the bridge builds
+  the target face from Phase 1's box and 5 points with FaceFusion's own
+  `create_faces()` and runs BLANKET's processors itself: `yolo_face` had
+  missed 1417 of 4726 SCRFD faces on video-demo-3.mov.
 - `synthetic_face_path` (the identity-seed image path) IS a clean,
   unmodified substitution point — this project's own context-padded crop
   feeds it, same as it already feeds `ciagan`/`ganonymization`.
@@ -99,6 +103,7 @@ _CONNECT_RETRY_INTERVAL = 0.5  # seconds between socket-connect attempts while a
 #: (fixed push away from the current frame's real face), "none" = no push
 #: (control), "track" = push away from the track-level real-identity estimate.
 SWAP_MODES = ("native", "none", "track")
+DETECTIONS = ("phase1", "upstream")
 
 
 class _ExternalServiceError(RuntimeError):
@@ -240,8 +245,13 @@ class _IdentityCache:
 
     VERSION = 1
 
-    def __init__(self, directory: Path, max_attempts: int):
+    def __init__(self, directory: Path, max_attempts: int, lenient: bool = False):
         self.dir = directory
+        # With the swap server's lenient identity detector, a failure recorded
+        # without it may now succeed, so it is retried; successes stay frozen
+        # (the strict detector accepted them, and the lenient one only runs
+        # after the strict one fails).
+        self.lenient = lenient
         self.dir.mkdir(parents=True, exist_ok=True)
         self.index_path = self.dir / "index.json"
         self.settings = {"version": self.VERSION, "identity_source": "seed_candidates",
@@ -261,9 +271,13 @@ class _IdentityCache:
         entry = self.entries.get(str(seed))
         if entry and entry["status"] == "ok" and not Path(entry["path"]).is_file():
             return None  # image deleted by hand — regenerate
+        if entry and entry["status"] != "ok" and self.lenient and not entry.get("lenient"):
+            return None  # failed under the strict detector only — retry
         return entry
 
     def put(self, seed: int, entry: dict) -> None:
+        if entry["status"] != "ok" and self.lenient:
+            entry = {**entry, "lenient": True}
         self.entries[str(seed)] = entry
         self.index_path.write_text(json.dumps({"settings": self.settings, "entries": self.entries}, indent=2))
 
@@ -312,6 +326,12 @@ class Backend:
         # P2); see the bridge's swap_server.py for the three modes.
         swap_mode: str = "native",
         push_beta: float = 0.35,
+        # Face detection the swap uses (2026-09-30): "phase1" sends Phase 1's box
+        # and 5 points as the target face and lets the swap server retry rejected
+        # identity images with FaceFusion's lenient detector; "upstream" keeps
+        # BLANKET's own yolo_face re-detection and IoU filter (the bridge's
+        # swap_server.py docstring has the measurements).
+        detection: str = "phase1",
     ):
         del weights  # accepted only for FaceGenerator's uniform construction contract, unused here
         self.ctx_id = ctx_id
@@ -325,11 +345,15 @@ class Backend:
             raise ValueError(f"unknown swap_mode {swap_mode!r}, choose from {SWAP_MODES}")
         self.swap_mode = swap_mode
         self.push_beta = push_beta
+        if detection not in DETECTIONS:
+            raise ValueError(f"unknown detection {detection!r}, choose from {DETECTIONS}")
+        self.detection = detection
         self.last_skip_reason: Optional[str] = None
         self._failed: dict[int, str] = {}  # seed -> reason, seed-candidate mode only
         # Absolute: the swap server runs with BLANKET's repo root as its working
         # directory, so a relative image path would resolve somewhere else there.
-        self._cache = (_IdentityCache(Path(identity_cache_dir).resolve(), max_identity_attempts)
+        self._cache = (_IdentityCache(Path(identity_cache_dir).resolve(), max_identity_attempts,
+                                      lenient=detection == "phase1")
                        if identity_cache_dir else None)
 
         self._scratch_dir = Path(tempfile.mkdtemp(prefix="blanket_ipc_"))
@@ -359,6 +383,8 @@ class Backend:
             )
             swap_args = [] if swap_face_detector_score is None else [
                 "--face-detector-score", str(swap_face_detector_score)]
+            if detection == "phase1":
+                swap_args.append("--lenient-identity")
             self._swap_client = _RpcClient(
                 socket_path=swap_socket, python=swap_python,
                 server_script=self.bridge_repo / "swap_server.py", cwd=self.bridge_repo,
@@ -521,9 +547,13 @@ class Backend:
                 # Real-identity estimate: sent only in this mode, over the
                 # local socket, never logged (LGPD — see context.py).
                 push = [float(v) for v in p]
+            target = {}
+            if self.detection == "phase1" and context is not None and context.landmarks_in_crop:
+                target = {"box": [float(v) for v in context.box_in_crop],
+                          "landmarks5": [[float(x), float(y)] for x, y in context.landmarks_in_crop]}
             reply = self._swap_client.call("swap_with_reason", identity_path=identity_path,
                                            crop_path=str(crop_path), mode=self.swap_mode,
-                                           push=push, beta=self.push_beta)
+                                           push=push, beta=self.push_beta, **target)
             swapped_path = reply["path"]
             if swapped_path is None:
                 # identity_unusable / swap_no_face / swap_iou_rejected — see

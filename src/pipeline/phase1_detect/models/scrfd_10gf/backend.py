@@ -58,8 +58,13 @@ class Backend:
                 "Install with: pip install insightface onnxruntime"
             ) from e
         logger.info(f"Loading InsightFace pack 'buffalo_l' (SCRFD-10GF, det_size={self.det_size})")
-        app = FaceAnalysis(name="buffalo_l")
-        app.prepare(ctx_id=self.ctx_id, det_size=self.det_size)
+        # Detection only: the pack's other models (landmarks, pose, gender/age,
+        # recognition) ran on every face and were discarded, at ~3 fps.
+        app = FaceAnalysis(name="buffalo_l", allowed_modules=["detection"])
+        # det_thresh must be passed: FaceAnalysis.prepare() defaults it to 0.5, and
+        # until 2026-09-30 it was not, so SCRFD-10GF silently cut at 0.5 whatever
+        # conf_threshold said (SCRFD-34GF's backend always passed it).
+        app.prepare(ctx_id=self.ctx_id, det_thresh=self.conf_threshold, det_size=self.det_size)
         self._app = app
 
     def detect(self, frame: np.ndarray) -> list[Detection]:

@@ -124,6 +124,72 @@ listed at the end; the paper is not edited in this PR.
     are. Naming and the choice of the default pipeline come after the
     experiments.
 
+## Recall and fail-safe (2026-09-30)
+
+Measured on `video-demo-3.mov` with BLANKET + P2 at β 1.2. **59% of the
+faces Phase 1 knew about were shown real in the output**
+(`research/next-steps/exposure-audit-2026-09-30.md`):
+- 2587 generation failures;
+- 519 frames where a track lost the face;
+- about 64 frames before each track was confirmed.
+
+The literature review is in `research/stages/identification-occlusion.md`.
+
+32. **Fail closed: a face the pipeline knows about is never shown real.**
+    - The final video (`compose_video.py`) hides every face box that was not
+      generated. It uses the track's last generated face if that face is at
+      most 10 frames old, and a neutral gray ellipse otherwise.
+    - Blur and pixelation are not used, because both are reversible or
+      attackable.
+    - `--failsafe off` exists only for diagnosis.
+33. **Only the pixels the generator changed are pasted back.** Pasting the
+    whole context crop let a later crop's real background overwrite part of
+    an earlier neighbour's generated face. That affected 432 of 2139 generated
+    faces (20%), 125 of them over at least half the box.
+34. **Phase 1 recall post-pass, on by default (`phase1_detect/fill.py`).**
+    - Tracks are emitted from their first detection.
+    - Gaps inside a track, up to 30 frames (the tracker's `max_missed`), get
+      interpolated boxes.
+    - Confirmed tracks are dilated by 3 frames at each end.
+    - Tracks with fewer than 3 detections are hidden but get no synthetic
+      identity.
+    - Every box records its `source`. Only `detector` boxes reach the
+      generator and the privacy and utility metrics.
+    - `--no-fill` turns the pass off.
+35. **SCRFD-10GF now honors its threshold.**
+    - Until 2026-09-30 it silently cut at 0.5, because
+      `FaceAnalysis.prepare()` defaults `det_thresh` to 0.5 and it was not
+      passed. SCRFD-34GF always passed it. **Every earlier number, including
+      the first E0 run, used 0.5.**
+    - The pipeline default is now `conf = 0.1`, feeding ByteTrack's
+      low-confidence association. New tracks still start only at ≥ 0.5.
+    - On demo3 this brought 2066 more matched faces and cut the gaps from 586
+      to 47 frames. Tracks stopped fragmenting: 22 tracks instead of 32.
+    - E0, E2 and E3 use 0.1. E1 keeps its own operating points.
+36. **BLANKET swaps the face Phase 1 found.**
+    - The bridge builds the target face from Phase 1's box and 5 points with
+      FaceFusion's own `create_faces()`. It no longer re-detects with
+      `yolo_face` at 0.5, which had missed 1417 faces, and it drops the IoU
+      filter, which had rejected 38.
+    - Identity images that `yolo_face` rejects are retried with FaceFusion's
+      `many` detector at 0.25. That recovered all 13 of the 32 identities
+      rejected on demo3; they are small images, 58–269 px.
+    - `--blanket-detection upstream` keeps BLANKET's own flow. It becomes a
+      reference arm in E3b.
+37. **Exposure metrics.**
+    - The final video reports the share of face boxes that were generated,
+      reused and filled (`compose.jsonl`, `evaluate.py` → `composition`,
+      `bin/audit`).
+    - With the fail-safe, the exposure of known faces is zero by construction.
+      The residual is faces Phase 1 never found, which needs ground truth:
+      annotated sampled frames, in the next PR.
+    - The privacy metrics keep measuring the generator on detector faces, so
+      they stay comparable across arms.
+38. **Known issue: identity seeds derive from the video's path string**
+    (`derive_seed(video_source, track_id)`). The same video under another path
+    gets other seeds and misses the identity cache. This is to be fixed, with
+    a content hash, when the caches are next rebuilt.
+
 ## Paper text to revise (not done here; `paper/main.tex` has uncommitted edits)
 
 - **Methodology, Stage 3.** Replace gradient injection on a canonical latent
@@ -139,3 +205,8 @@ listed at the end; the paper is not edited in this PR.
 - **Add the conclusion criteria** (decisions 21–24) to the evaluation section.
 - **Add `\input{generated/results}` to the preamble**, and use the generated
   tables and figures.
+- **Methodology, Stage 1 and composition.**
+  - Add the recall post-pass (decision 34) and the fail-closed composition
+    (decisions 32–33).
+  - State that the detector threshold is 0.1 with ByteTrack's low-confidence
+    association (decision 35).

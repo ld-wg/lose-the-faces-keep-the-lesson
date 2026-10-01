@@ -532,3 +532,32 @@ subject age (the checkpoint itself is a generic SDXL release, not
 infant-trained — this is a prompt-text bias, not a model one). Default
 prompt now age-neutral; BLANKET's original wording is still directly
 reachable via `identity_server.py --prompt` for comparison.
+
+### 2026-09-30: the swap uses Phase 1's detected face; lenient detector for identity images
+
+Bridge commit `d1bc6d1`. An exposure audit of `video-demo-3.mov`
+(`src/eval/audit.py`) found why BLANKET showed real faces.
+
+**What went wrong:**
+- The swap server re-detected every target face with FaceFusion's
+  `yolo_face` at 0.5. It missed 1417 of the 4726 faces SCRFD-10GF had found,
+  mostly bowed heads and small faces.
+- BLANKET's IoU filter rejected 38 more.
+- 13 of 32 identity images had no face `yolo_face` could find. Those tracks
+  were never anonymized.
+
+**What changed (`--blanket-detection phase1`, the default):**
+- The backend sends Phase 1's box and 5 points, in crop coordinates, with
+  each swap.
+- The bridge builds the target face from them with FaceFusion's own
+  `create_faces()`, then runs BLANKET's processors in `anonymize()`'s order.
+- Identity images `yolo_face` rejects are retried with FaceFusion's `many`
+  detector at 0.25.
+- Measured before changing anything: the 13 rejected identity images are
+  58–269 px, and `many` at 0.25 found the subject's face in all 13, as the
+  highest-scoring face.
+- With this mode, the identity cache retries failures recorded without the
+  lenient detector, and keeps its successes frozen.
+
+**What stays the same:** `--blanket-detection upstream` keeps BLANKET's own
+flow, and reproduces the runs before 2026-09-30.

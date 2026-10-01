@@ -7,7 +7,7 @@ videos = ["demo1", "demo2", "demo3"]
 
 [detect]                 # Phase 1, identical to E2/E3
 model = "scrfd-10gf"
-conf = 0.3
+conf = 0.1   # DECISIONS.md 35: the pipeline default; below 0.5 only extends tracks
 det_size = 640
 
 [recognizers]

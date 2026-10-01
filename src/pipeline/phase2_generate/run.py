@@ -34,8 +34,11 @@ Outputs (in --out dir):
                         "skipped_no_landmarks" (dlib found nothing usable —
                         passthrough of the original crop, unmodified),
                         "skipped_no_frame" (the source video ended before this
-                        frame_id) or "skipped_no_identity" (track_id missing
-                        from tracks.json — a Phase 1 data-integrity gap).
+                        frame_id), "skipped_no_identity" (track_id missing
+                        from tracks.json — a Phase 1 data-integrity gap) or
+                        "failsafe" (a Phase 1 post-pass box, not a detection:
+                        `reason` is its source; nothing is generated and
+                        compose_video.py hides it).
     run_manifest.json   run-level summary: config + per-identity frame counts.
 """
 
@@ -178,6 +181,11 @@ def main() -> None:
     p.add_argument("--blanket-push-beta", type=float, default=0.35,
                    help="blanket --blanket-swap-mode track: push strength (0.35 = the magnitude of "
                         "BLANKET's own native push)")
+    p.add_argument("--blanket-detection", choices=("phase1", "upstream"), default="phase1",
+                   help="blanket: which face detection the swap uses. phase1 = this project's own "
+                        "detection (box and 5 points) for the target face, plus FaceFusion's lenient "
+                        "detector for identity images yolo_face rejects; upstream = BLANKET's own "
+                        "yolo_face re-detection and IoU filter everywhere (runs before 2026-09-30)")
     p.add_argument("--ctx-id", type=int, default=0, help="0 for GPU/MPS, -1 for CPU")
     p.add_argument("--random-init", action="store_true",
                    help="Smoke test: random generator weights, output is NOT real anonymization")
@@ -267,6 +275,7 @@ def main() -> None:
             swap_gpu=args.blanket_swap_gpu,
             swap_mode=args.blanket_swap_mode,
             push_beta=args.blanket_push_beta,
+            detection=args.blanket_detection,
         )
         if args.blanket_swap_mode == "track" and not args.identity_prepass:
             p.error("--blanket-swap-mode track needs --identity-prepass (the push target is the "
@@ -332,8 +341,22 @@ def main() -> None:
                 s = stats.setdefault(face.track_id, {
                     "seed": identity.seed if identity else None,
                     "num_frames_generated": 0, "num_frames_passthrough": 0,
-                    "num_frames_skipped_no_identity": 0, "passthrough_reasons": {},
+                    "num_frames_skipped_no_identity": 0, "num_frames_failsafe": 0,
+                    "passthrough_reasons": {},
                 })
+
+                if not face.detected:
+                    # A box from Phase 1's recall post-pass (gap, dilation, too-short
+                    # track): no landmarks, maybe no visible face. Not generated;
+                    # compose_video.py's fail-safe hides it.
+                    s["num_frames_failsafe"] += 1
+                    lf.write(json.dumps({
+                        "frame_id": frame_rec.frame_id, "track_id": face.track_id,
+                        "status": "failsafe", "reason": face.source, "output_path": None,
+                        "model": args.model, "seed": identity.seed if identity else None,
+                        "identity_class": None,
+                    }) + "\n")
+                    continue
 
                 if identity is None:
                     # track_id present in detections.jsonl but missing from
@@ -407,6 +430,7 @@ def main() -> None:
              "num_frames_generated": s["num_frames_generated"],
              "num_frames_passthrough": s["num_frames_passthrough"],
              "num_frames_skipped_no_identity": s["num_frames_skipped_no_identity"],
+             "num_frames_failsafe": s["num_frames_failsafe"],
              "passthrough_reasons": s["passthrough_reasons"]}
             for tid, s in stats.items()
         ],

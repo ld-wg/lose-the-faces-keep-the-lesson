@@ -114,6 +114,26 @@ def load_run(phase2_dir: Path) -> Run:
                context_ratio=manifest["context_ratio"], ledger=ledger)
 
 
+def composition(phase2_dir: Path) -> Optional[dict]:
+    """What the final video shows at every face box (compose_video.py's compose.jsonl):
+    `generated`, `reused` (the track's last generated face) or `filled` (neutral
+    fill), by Face.source. None if the run was never composed into a video."""
+    path = phase2_dir / "compose.jsonl"
+    if not path.is_file():
+        return None
+    outcomes: Counter = Counter()
+    by_source: dict[str, Counter] = defaultdict(Counter)
+    with path.open() as f:
+        for line in f:
+            r = json.loads(line)
+            outcomes[r["outcome"]] += 1
+            by_source[r["source"]][r["outcome"]] += 1
+    n = sum(outcomes.values())
+    return {"n_boxes": n, "outcomes": dict(outcomes),
+            "shares": {k: _r(v / n) for k, v in outcomes.items()},
+            "by_source": {k: dict(v) for k, v in by_source.items()}}
+
+
 def _iou(a, b) -> float:
     ix1, iy1, ix2, iy2 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
     inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
@@ -288,6 +308,14 @@ def _markdown(report: dict) -> str:
         ]) + " |")
     lines += ["", "Lower cos / verified / rank-1 = more private. Higher consistency = one stable "
               "pseudonymous identity per track. Lower expression error = expression better kept."]
+    composed = {name: m["composition"] for name, m in report["runs"].items() if m.get("composition")}
+    if composed:
+        lines += ["", "Final video, every face box (detector and post-pass): what replaced the real face.", "",
+                  "| run | boxes | generated | reused | filled |", "|---|---|---|---|---|"]
+        for name, c in composed.items():
+            sh = c["shares"]
+            lines.append(f"| {name} | {c['n_boxes']} | {sh.get('generated', 0)} | {sh.get('reused', 0)} "
+                         f"| {sh.get('filled', 0)} |")
     return "\n".join(lines) + "\n"
 
 
@@ -348,7 +376,9 @@ def main() -> None:
                 break
             h, w = frame.shape[:2]
             for face in frame_rec.faces:
-                if face.track_id not in identities or not face.landmarks:
+                # Detector faces only: post-pass boxes (fill.py) have no landmarks and are
+                # hidden by compose_video.py's fail-safe, counted in `composition` below.
+                if face.track_id not in identities or not face.detected or not face.landmarks:
                     continue
                 key = (frame_rec.frame_id, face.track_id)
                 real = RealObs(face.track_id, frame_rec.frame_id, embed(frame, face.landmarks))
@@ -406,7 +436,8 @@ def main() -> None:
                       "min_genuine_gap_frames": MIN_GENUINE_GAP},
         "calibration": calibration,
         "runs": {r.name: {"model": r.model, "dir": str(r.dir), "context_ratio": r.context_ratio,
-                          **run_metrics(per_run[r.name], real_by_key, calibration, rng)}
+                          **run_metrics(per_run[r.name], real_by_key, calibration, rng),
+                          "composition": composition(r.dir)}
                  for r in runs},
         "seconds": round(time.time() - t0, 1),
     }

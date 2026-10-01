@@ -46,7 +46,8 @@ Grouped by the question they answer. Definitions and implementation notes:
 
 | Group | Question | Metrics |
 |---|---|---|
-| Coverage | Is every face anonymized? | share anonymized; passthrough causes |
+| Coverage | Is every face anonymized? | share generated; passthrough causes |
+| Exposure | Does the final video show any real face? | share of face boxes generated / reused / filled (`compose.jsonl`, fail-closed, DECISIONS.md 32–37); boxes by Phase 1 source; faces never detected (needs annotated frames) |
 | Privacy | Can the person still be recognized? | **rank-1** (primary) and rank-5, verification at FAR 1%, cosine to the real face, Privacy Gain; FaceNet (held-out) next to ArcFace (the space the push is computed in); two views: anonymized faces only, and all faces with passthrough counted as a leak |
 | Pseudonym | Does each person keep one stable synthetic identity? | within-track consistency |
 | Temporal | Does the face flicker? | consecutive-frame similarity |
