@@ -37,12 +37,20 @@ apply to it.
 
 ## Status
 
-All components exist: the identity pre-pass and report, seed candidates, the
-P2 swap modes and the evaluator. What is pending:
-- the `run.py` orchestration;
-- the utility probes and bootstrap intervals shared with E2.
+Runnable (2026-10-01), not yet run on serra1. Parts:
+- **e3a:** C2;
+- **e3b:** coverage;
+- **e3c, e3d:** P2 strength and target;
+- **e3e:** the fail-closed policies (hide low-confidence detections, privacy
+  gate);
+- **e3f:** P3, CIAGAN's identity-code push;
+- **e3g:** P1, SDXL guidance. Run it only after the bridge's
+  `tools/p1_spike.py` says go.
 
-**Validation:** `native` and β 1.2 must reproduce the exploratory FaceNet rank-1
-(demo2 0.597 / 0.284, demo3 0.754 / 0.306), reusing the frozen identities.
+`E3_PARTS` selects a subset.
 
-**Cost:** ~15 h on serra1 with one GPU per stream.
+**Validation:** the exploratory FaceNet rank-1 (demo2 0.597 / 0.284, demo3
+0.754 / 0.306 for `native` / β 1.2) is reproduced only with the pre-#11 Phase 1
+(`--no-fill --conf 0.5`) and `detection = upstream`. The paper's runs use the
+current pipeline, so their numbers differ by design.
+

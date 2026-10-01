@@ -190,6 +190,58 @@ The literature review is in `research/stages/identification-occlusion.md`.
     gets other seeds and misses the identity cache. This is to be fixed, with
     a content hash, when the caches are next rebuilt.
 
+## Results campaign (2026-10-01)
+
+39. **Utility probes.** Every one is compared real vs anonymized and read
+    against its E0 noise floor (consecutive real frames):
+    - head-pose MAE over pitch, yaw and roll (buffalo_l `1k3d68`);
+    - age error and gender agreement (buffalo_l `genderage`);
+    - emotion agreement over 8 AffectNet classes, from HSEmotion
+      `enet_b0_8_best_vgaf`. The code is Apache-2.0; the weights are trained
+      on AffectNet, which is research use only;
+    - the 106-landmark expression error.
+
+    **Gaze is a stated limitation**: no permissive estimator was validated on
+    faces this small.
+40. **Three privacy views.**
+    - *Generated only* isolates the generator.
+    - *All faces, passthrough as a leak* is the method as published.
+    - *Final video* scores what the viewer sees after the fail-safe: reused =
+      the track's last generated face; filled = no face, never re-identified.
+    - The paper's main privacy number is FaceNet rank-1 on the final video.
+41. **Strata.** Face size, |yaw| and detection confidence. The confidence
+    split 0.1–0.5 vs ≥ 0.5 answers open point 1: low-confidence faces are hard
+    for the recognizers even when real.
+42. **The two policies of the fail-closed pipeline are E3e arms.**
+    - `hide-low`: detections below 0.5 are hidden, not swapped.
+    - `gate`: a swap is rejected when ArcFace cos(real, swapped) is at least
+      the video's in-domain ArcFace threshold at FAR 1%. The gate uses only
+      ArcFace, the guidance space, so FaceNet stays held out.
+43. **P3 (D9) is implemented** (`--ciagan-push track`).
+    - Softmax logits over the 1200 identities, initialized at the seed
+      (p ≈ 0.9).
+    - Loss: hinge on ArcFace cos to the track identity, plus
+      λ‖p − one-hot‖². 10 Adam steps, warm start per track.
+    - The ArcFace is differentiable, from onnx2torch of the same
+      `w600k_r50.onnx`. Its parity with ONNX (cos ≥ 0.999) is checked before
+      any result.
+44. **P1 (D8) is implemented behind a go/no-go spike** (bridge branch
+    `p1-guidance`, `tools/p1_spike.py`).
+    - A wrapper around SDXL's `scheduler.step` guides the predicted clean
+      latent, decoded by an fp32 VAE copy.
+    - It covers the last 3 of the 7 base UNet steps, at scale 0.1. The
+      refiner is not guided; its effect is measured.
+    - Guided identities get their own frozen cache.
+45. **One evaluator call per video (E2) or per part (E3)**, so arms share the
+    real embeddings, the calibration and the faces. It runs on the GPU
+    (`EVAL_CTX_ID`).
+46. **Exposure ground truth (open point 4).**
+    - `src/eval/miss_sheet.py` samples every 15th frame with every box drawn,
+      and the author counts the visible faces with no box.
+    - The residual miss rate is reported with a bootstrap interval over
+      frames.
+    - The sheets show real people: local only, deleted after annotation.
+
 ## Paper text to revise (not done here; `paper/main.tex` has uncommitted edits)
 
 - **Methodology, Stage 3.** Replace gradient injection on a canonical latent

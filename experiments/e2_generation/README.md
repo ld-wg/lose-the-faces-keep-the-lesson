@@ -41,10 +41,14 @@ Per video and pooled, with 95% bootstrap intervals over tracks.
 
 ## Status
 
-Pending three pieces:
-- the censorship backend (`phase2_generate/models/censor/`);
-- the utility probes (emotion, pose, gaze, attributes);
-- bootstrap intervals in the evaluator.
+Runnable (2026-10-01), not yet run on serra1.
 
-CIAGAN, GANonymization and BLANKET already run. **Cost:** ~8 h on serra1, most
-of it SDXL identities for BLANKET, cached in `cache/`.
+Privacy is reported in three views (DECISIONS.md 40):
+- generated faces only;
+- all faces, with passthrough as a leak;
+- the final video after the fail-safe.
+
+Utility is read against the E0 noise floor, which also appears as a row of
+the utility table (*real, next frame*). **Cost:** ~8 h on serra1, most of it
+SDXL identities for BLANKET.
+

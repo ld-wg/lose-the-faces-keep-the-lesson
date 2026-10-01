@@ -30,10 +30,10 @@ limitations it declares: [`DECISIONS.md`](DECISIONS.md).
 
 | ID | Folder | Question | Arms | Status |
 |---|---|---|---|---|
-| E0 | [`e0_instruments`](e0_instruments) | Do the recognizers and utility probes measure what we claim on this footage? | FaceNet, ArcFace; utility probes | recognizer validation runnable; noise floors pending the utility probes |
-| E1 | [`e1_detection`](e1_detection) | Which detector gives the best recall for its cost, and how does it behave in a classroom? | SCRFD-10GF, SCRFD-34GF, YOLO-FaceV2-s | skeleton; needs the WIDER FACE evaluator and track statistics |
-| E2 | [`e2_generation`](e2_generation) | What is the privacy–utility trade-off of each generator family, against censorship? | blur, mosaic, CIAGAN, GANonymization, BLANKET (original) | skeleton; needs the censorship backend and the utility probes |
-| E3 | [`e3_contribution`](e3_contribution) | Do our ideas improve privacy without costing utility? | C2 modes; BLANKET ± seed candidates; P2 push strength β; P2 target | skeleton; components exist, run.py pending |
+| E0 | [`e0_instruments`](e0_instruments) | Do the recognizers and utility probes measure what we claim on this footage? | FaceNet, ArcFace; utility probes | runnable: TAR, mechanism, utility noise floors |
+| E1 | [`e1_detection`](e1_detection) | Which detector gives the best recall for its cost, and how does it behave in a classroom? | SCRFD-10GF, SCRFD-34GF, YOLO-FaceV2-s | runnable (WIDER FACE official AP, recall at FPPI, track statistics) |
+| E2 | [`e2_generation`](e2_generation) | What is the privacy–utility trade-off of each generator family, against censorship? | blur, mosaic, CIAGAN, GANonymization, BLANKET (original) | runnable |
+| E3 | [`e3_contribution`](e3_contribution) | Do our ideas improve privacy without costing utility? | C2 modes; BLANKET ± seed candidates and Phase 1 detection; P2 strength and target; fail-closed policies; P3 (CIAGAN); P1 (SDXL, after its spike) | runnable |
 
 Inputs: three classroom videos, `demo1` (239 frames, 15 tracks), `demo2` (244
 frames, 24 tracks) and `demo3` (355 frames, 32 tracks), plus WIDER FACE val for
@@ -75,7 +75,7 @@ paired tests (paired bootstrap; McNemar for per-face rank-1).
 ## Running
 
 ```bash
-uv sync --extra phase2-ganonymization --extra eval --extra experiments
+uv sync --extra phase2-ciagan --extra phase2-ganonymization --extra eval --extra experiments
 uv run experiments/e0_instruments/run.py            # one experiment
 uv run experiments/e0_instruments/run.py --video demo2   # override its inputs
 experiments/run_all.sh                              # all, in order; stops at the first failure
@@ -89,7 +89,9 @@ BLANKET, keyed by video hash and settings. Reusing them also controls SDXL's
 run-to-run non-determinism. `--fresh` clears the experiment's cache too.
 
 Machine-specific settings come from the environment, never from `config.toml`:
-`BLANKET_REPO`, `IDENTITY_GPU`, `SWAP_GPU`, `CTX_ID` (on serra1: `1`, `0`, `-1`).
+`BLANKET_REPO`, `IDENTITY_GPU`, `SWAP_GPU`, `CTX_ID` (on serra1: `1`, `0`, `-1`), and
+`EVAL_CTX_ID` for the evaluator (default `0`, the GPU: it runs after the generation
+servers exit). `E3_PARTS=e3c,e3d` runs a subset of E3.
 Videos resolve from `data/videos/<name>.*`.
 
 ## What a results folder contains
@@ -148,7 +150,7 @@ and `graphicx`, no `pgfplots`/`siunitx`):
 | E0 | ~30 min |
 | E1 | ~1 h |
 | E2 | ~8 h (SDXL identities for three videos) |
-| E3 | ~15 h with one GPU per stream |
+| E3 | ~15 h with one GPU per stream, plus ~2 h P3 and ~4 h P1 |
 
 ## Quick, single-step runs
 

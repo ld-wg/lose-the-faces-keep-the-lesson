@@ -36,13 +36,11 @@ missed face is a leak.)
 
 ## Status
 
-Pending two components:
-- `src/eval/widerface.py`, a port of the official protocol. The dataset is on
-  serra1 at `CONFIG.widerface_root`.
-- `src/eval/detection_stats.py`, the track statistics.
+Runnable (2026-10-01), not yet run on serra1.
+- `src/eval/widerface.py` ports the official protocol. The ground-truth
+  `.mat` files are fetched if missing.
+- `src/eval/detection_stats.py` gives the track statistics.
 
-The three detector backends exist. `run.py` exits with "pending" until both
-components land.
+**Validation:** SCRFD-10GF's hard AP should land near its published 83.05,
+at 640 px.
 
-**Validation:** SCRFD-10GF must reproduce its published hard AP (83.05) within
-a small tolerance before any other number here is trusted.
