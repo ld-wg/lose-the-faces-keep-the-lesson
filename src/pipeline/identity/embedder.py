@@ -35,6 +35,7 @@ BUFFALO_L = "buffalo_l"
 ARCFACE_FILENAME = "w600k_r50.onnx"
 POSE_FILENAME = "1k3d68.onnx"
 LANDMARK_106_FILENAME = "2d106det.onnx"
+GENDERAGE_FILENAME = "genderage.onnx"
 
 
 def buffalo_model_path(filename: str, root: str = "~/.insightface") -> Path:
@@ -128,3 +129,30 @@ class Landmark106:
         self._load()
         face = Face(bbox=np.asarray(box, dtype=np.float32))
         return np.asarray(self._model.get(image_bgr, face), dtype=np.float32)[:, :2]
+
+
+class AttributeEstimator:
+    """Apparent age (years) and gender (0 = female, 1 = male, insightface's
+    convention) from buffalo_l's `genderage` model. Used to measure whether a
+    surrogate is "demographically similar" to the real face (paper, Stage 2):
+    age error and gender agreement, real vs anonymized. Not a fairness
+    instrument: its own bias on children and on this footage is unmeasured."""
+
+    def __init__(self, onnx_path: Optional[Path] = None, ctx_id: int = 0):
+        self.onnx_path = Path(onnx_path) if onnx_path else None
+        self.ctx_id = ctx_id
+        self._model = None
+
+    def _load(self):
+        if self._model is None:
+            path = self.onnx_path or buffalo_model_path(GENDERAGE_FILENAME)
+            self._model = _load_onnx_model(path, self.ctx_id)
+
+    def attributes(self, image_bgr: np.ndarray, box: Sequence[float]) -> tuple[int, int]:
+        """(gender, age)."""
+        from insightface.app.common import Face
+
+        self._load()
+        gender, age = self._model.get(image_bgr, Face(bbox=np.asarray(box, dtype=np.float32)))
+        return int(gender), int(age)
+

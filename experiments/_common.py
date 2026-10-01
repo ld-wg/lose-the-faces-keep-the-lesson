@@ -38,6 +38,7 @@ import logging
 import math
 import os
 import platform
+import re
 import shlex
 import shutil
 import subprocess
@@ -133,7 +134,18 @@ def _versions() -> dict:
 
 
 _LATEX_ESCAPES = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#",
-                  "_": r"\_", "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}"}
+                  "_": r"\_", "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
+                  # inputenc's utf8 (the SBC template) has no Greek or math symbols
+                  "β": r"$\beta$", "τ": r"$\tau$", "Δ": r"$\Delta$", "≥": r"$\geq$", "≤": r"$\leq$",
+                  "±": r"$\pm$", "×": r"$\times$", "°": r"\textdegree{}"}
+
+_KEY_SUBS = {"β": "b", "τ": "tau", "Δ": "d", "≥": "ge", "≤": "le", "°": "deg"}
+
+
+def result_key(key: str) -> str:
+    """ASCII form of a \\result key: letters, digits and . / _ + - only."""
+    key = "".join(_KEY_SUBS.get(c, c) for c in key)
+    return re.sub(r"[^A-Za-z0-9./_+-]+", "-", key).strip("-")
 
 
 def latex_escape(text: str) -> str:
@@ -213,6 +225,114 @@ def mcnemar_p(a: Sequence[bool], b: Sequence[bool]) -> float:
     k = min(n01, n10)
     p = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
     return min(1.0, 2 * p)
+
+
+# ---------------------------------------------------------------------------
+# Per-face observations (src.eval.evaluate --obs-out): one row per (run, frame, track)
+
+def load_obs(path: Path, **extra: Any) -> list[dict]:
+    """Rows of an --obs-out CSV with numbers parsed; `extra` fields (e.g. video=...)
+    are added to every row so videos can be pooled."""
+    def parse(v: str):
+        if v == "":
+            return None
+        try:
+            return int(v)
+        except ValueError:
+            try:
+                return float(v)
+            except ValueError:
+                return v
+    with open(path, newline="") as f:
+        return [{**{k: parse(v) for k, v in r.items()}, **extra} for r in csv.DictReader(f)]
+
+
+def obs_value(row: dict, metric: str) -> Optional[float]:
+    """`facenet.rank1` / `.rank5` / `.cos` / `.verified`, `real_facenet.rank1`, or a
+    utility column (`expression`, `pose_err`, `age_err`, `gender_agree`, `emotion_agree`)."""
+    if "." in metric:
+        rec, what = metric.split(".", 1)
+        if what in ("rank1", "rank5"):
+            rank = row.get(f"{rec}_rank")
+            return None if rank is None else float(rank <= (1 if what == "rank1" else 5))
+        v = row.get(f"{rec}_{what}")
+    else:
+        v = row.get(metric)
+    return None if v is None else float(v)
+
+
+def _track_sums(rows: Sequence[dict], metric: str) -> tuple[list, np.ndarray, np.ndarray]:
+    sums: dict[Any, list[float]] = {}
+    for r in rows:
+        v = obs_value(r, metric)
+        if v is not None:
+            s = sums.setdefault((r.get("video"), r["track_id"]), [0.0, 0])
+            s[0] += v
+            s[1] += 1
+    keys = list(sums)
+    return keys, np.array([sums[k][0] for k in keys]), np.array([sums[k][1] for k in keys], dtype=float)
+
+
+def obs_ci(rows: Sequence[dict], metric: str, *, n: int = 2000, seed: int = 0,
+           level: float = 0.95) -> tuple[Optional[float], Optional[float], int]:
+    """(mean, half-width of the 95% interval, n faces), resampling whole tracks."""
+    keys, s, c = _track_sums(rows, metric)
+    if not keys or c.sum() == 0:
+        return None, None, 0
+    est = float(s.sum() / c.sum())
+    pick = np.random.default_rng(seed).integers(0, len(keys), (n, len(keys)))
+    boots = s[pick].sum(1) / np.maximum(c[pick].sum(1), 1)
+    lo, hi = np.percentile(boots, [(1 - level) / 2 * 100, (1 + level) / 2 * 100])
+    return est, float((hi - lo) / 2), int(c.sum())
+
+
+def privacy_gain_ci(rows: Sequence[dict], rec: str = "facenet", *, n: int = 2000,
+                    seed: int = 0) -> tuple[Optional[float], Optional[float]]:
+    """1 − rank1(anonymized) / rank1(real), with a track-bootstrap half-width,
+    over the faces that have both ranks."""
+    rows = [r for r in rows if obs_value(r, f"{rec}.rank1") is not None
+            and obs_value(r, f"real_{rec}.rank1") is not None]
+    keys_a, sa, ca = _track_sums(rows, f"{rec}.rank1")
+    keys_b, sb, cb = _track_sums(rows, f"real_{rec}.rank1")
+    if not keys_a or keys_a != keys_b or sb.sum() == 0:
+        return None, None
+    est = 1 - (sa.sum() / ca.sum()) / (sb.sum() / cb.sum())
+    pick = np.random.default_rng(seed).integers(0, len(keys_a), (n, len(keys_a)))
+    boots = 1 - (sa[pick].sum(1) / np.maximum(ca[pick].sum(1), 1)) / np.maximum(
+        sb[pick].sum(1) / np.maximum(cb[pick].sum(1), 1), 1e-12)
+    lo, hi = np.percentile(boots, [2.5, 97.5])
+    return float(est), float((hi - lo) / 2)
+
+
+def paired_obs(rows_a: Sequence[dict], rows_b: Sequence[dict], metric: str, *, n: int = 2000,
+               seed: int = 0) -> dict:
+    """Arm A minus arm B on the faces both scored (joined on video, frame, track):
+    mean difference with a track-bootstrap 95% interval, plus McNemar's p for
+    binary metrics (rank1, rank5, verified, agreements)."""
+    key = lambda r: (r.get("video"), r["frame_id"], r["track_id"])  # noqa: E731
+    b_by = {key(r): r for r in rows_b}
+    diffs, xa, xb = [], [], []
+    for r in rows_a:
+        other = b_by.get(key(r))
+        va, vb = obs_value(r, metric), obs_value(other, metric) if other else None
+        if va is not None and vb is not None:
+            diffs.append({"video": r.get("video"), "track_id": r["track_id"], "d": va - vb})
+            xa.append(va)
+            xb.append(vb)
+    est, half, m = obs_ci(diffs, "d", n=n, seed=seed)
+    binary = bool(xa) and set(xa) | set(xb) <= {0.0, 1.0}
+    return {"diff": est, "half": half, "n": m,
+            "excludes_zero": est is not None and half is not None and abs(est) > half,
+            "mcnemar_p": mcnemar_p(np.array(xa) > 0.5, np.array(xb) > 0.5) if binary else None}
+
+
+def strata(rows: Sequence[dict], key: str, edges: Sequence[float]) -> list[tuple[str, list[dict]]]:
+    """Rows split into [edges[i], edges[i+1]) bins of a covariate (face_px, abs_yaw, det_conf)."""
+    out = []
+    for lo, hi in zip(edges, edges[1:]):
+        label = f"{lo:g}–{hi:g}" if hi < 1e5 else f"≥{lo:g}"
+        out.append((label, [r for r in rows if r.get(key) is not None and lo <= r[key] < hi]))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -322,8 +442,9 @@ class Experiment:
     # -- outputs -------------------------------------------------------------
 
     def metric(self, key: str, value: Any) -> None:
-        """A number the paper may cite: metrics.json, and \\result{key} in results.tex."""
-        self._metrics[key] = value
+        """A number the paper may cite: metrics.json, and \\result{key} in results.tex
+        (key made ASCII: β 1.2 -> b-1.2)."""
+        self._metrics[result_key(key)] = value
 
     def table(self, name: str, columns: Sequence[str], rows: Iterable[Sequence[Any]], *,
               decimals: int = 3, best: Optional[dict[str, str]] = None, align: Optional[str] = None) -> None:
