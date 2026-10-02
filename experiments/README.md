@@ -76,6 +76,7 @@ paired tests (paired bootstrap; McNemar for per-face rank-1).
 
 ```bash
 uv sync --extra phase2-ciagan --extra phase2-ganonymization --extra eval --extra experiments
+experiments/smoke.sh                                # every component on 20 frames of demo1, first
 uv run experiments/e0_instruments/run.py            # one experiment
 uv run experiments/e0_instruments/run.py --video demo2   # override its inputs
 experiments/run_all.sh                              # all, in order; stops at the first failure
@@ -93,6 +94,11 @@ Machine-specific settings come from the environment, never from `config.toml`:
 `EVAL_CTX_ID` for the evaluator (default `0`, the GPU: it runs after the generation
 servers exit). `E3_PARTS=e3c,e3d` runs a subset of E3.
 Videos resolve from `data/videos/<name>.*`.
+
+P1 (E3, part e3g) needs the bridge on its `p1-guidance` branch and two packages in
+its identity environment: `.venv-identity/bin/pip install "onnx>=1.15" "onnx2torch>=1.5"`.
+Run it only after `tools/p1_spike.py` (also called by `smoke.sh`) shows at most ~3 s
+and ~3 GB extra per guided step.
 
 ## What a results folder contains
 

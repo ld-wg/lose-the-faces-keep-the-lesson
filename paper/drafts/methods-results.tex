@@ -1,0 +1,231 @@
+% Draft: Methodology (as built), Experimental Setup, Results skeleton, Limitations.
+% Written 2026-10-02 from experiments/README.md, experiments/DECISIONS.md and the code.
+% Not \input by main.tex: the author merges what they keep. Every number comes
+% from \result{...} (paper/generated/results.tex, preamble: \input{generated/results}),
+% so this compiles only after experiments/export_paper.sh; a missing key stops
+% the compilation on purpose. "% TODO" marks a sentence to write once the
+% numbers are known; nothing here anticipates a result.
+
+\section{Methodology}
+
+The framework is an offline, three-stage pipeline: (1)~face detection and
+tracking with a recall post-pass, (2)~per-track face replacement by a
+generative model, and (3)~a fail-closed composition of the output video.
+Temporal consistency is obtained by fixing one synthetic identity per track
+rather than by a separate stabilization network.
+
+\subsection{Stage 1: detection, tracking and recall}
+
+Faces are detected by SCRFD-10GF~\cite{scrfd} (InsightFace's \texttt{buffalo\_l}
+pack, inference only, 640\,px input) and associated across frames by a
+ByteTrack-style tracker: detections at or above 0.5 are matched first and may
+start new tracks, while detections between 0.1 and 0.5 can only extend an
+existing track, which recovers partially occluded or bowed faces without
+creating spurious tracks. Because the pipeline is offline, a post-pass over the
+whole video then places a box wherever a tracked face almost certainly is:
+tracks are emitted from their first detection rather than after a
+confirmation delay, gaps of up to 30 frames inside a track are filled by
+linear interpolation, each track is extended by three frames at both ends, and
+tracks with fewer than three detections are kept for hiding but receive no
+synthetic identity. Every box records its origin (detector, interpolated,
+dilated, unconfirmed); only detector boxes, which carry landmarks, reach the
+generator.
+
+% Note for the text: the SCRFD-10GF threshold defaulted to 0.5 inside InsightFace
+% regardless of the configured value before 2026-09-30 (DECISIONS.md 35); every
+% number in this draft uses the corrected pipeline.
+
+\subsection{Stage 2: face replacement}
+
+Three generator families are compared in their published form: CIAGAN~\cite{ciagan}
+(a conditional GAN driven by landmarks and a one-hot identity code),
+GANonymization~\cite{hellmann} (pix2pix re-synthesis from dense landmarks) and
+BLANKET (an SDXL inpainting model with two ControlNets that generates one
+synthetic identity per track, followed by an \texttt{inswapper} face swap in
+every frame). Blur and mosaic of the detected box are the censorship baselines.
+Each track receives a deterministic seed, so a student keeps one pseudonymous
+face throughout the video.
+
+Our contribution modifies the replacement in four places. \textbf{(C2) Track-level
+real identity.} For every track, the ArcFace (\texttt{w600k\_r50}) embeddings of
+its frames are aggregated into one estimate of the real person's identity,
+weighted by a quality score (detection confidence, face size, head yaw) with
+outlier gating; it also selects the best frames from which the synthetic
+identity is generated. \textbf{(P2) Swap-stage push.} The identity embedding
+that conditions the swap is moved away from that estimate,
+$\hat{e} = \mathrm{normalize}(e_{\mathrm{synth}} - \beta\, e_{\mathrm{real}})$,
+in the same space before \texttt{inswapper}'s projection, replacing BLANKET's
+fixed single-frame mix. \textbf{(P3) CIAGAN code optimization.} Per frame, a few
+gradient steps move CIAGAN's identity code (a softmax over its 1200 training
+identities, initialized at the track's seed) to reduce
+$\max(0, \cos(\mathrm{ArcFace}(x), e_{\mathrm{real}}) - \tau)$, with a penalty
+that keeps the code near the seed's pseudonym. \textbf{(P1) Diffusion guidance.}
+During BLANKET's identity generation, the predicted clean latent is pushed by
+the gradient of the same hinge through a differentiable ArcFace, in the manner
+of MPGD, without back-propagating through the denoising network.
+% TODO P1: keep or move to future work after the go/no-go spike (DECISIONS.md 44).
+
+Two engineering changes made BLANKET usable on classroom footage. The swap uses
+the face Stage~1 found (its box and five landmarks) instead of re-detecting it,
+and identity images the swapper's detector rejects are re-examined with a
+more permissive detector; on one video these two changes raised the share of
+generated faces from 0.43 to 1.0 on the same identities (frames 0--99).
+% TODO: replace with the E3b numbers (\result{e3b/pooled/phase1/anonymized}).
+
+\subsection{Stage 3: fail-closed composition}
+
+The output video never shows a face the pipeline knows about. Generated faces
+are pasted back pixel-exactly (only the pixels the generator changed, so a
+neighbour's background cannot overwrite them); every other box---a generation
+failure, a post-pass box, a rejected swap---is hidden by the same track's most
+recent generated face (if at most 10 frames old) or by a neutral gray ellipse.
+Blur and pixelation are not used as the fallback, since both are reversible or
+attackable for small faces.
+
+\section{Experimental Setup}
+
+\textbf{Data.} Detection is benchmarked on the WIDER FACE validation split with
+the official protocol. The video experiments use three classroom recordings
+(239, 244 and 355 frames) with 15, 24 and 22--32 tracks, respectively.
+% TODO: state the source and terms of the three videos, and that no frame of a
+% real person is reproduced in this paper; they are not a consented dataset of
+% children (limitation).
+
+\textbf{Privacy.} Two recognizers are reported side by side: FaceNet
+(InceptionResnetV1 trained on VGGFace2), a held-out evaluator never used to
+build or steer the pipeline, and ArcFace (\texttt{w600k\_r50}), the space in
+which P1--P3 push. Thresholds are calibrated in-domain, per video, at a 1\%
+false-accept rate, with genuine pairs from the same track and impostor pairs
+from tracks visible in the same frame. Re-identification is closed-set: each
+face is compared with the mean real embedding of every track (its own frame
+left out), and rank-1/rank-5 record whether its own track ranks first or in the
+top five; Privacy Gain is $1 - \mathrm{rank1}_{\mathrm{anon}} / \mathrm{rank1}_{\mathrm{real}}$.
+Each metric is computed in three views: generated faces only (the generator's
+quality), all faces with passthrough counted as a leak (the method as
+published), and the final video after the fail-safe (what a viewer sees). The
+primary measure is FaceNet rank-1 on the final video.
+
+\textbf{Utility.} Between each real face and its replacement: emotion agreement
+(8 classes, HSEmotion), expression error (106 landmarks after similarity
+alignment, in inter-ocular units), head-pose error (mean absolute error of
+pitch, yaw and roll), age error and gender agreement (InsightFace), and
+re-detection. Each is read against its noise floor, the same metric between
+consecutive real frames of a track (Table~\ref{tab:noise}).
+
+\textbf{Statistics.} Confidence intervals (95\%) are percentile bootstraps that
+resample whole tracks; arms that share faces are compared on the same faces,
+with a track-level sign-flip test. Results are pooled over the three videos and
+stratified by face size, absolute yaw and detection confidence.
+
+\textbf{Criteria, fixed before running.} An arm improves privacy when FaceNet
+rank-1 drops and the paired interval against its reference excludes zero; it
+preserves utility when its utility metrics stay within the reference arm's
+interval, read against the noise floor.
+
+\section{Results}
+
+\subsection{Instruments}
+
+\begin{table}[ht]\centering
+\caption{Recognizers on real faces of each video: in-domain threshold and true-accept rate at FAR 1\%.}
+\label{tab:recognizers}
+\input{generated/e0_instruments/tab-e0-recognizers}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{Noise floor of the utility metrics: the same metric between consecutive real frames.}
+\label{tab:noise}
+\input{generated/e0_instruments/tab-e0-noise-floor}
+\end{table}
+
+FaceNet accepts \result{e0/demo2/facenet.tar} of genuine pairs on demo2 and
+\result{e0/demo1/facenet.tar} on demo1 at FAR 1\%.
+% TODO: interpret the evaluator's validity per video (demo1 is the weakest).
+
+\subsection{Detection}
+
+\begin{table}[ht]\centering
+\caption{WIDER FACE validation: official AP and inference cost.}
+\label{tab:wider}
+\input{generated/e1_detection/tab-e1-widerface-ap}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{Recall-first operating points on WIDER FACE (hard set).}
+\label{tab:wider-recall}
+\input{generated/e1_detection/tab-e1-widerface-recall}
+\end{table}
+
+SCRFD-10GF reaches an AP of \result{e1/widerface/scrfd-10gf/ap-hard} on the hard
+set and a recall of \result{e1/widerface/scrfd-10gf/recall-at-fppi-0.1} at 0.1
+false positives per image.
+% TODO: compare detectors; Table e1-videos (track statistics) for the classroom videos.
+
+\subsection{Generators in their original form}
+
+\begin{table}[ht]\centering
+\caption{Privacy, pooled over videos: coverage and FaceNet rank-1 in three views
+(generated faces, all faces with passthrough as a leak, final video), Privacy Gain
+and verification on the final video. Mean $\pm$ half-width of the 95\% track bootstrap.}
+\label{tab:e2-main}
+\input{generated/e2_generation/tab-e2-main}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{Utility on generated faces, with the noise floor (real, next frame).}
+\label{tab:e2-utility}
+\input{generated/e2_generation/tab-e2-utility}
+\end{table}
+
+\begin{figure}[ht]\centering
+\includegraphics[width=\linewidth]{generated/e2_generation/fig-e2-tradeoff}
+\caption{Privacy--utility trade-off of each method: FaceNet rank-1 on the final
+video against emotion agreement; the dashed line is the noise floor.}
+\label{fig:tradeoff}
+\end{figure}
+
+On the final video, FaceNet re-identifies \result{e2/pooled/blanket/facenet_final.rank1}
+of BLANKET's faces, \result{e2/pooled/ciagan/facenet_final.rank1} of CIAGAN's and
+\result{e2/pooled/blur/facenet_final.rank1} of the blurred ones.
+% TODO: trade-off reading; strata tables (e2-strata-*); cost table (e2-cost).
+
+\subsection{Contribution}
+
+\begin{table}[ht]\centering
+\caption{C2: estimate of the real identity per aggregation mode, scored by its
+cosine to the track's unseen frames.}
+\label{tab:e3-identity}
+\input{generated/e3_contribution/tab-e3-identity}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{P2: push strength on BLANKET (generated faces), with the paired difference
+against BLANKET's own mix.}
+\label{tab:e3-p2}
+\input{generated/e3_contribution/tab-e3-p2-strength}
+\end{table}
+
+\begin{figure}[ht]\centering
+\includegraphics[width=\linewidth]{generated/e3_contribution/fig-e3-p2-curve}
+\caption{P2: rank-1 of the held-out (FaceNet) and guidance (ArcFace) recognizers,
+and expression error, against the push strength $\beta$; dashed lines: BLANKET's own mix.}
+\label{fig:p2}
+\end{figure}
+
+At $\beta = 1.2$, FaceNet rank-1 on generated faces changes by
+\result{e3c/pooled/b-1.2/delta-facenet.rank1}~$\pm$~\result{e3c/pooled/b-1.2/delta-facenet.rank1.ci}
+against BLANKET's own mix.
+% TODO: transfer gap between ArcFace and FaceNet; the target table (e3-p2-target);
+% P3 (e3-p3); the policies (e3-policies); P1 if kept (e3-p1).
+
+\section{Limitations}
+
+The three videos are not a consented dataset of children, so the study measures
+the method on classroom-like footage, not on its target population. Gaze is not
+measured: no permissively licensed estimator was validated on faces this small.
+Human-rated pedagogical analyzability, a re-trained (parrot) attacker and a
+demographic fairness analysis are not performed. The emotion classifier is
+trained on AffectNet, whose terms allow research use only. Privacy is measured
+against two recognizers and does not constitute a formal guarantee. Faces the
+detector never finds are not hidden; their rate is estimated from annotated
+frames. % TODO: \result for the residual miss rate once the frames are annotated.
