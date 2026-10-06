@@ -15,10 +15,10 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _common import SERIES, Experiment, load_obs, obs_ci  # noqa: E402
+from _common import SERIES, Experiment, kappa_ci, load_obs, obs_ci  # noqa: E402
 
 RECOGNIZERS = {"facenet": "FaceNet", "arcface": "ArcFace"}   # roles go in the caption: held-out / guidance
-NOISE = {"expression": "Expression error", "pose_err": "Head-pose error (°)", "emotion_agree": "Emotion agreement",
+NOISE = {"expression": "Expression error", "pose_err": "Head-pose error (°)", "emotion_agree": "Emotion agreement", "emotion_kappa": "Emotion agreement (Cohen's κ)",
          "age_err": "Age difference (years)", "gender_agree": "Gender agreement",
          "facenet.cos": "FaceNet cosine", "arcface.cos": "ArcFace cosine"}
 BRIDGE = Path(os.environ.get("BLANKET_REPO", Path.home() / "projects" / "blanket-anonymizer-bridge"))
@@ -98,7 +98,7 @@ with Experiment(__file__) as exp:
         # real frames of a track (E2/E3 utility results are read against these).
         table = []
         for metric, label in NOISE.items():
-            est, half, n = obs_ci(noise, metric)
+            est, half, n = kappa_ci(noise) if metric == "emotion_kappa" else obs_ci(noise, metric)
             if est is None:
                 continue
             table.append([label, (est, half), n])

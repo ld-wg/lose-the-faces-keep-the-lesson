@@ -10,17 +10,19 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _common import SERIES, Experiment, obs_ci  # noqa: E402
+from _common import SERIES, Experiment, kappa_ci, obs_ci  # noqa: E402
 from _generation import (anonymize, arm_row, by_run, cell, detect, evaluate,  # noqa: E402
                          metric_keys, privacy_gain_cell, strata_rows)
 
 NOISE = "_noise_floor"
-UTILITY = ["expression", "pose_err", "emotion_agree", "age_err", "gender_agree", "redetected"]
+# emotion: Cohen's kappa (chance-corrected); raw agreement is kept in the metrics but rewards
+# methods whose output reads as the classroom's dominant class (neutral)
+UTILITY = ["expression", "pose_err", "emotion_kappa", "age_err", "gender_agree", "redetected"]
 # Over all detector faces: `facenet.rank1` is the "passthrough as a leak" view (a failed
 # face is scored with its real embedding), `facenet_final.*` what the composed video shows.
 KEYS = ["anonymized", "facenet.rank1", "facenet.rank5", "facenet_final.rank1", "facenet_final.rank5",
         "facenet_final.verified", "arcface.rank1", "arcface_final.rank1"]
-GENERATED_KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet.cos", *UTILITY]
+GENERATED_KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet.cos", "emotion_agree", *UTILITY]
 
 
 with Experiment(__file__) as exp:
@@ -73,8 +75,8 @@ with Experiment(__file__) as exp:
     utility_rows = [arm_row(labels[n], [r for r in pooled[n] if r["anonymized"]], UTILITY, ev) for n in names]
     if NOISE in pooled:
         utility_rows.append(arm_row("Real, next frame", pooled[NOISE], UTILITY, ev))
-    exp.table("utility", ["Arm", "Expr.", "Pose (°)", "Emotion", "Age (y)", "Gender", "Re-det."], utility_rows,
-              best={"Expr.": "min", "Pose (°)": "min", "Emotion": "max", "Age (y)": "min", "Gender": "max"},
+    exp.table("utility", ["Arm", "Expr.", "Pose (°)", "Emotion κ", "Age (y)", "Gender", "Re-det."], utility_rows,
+              best={"Expr.": "min", "Pose (°)": "min", "Emotion κ": "max", "Age (y)": "min", "Gender": "max"},
               align="lrrrrrr")
 
     exp.table("cost", ["Arm", "Frames / s", "Videos"], [
@@ -94,16 +96,16 @@ with Experiment(__file__) as exp:
         ax = fig.subplots()
         for i, n in enumerate(names):
             x, xh, _ = obs_ci(pooled[n], "facenet_final.rank1")
-            y, yh, _ = obs_ci([r for r in pooled[n] if r["anonymized"]], "emotion_agree")
+            y, yh, _ = kappa_ci([r for r in pooled[n] if r["anonymized"]], n=ev["bootstrap"], seed=ev["seed"])
             if x is None or y is None:
                 continue
             ax.errorbar(x, y, xerr=xh, yerr=yh, fmt="o", color=SERIES[i % len(SERIES)], capsize=2, label=labels[n])
             fig_rows.append({"arm": n, "facenet_final_rank1": round(x, 4), "ci_x": round(xh, 4),
-                             "emotion_agree": round(y, 4), "ci_y": round(yh, 4)})
+                             "emotion_kappa": round(y, 4), "ci_y": round(yh, 4)})
         if NOISE in pooled:
-            y, _, _ = obs_ci(pooled[NOISE], "emotion_agree")
+            y, _, _ = kappa_ci(pooled[NOISE], n=ev["bootstrap"], seed=ev["seed"])
             if y is not None:
                 ax.axhline(y, color="#0b0b0b", linewidth=0.8, linestyle=(0, (3, 2)), label="real, next frame")
         ax.set_xlabel("FaceNet rank-1, final video (lower = more private)")
-        ax.set_ylabel("emotion agreement")
+        ax.set_ylabel("emotion agreement (Cohen's κ)")
         ax.legend(frameon=False, fontsize=7, loc="best")

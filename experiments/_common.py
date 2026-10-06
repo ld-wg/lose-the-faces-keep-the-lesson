@@ -138,10 +138,10 @@ _LATEX_ESCAPES = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$",
                   "|": r"\textbar{}", "<": r"\textless{}", ">": r"\textgreater{}",
                   "_": r"\_", "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
                   # inputenc's utf8 (the SBC template) has no Greek or math symbols
-                  "β": r"$\beta$", "τ": r"$\tau$", "Δ": r"$\Delta$", "≥": r"$\geq$", "≤": r"$\leq$",
+                  "β": r"$\beta$", "τ": r"$\tau$", "κ": r"$\kappa$", "Δ": r"$\Delta$", "≥": r"$\geq$", "≤": r"$\leq$",
                   "±": r"$\pm$", "×": r"$\times$", "°": r"\textdegree{}"}
 
-_KEY_SUBS = {"β": "b", "τ": "tau", "Δ": "d", "≥": "ge", "≤": "le", "°": "deg"}
+_KEY_SUBS = {"β": "b", "τ": "tau", "κ": "kappa", "Δ": "d", "≥": "ge", "≤": "le", "°": "deg"}
 
 
 def result_key(key: str) -> str:
@@ -346,6 +346,34 @@ def paired_obs(rows_a: Sequence[dict], rows_b: Sequence[dict], metric: str, *, n
     return {"diff": est, "half": None if est is None else (hi - lo) / 2, "low": lo, "high": hi, "n": m,
             "excludes_zero": est is not None and (lo > 0 or hi < 0),
             "p": track_signflip_p(diffs, "d", seed=seed)}
+
+
+def _kappa(a: np.ndarray, b: np.ndarray, k: int = 8) -> float:
+    po = float((a == b).mean())
+    pe = float((np.bincount(a, minlength=k) / len(a)) @ (np.bincount(b, minlength=k) / len(b)))
+    return (po - pe) / (1 - pe) if pe < 1 else float("nan")
+
+
+def kappa_ci(rows: Sequence[dict], real: str = "emotion_real", anon: str = "emotion_anon", *,
+             n: int = 2000, seed: int = 0) -> tuple[Optional[float], Optional[float], int]:
+    """Cohen's kappa between two label columns (chance-corrected agreement), with
+    the half-width of a 95% track bootstrap."""
+    by_track: dict[Any, list[tuple[int, int]]] = {}
+    for r in rows:
+        if r.get(real) is not None and r.get(anon) is not None:
+            by_track.setdefault((r.get("video"), r["track_id"]), []).append((int(r[real]), int(r[anon])))
+    if not by_track:
+        return None, None, 0
+    tracks = [np.array(v) for v in by_track.values()]
+    allp = np.concatenate(tracks)
+    est = _kappa(allp[:, 0], allp[:, 1])
+    rng = np.random.default_rng(seed)
+    boots = []
+    for _ in range(n):
+        pick = np.concatenate([tracks[i] for i in rng.integers(0, len(tracks), len(tracks))])
+        boots.append(_kappa(pick[:, 0], pick[:, 1]))
+    lo, hi = np.nanpercentile(boots, [2.5, 97.5])
+    return est, float((hi - lo) / 2), len(allp)
 
 
 def strata(rows: Sequence[dict], key: str, edges: Sequence[float]) -> list[tuple[str, list[dict]]]:

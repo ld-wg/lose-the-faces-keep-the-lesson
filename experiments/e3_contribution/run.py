@@ -25,7 +25,7 @@ from _generation import (anonymize, by_run, cell, detect, eval_ctx_args, evaluat
 PARTS = [p for p in os.environ.get("E3_PARTS", "e3a,e3b,e3c,e3d,e3e,e3f,e3g").split(",") if p]
 GEN = lambda rows: [r for r in rows if r["anonymized"]]  # noqa: E731
 KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet_final.rank1", "facenet_final.verified",
-        "anonymized", "expression", "pose_err", "emotion_agree", "age_err", "gender_agree"]
+        "anonymized", "expression", "pose_err", "emotion_agree", "emotion_kappa", "age_err", "gender_agree"]
 
 
 def reason_share(rows, reason: str):
@@ -169,18 +169,18 @@ with Experiment(__file__) as exp:
             metric_keys(exp, f"{part}/pooled/{label}", rows, KEYS, ev)
 
     if "e3b" in parts:
-        exp.table("coverage", ["Arm", "Coverage", "Identity unusable", "Swap no face", "R1 final", "Expr.", "Emotion"], [
+        exp.table("coverage", ["Arm", "Coverage", "Identity unusable", "Swap no face", "R1 final", "Expr.", "Emotion κ"], [
             [label, cell(rows, "anonymized", ev), reason_share(rows, "identity_unusable"), reason_share(rows, "swap_no_face"),
-             cell(rows, "facenet_final.rank1", ev), cell(GEN(rows), "expression", ev), cell(GEN(rows), "emotion_agree", ev)]
+             cell(rows, "facenet_final.rank1", ev), cell(GEN(rows), "expression", ev), cell(GEN(rows), "emotion_kappa", ev)]
             for label, rows in rows_of("e3b").items()], best={"Coverage": "max", "R1 final": "min"}, align="lrrrrrr")
 
     def strength_table(part: str, name: str, reference: str) -> None:
         rows = rows_of(part)
         gen = {k: GEN(v) for k, v in rows.items()}
         delta = {r[0]: r[1] for r in paired_rows(gen, reference, "facenet.rank1", ev)}
-        exp.table(name, ["Arm", "FaceNet R1", "ArcFace R1", f"Δ vs {reference}", "Expr.", "Emotion", "Pose (°)"], [
+        exp.table(name, ["Arm", "FaceNet R1", "ArcFace R1", f"Δ vs {reference}", "Expr.", "Emotion κ", "Pose (°)"], [
             [label, cell(g, "facenet.rank1", ev), cell(g, "arcface.rank1", ev), delta.get(label),
-             cell(g, "expression", ev), cell(g, "emotion_agree", ev), cell(g, "pose_err", ev)]
+             cell(g, "expression", ev), cell(g, "emotion_kappa", ev), cell(g, "pose_err", ev)]
             for label, g in gen.items()], best={"FaceNet R1": "min", "ArcFace R1": "min"}, align="lrrrrrr")
         for r in paired_rows(gen, reference, "facenet.rank1", ev):
             if r[1] is not None:
@@ -220,9 +220,9 @@ with Experiment(__file__) as exp:
         ref = cfg["e3e"]["reference"]
         delta = {r[0]: r[1] for r in paired_rows(rows, ref, "facenet_final.rank1", ev)}
         hidden = lambda rs: round(sum(r.get("outcome") in ("reused", "filled") for r in rs) / len(rs), 3) if rs else None  # noqa: E731
-        exp.table("policies", ["Policy", "R1 final", "Verified", "Hidden", f"Δ R1 vs {ref}", "Expr.", "Emotion"], [
+        exp.table("policies", ["Policy", "R1 final", "Verified", "Hidden", f"Δ R1 vs {ref}", "Expr.", "Emotion κ"], [
             [label, cell(r, "facenet_final.rank1", ev), cell(r, "facenet_final.verified", ev), hidden(r),
-             delta.get(label), cell(GEN(r), "expression", ev), cell(GEN(r), "emotion_agree", ev)]
+             delta.get(label), cell(GEN(r), "expression", ev), cell(GEN(r), "emotion_kappa", ev)]
             for label, r in rows.items()], best={"R1 final": "min", "Verified": "min"}, align="lrrrrrr")
 
     if "e3f" in parts:

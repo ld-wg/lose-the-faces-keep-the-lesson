@@ -238,6 +238,9 @@ def compare(real: dict, anon: dict, iod: float, offset=(0.0, 0.0)) -> dict:
         out["gender_agree"] = float(real["gender"] == anon["gender"])
     if "emotion" in real and "emotion" in anon:
         out["emotion_agree"] = float(real["emotion"] == anon["emotion"])
+        # the labels themselves, for a chance-corrected agreement (Cohen's kappa): raw
+        # agreement is dominated by the base rate (most classroom faces read as neutral)
+        out["emotion_real"], out["emotion_anon"] = int(real["emotion"]), int(anon["emotion"])
     return out
 
 
@@ -447,7 +450,9 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
                          "face_px": round(real.face_px, 1), "det_conf": round(real.det_conf, 3),
                          "abs_yaw": "" if real.abs_yaw is None else round(real.abs_yaw, 1),
                          **obs_rows[(o.frame_id, o.track_id)],
-                         **{m: _r((o.utility or {}).get(m)) for m in UTILITY_METRICS}})
+                         **{m: _r((o.utility or {}).get(m)) for m in UTILITY_METRICS},
+                         "emotion_real": (o.utility or {}).get("emotion_real", ""),
+                         "emotion_anon": (o.utility or {}).get("emotion_anon", "")})
     return out
 
 

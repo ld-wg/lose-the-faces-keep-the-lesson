@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
-from _common import Experiment, Video, load_obs, obs_ci, paired_obs, privacy_gain_ci, strata
+from _common import Experiment, Video, kappa_ci, load_obs, obs_ci, paired_obs, privacy_gain_ci, strata
 
 BRIDGE = Path(os.environ.get("BLANKET_REPO", Path.home() / "projects" / "blanket-anonymizer-bridge"))
 
@@ -112,7 +112,10 @@ def by_run(rows: Sequence[dict]) -> dict[str, list[dict]]:
 
 
 def cell(rows: Sequence[dict], metric: str, ev: dict):
-    est, half, _ = obs_ci(rows, metric, n=ev["bootstrap"], seed=ev["seed"])
+    if metric == "emotion_kappa":
+        est, half, _ = kappa_ci(rows, n=ev["bootstrap"], seed=ev["seed"])
+    else:
+        est, half, _ = obs_ci(rows, metric, n=ev["bootstrap"], seed=ev["seed"])
     return None if est is None else (est, half)
 
 
@@ -133,7 +136,7 @@ def metric_keys(exp: Experiment, prefix: str, rows: Sequence[dict], metrics: Seq
     """`\\result{<prefix>/<metric>}` and `.../<metric>.ci` for every metric of one arm."""
     for m in metrics:
         c = cell(rows, m, ev)
-        if c is not None:
+        if c is not None and c[0] == c[0]:   # skip NaN (e.g. kappa with one class only)
             exp.metric(f"{prefix}/{m}", round(c[0], 3))
             exp.metric(f"{prefix}/{m}.ci", round(c[1], 3))
 
