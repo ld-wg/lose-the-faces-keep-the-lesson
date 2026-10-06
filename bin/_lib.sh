@@ -1,5 +1,6 @@
 # Shared helpers for bin/ scripts. Sourced, not executed.
 set -euo pipefail
+export PYTHONUTF8=1   # non-interactive shells on serra1 have an ASCII locale
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 RESULTS=${RESULTS_DIR:-$ROOT/results}

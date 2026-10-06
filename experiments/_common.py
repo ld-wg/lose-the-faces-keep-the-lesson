@@ -53,6 +53,7 @@ from typing import Any, Callable, Iterable, Optional, Sequence
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[1]
+os.environ.setdefault("PYTHONUTF8", "1")   # a non-interactive shell on serra1 has an ASCII locale
 VIDEOS_DIR = Path(os.environ.get("VIDEOS_DIR", REPO / "data" / "videos"))
 PENDING_EXIT = 2          # run_all.sh reports it as "pending" and continues
 
@@ -491,14 +492,14 @@ class Experiment:
             cells = [f"\\textbf{{{c}}}" if (i, j) in bold else c for j, c in enumerate(cells)]
             tex.append(" & ".join(cells) + " \\\\")
         tex += ["\\bottomrule", "\\end{tabular}", ""]
-        (self.latex / f"tab-{self.id}-{name}.tex").write_text("\n".join(tex))
+        (self.latex / f"tab-{self.id}-{name}.tex").write_text("\n".join(tex), encoding="utf-8")
 
         md_lines = ["| " + " | ".join(columns) + " |", "|" + "---|" * len(columns)]
         for i, r in enumerate(rows):
             cells = [_plain(v, decimals) for v in r]
             cells = [f"**{c}**" if (i, j) in bold else c for j, c in enumerate(cells)]
             md_lines.append("| " + " | ".join(cells) + " |")
-        (self.results / f"{name}.md").write_text("\n".join(md_lines) + "\n")
+        (self.results / f"{name}.md").write_text("\n".join(md_lines) + "\n", encoding="utf-8")
 
     @contextlib.contextmanager
     def figure(self, name: str, rows: Sequence[dict], *, height_in: float = 2.4, width_in: float = FIG_WIDTH_IN):
@@ -543,7 +544,7 @@ class Experiment:
                 continue
             lines.append(f"\\@namedef{{result@{key}}}{{{_fmt(value, 3)}}}")
         lines += ["\\makeatother", ""]
-        (self.latex / "results.tex").write_text("\n".join(lines))
+        (self.latex / "results.tex").write_text("\n".join(lines), encoding="utf-8")
 
     def _write_provenance(self, status: str, error: Optional[str]) -> None:
         dirty = bool(_git("status", "--porcelain", "--untracked-files=no"))

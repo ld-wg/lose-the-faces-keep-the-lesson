@@ -151,7 +151,7 @@ def write_markdown(summary: dict, path: Path) -> None:
         why = {k.split(":", 1)[1]: v for k, v in c.items() if k.startswith("why:")}
         lines.append(f"| {t} | " + " | ".join(str(c.get(k, 0)) for k in shown) + " | " +
                      ", ".join(f"{SHORT.get(k, k)} {v}" for k, v in why.items()) + " |")
-    path.write_text("\n".join(lines) + "\n")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def dashed_rect(img, p1, p2, color, thickness=2, dash=8):

@@ -7,6 +7,7 @@
 #   experiments/run_all.sh --only e0,e2    # a subset, still in order
 #   experiments/run_all.sh --fresh         # also clear cache/ (SDXL identities)
 set -euo pipefail
+export PYTHONUTF8=1   # non-interactive shells on serra1 have an ASCII locale
 
 cd "$(dirname "$0")/.."
 only="" extra=()

@@ -16,6 +16,7 @@
 #   - the evaluator with every probe, the noise floor and the per-face export
 #   - WIDER FACE on 50 images
 set -euo pipefail
+export PYTHONUTF8=1   # non-interactive shells on serra1 have an ASCII locale
 cd "$(dirname "$0")/.."
 VIDEO=${1:-demo1} N=${2:-20}
 S=${SMOKE_DIR:-/tmp/smoke}

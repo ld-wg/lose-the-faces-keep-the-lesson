@@ -650,7 +650,7 @@ def main() -> None:
             w.writeheader()
             w.writerows(obs_rows)
     (out_dir / "eval.json").write_text(json.dumps(report, indent=2))
-    (out_dir / "eval.md").write_text(_markdown(report))
+    (out_dir / "eval.md").write_text(_markdown(report), encoding="utf-8")
     logger.info(f"wrote {out_dir / 'eval.json'} and eval.md")
     print(_markdown(report))
 
