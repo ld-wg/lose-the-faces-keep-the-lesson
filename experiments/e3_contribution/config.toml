@@ -56,7 +56,10 @@ arms = [
 aggregation = "quality_mean"
 steps = 10
 lambda = 1.0
-taus = [0.2, 0.0]                      # hinge threshold: stop at cos 0.2 / push to orthogonal
+# hinge threshold on ArcFace cos(output, real). CIAGAN's outputs already sit at cos 0.08 on
+# average (max 0.21; smoke run on demo1, 2026-10-05), so tau 0.2 never acts: push to
+# orthogonal (0.0) and past it (-0.2). Rank-1 stays non-zero because ranking is relative.
+taus = [0.0, -0.2]
 reference = "ciagan"
 
 [e3g]                                  # P1: SDXL identity guidance, on top of P2 (go/no-go: bridge tools/p1_spike.py)
