@@ -25,7 +25,9 @@ BRIDGE = Path(os.environ.get("BLANKET_REPO", Path.home() / "projects" / "blanket
 
 
 def ctx_args() -> list[str]:
-    return ["--ctx-id", os.environ["CTX_ID"]] if "CTX_ID" in os.environ else []
+    """E0 runs only detection and the evaluator: the GPU by default (EVAL_CTX_ID, 0), not
+    CTX_ID, which is -1 on serra1 for BLANKET's main process (all probes on CPU take hours)."""
+    return ["--ctx-id", os.environ.get("EVAL_CTX_ID", "0")]
 
 
 def mechanism_check(exp: Experiment, crops: Path, faces: int) -> None:
