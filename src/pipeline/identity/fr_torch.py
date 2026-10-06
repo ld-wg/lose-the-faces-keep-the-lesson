@@ -5,6 +5,11 @@ onnx2torch (Apache-2.0), so its embeddings live in the same space as the
 pre-pass's track identity (ONNX, `embedder.ArcFaceEmbedder`) and FaceFusion's
 recognizer. `check_parity()` compares the two on real aligned crops; use it
 before trusting gradients (contribution plan D6, Step 1(a): cos > 0.999).
+Measured on serra1 (2026-10-05, 50 faces of demo1): the conversion itself,
+min 0.99986. Through `affine_sample` instead of cv2: min 0.986, mean 0.998.
+The two warps differ only by cv2's uint8 rounding (0.22/255 per pixel on
+average), and that alone moves ArcFace by up to 0.014 on small faces: the
+recognizer's sensitivity to noise, not a conversion error.
 
 `affine_sample()` is the differentiable counterpart of `cv2.warpAffine`: it
 samples an output image from an input through a pixel-space 2x3 matrix that

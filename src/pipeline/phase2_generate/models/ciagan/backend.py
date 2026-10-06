@@ -377,8 +377,8 @@ class Backend:
         import cv2
         import torch
 
-        from ...identity import align
-        from ...identity.fr_torch import TorchArcFace, affine_sample
+        from ....identity import align
+        from ....identity.fr_torch import TorchArcFace, affine_sample
 
         e_real = getattr(context, "push_embedding", None) if context is not None else None
         if e_real is None or self.push_steps <= 0:
