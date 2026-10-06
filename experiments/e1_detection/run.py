@@ -64,7 +64,9 @@ with Experiment(__file__) as exp:
             st = track_stats(out, cfg["videos"]["short_track_frames"])
             for k in ("faces_per_frame", "tracks", "median_track_frames", "short_track_share", "fps"):
                 exp.metric(f"e1/{video.name}/{model}/{k.replace('_', '-')}", st[k])
-            rows.append([video.name, LABELS[model], st["faces_per_frame"], st["tracks"], st["median_track_frames"],
+            rows.append([video.name, LABELS[model], st["faces_per_frame"], st["tracks"],
+                         int(st["median_track_frames"]) if st["median_track_frames"] is not None else None,
                          st["short_track_share"], st["fps"]])
-    exp.table("videos", ["Video", "Detector", "Faces / frame", "Tracks", "Median length", "Short share", "FPS"],
-              rows, align="llrrrrr")
+    # Median: track length in frames; Short: share of tracks under videos.short_track_frames
+    exp.table("videos", ["Video", "Detector", "Faces/frame", "Tracks", "Median", "Short", "FPS"],
+              rows, decimals=2, align="llrrrrr")
