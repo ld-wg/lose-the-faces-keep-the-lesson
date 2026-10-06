@@ -351,7 +351,7 @@ def final_embeddings(obs: list[AnonObs], compose: dict) -> dict[tuple[int, int],
 
 def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
                 calibration: dict, rng: np.random.Generator, gallery: Gallery, baseline: dict,
-                rows: Optional[list[dict]] = None, run_name: str = "",
+                out_rows: Optional[list[dict]] = None, run_name: str = "",
                 compose: Optional[dict] = None) -> dict:
     tids = gallery.tids
     final = final_embeddings(obs, compose) if compose is not None else None
@@ -441,10 +441,10 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
             "flicker_consecutive_cos": _mean(flicker),
             "per_track": per_track,
         }
-    if rows is not None:
+    if out_rows is not None:   # (not `rows`: the per-track summaries above reuse that name)
         for o in obs:
             real = real_by_key[(o.frame_id, o.track_id)]
-            rows.append({"run": run_name, "frame_id": o.frame_id, "track_id": o.track_id,
+            out_rows.append({"run": run_name, "frame_id": o.frame_id, "track_id": o.track_id,
                          "status": o.status, "reason": o.reason or "", "anonymized": int(o.anonymized),
                          "redetected": "" if o.redetected is None else int(o.redetected),
                          "face_px": round(real.face_px, 1), "det_conf": round(real.det_conf, 3),
