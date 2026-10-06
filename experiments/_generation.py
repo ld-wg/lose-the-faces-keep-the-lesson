@@ -72,7 +72,9 @@ def arm_flags(arm: dict, cache: Optional[Path]) -> list[Any]:
         else:
             flags += [ARM_FLAGS[key], value]
     if arm["backend"] == "blanket":
-        flags += ["--blanket-repo", BRIDGE]
+        # a cold SDXL + 2 ControlNets + refiner load plus the first generation passed 900 s on
+        # serra1's shared machine (2026-10-05): the RPC limit covers the whole round trip
+        flags += ["--blanket-repo", BRIDGE, "--blanket-server-timeout", os.environ.get("BLANKET_TIMEOUT", "2400")]
         for env, flag in (("IDENTITY_GPU", "--blanket-identity-gpu"), ("SWAP_GPU", "--blanket-swap-gpu")):
             if env in os.environ:
                 flags += [flag, os.environ[env]]
