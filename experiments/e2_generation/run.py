@@ -65,12 +65,13 @@ with Experiment(__file__) as exp:
          privacy_gain_cell(pooled[n], ev), cell(pooled[n], "facenet_final.verified", ev)]
         for n in names], best={"R1 final": "min", "Verified": "min"}, align="lrrrrrr")
 
-    exp.table("privacy", ["Arm", "FaceNet R1", "FaceNet R5", "ArcFace R1", "ArcFace R5", "FaceNet cos", "Consistency"], [
+    # FN = FaceNet (held-out), AF = ArcFace (guidance space); the caption says so
+    exp.table("privacy", ["Arm", "FN R1", "FN R5", "AF R1", "AF R5", "FN cos", "Consist."], [
         [labels[n], cell(pooled[n], "facenet_final.rank1", ev), cell(pooled[n], "facenet_final.rank5", ev),
          cell(pooled[n], "arcface_final.rank1", ev), cell(pooled[n], "arcface_final.rank5", ev),
          cell([r for r in pooled[n] if r["anonymized"]], "facenet.cos", ev),
          round(sum(consistency[n]) / len(consistency[n]), 3) if consistency.get(n) else None]
-        for n in names], best={"FaceNet R1": "min", "ArcFace R1": "min"}, align="lrrrrrr")
+        for n in names], best={"FN R1": "min", "AF R1": "min"}, align="lrrrrrr")
 
     utility_rows = [arm_row(labels[n], [r for r in pooled[n] if r["anonymized"]], UTILITY, ev) for n in names]
     if NOISE in pooled:
