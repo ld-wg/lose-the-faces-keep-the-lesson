@@ -403,6 +403,9 @@ class Experiment:
         p.add_argument("--video", action="append", default=None,
                        help="override config.toml inputs (repeatable): short name or path")
         p.add_argument("--fresh", action="store_true", help="also clear this experiment's cache/")
+        p.add_argument("--resume", action="store_true",
+                       help="keep results/ and skip generation steps whose outputs are complete "
+                            "(after an interruption on a shared machine); every table is recomputed")
         self.args = p.parse_args(argv)
 
         self._metrics: dict[str, Any] = {}
@@ -415,8 +418,10 @@ class Experiment:
     # -- lifecycle ---------------------------------------------------------
 
     def __enter__(self) -> "Experiment":
-        if self.results.exists():
+        if self.results.exists() and not self.args.resume:
             shutil.rmtree(self.results)
+        if self.args.resume and self.latex.exists():
+            shutil.rmtree(self.latex)   # paper artifacts always come from this run's tables
         self.latex.mkdir(parents=True)
         if self.args.fresh and self.cache.exists():
             shutil.rmtree(self.cache)
@@ -429,9 +434,12 @@ class Experiment:
         for h in (logging.FileHandler(self.results / "run.log"), logging.StreamHandler(sys.stdout)):
             h.setFormatter(fmt)
             root.addHandler(h)
-        (self.results / "commands.sh").write_text(
+        mode = "a" if self.args.resume and (self.results / "commands.sh").exists() else "w"
+        with open(self.results / "commands.sh", mode) as f:
+            f.write(
             f"#!/usr/bin/env bash\n# Commands run by experiments/{self.name}/run.py, {self._started}.\n"
-            f"# Re-run any step by hand from the repository root.\nset -euo pipefail\ncd {shlex.quote(str(REPO))}\n")
+            f"# Re-run any step by hand from the repository root.\nset -euo pipefail\ncd {shlex.quote(str(REPO))}\n"
+            + ("# --resume: steps with complete outputs were reused, not re-run\n" if self.args.resume else ""))
         log.info(f"{self.name}: results -> {self.results}")
         return self
 

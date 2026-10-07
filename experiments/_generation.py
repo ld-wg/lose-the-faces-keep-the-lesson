@@ -53,7 +53,15 @@ def eval_ctx_args() -> list[str]:
     return ["--ctx-id", os.environ.get("EVAL_CTX_ID", "0")]
 
 
+def _done(exp: Experiment, *files: Path) -> bool:
+    """With --resume, a step whose outputs all exist is reused (noted in provenance)."""
+    return bool(getattr(exp.args, "resume", False)) and all(f.exists() for f in files)
+
+
 def detect(exp: Experiment, video: Video, det: dict, out: Path) -> Path:
+    if _done(exp, out / "detections.jsonl", out / "run_stats.json"):
+        exp.note(f"reused/detect/{video.name}", str(out))
+        return out
     exp.module(f"detect {video.name}", "src.pipeline.phase1_detect.run", "--input", video.path, "--out", out,
                "--model", det["model"], "--conf", det["conf"], "--det-size", det["det_size"])
     return out
@@ -86,6 +94,9 @@ def arm_flags(arm: dict, cache: Optional[Path]) -> list[Any]:
 def anonymize(exp: Experiment, video: Video, det_dir: Path, arm: dict, out: Path,
               cache: Optional[Path] = None) -> Path:
     """Phase 2 for one arm, then its final video (compose.jsonl next to it)."""
+    if _done(exp, out / "run_manifest.json", out / "compose.jsonl", out / "output.mp4"):
+        exp.note(f"reused/anonymize/{video.name}/{arm['name']}", str(out))
+        return out
     exp.module(f"anonymize {video.name} {arm['name']}", "src.pipeline.phase2_generate.run",
                "--phase1-dir", det_dir, "--video", video.path, "--model", arm["backend"], "--out", out,
                *arm_flags(arm, Path(arm["identity_cache"]) if "identity_cache" in arm else cache), *ctx_args())
