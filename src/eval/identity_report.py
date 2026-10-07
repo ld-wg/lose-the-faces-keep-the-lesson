@@ -219,6 +219,7 @@ def main() -> None:
         "convergence_num_tracks": {str(n): len(conv["mean"][n]) for n in CONVERGENCE_NS},
     }
 
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, indent=2))
     logger.info(f"wrote {out_path}")
     logger.info(f"held-out-half cosine by mode: {report['modes_heldout_half']['per_mode_mean_cos']}")
