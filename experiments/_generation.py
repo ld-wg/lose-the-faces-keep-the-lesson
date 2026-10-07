@@ -99,7 +99,10 @@ def anonymize(exp: Experiment, video: Video, det_dir: Path, arm: dict, out: Path
         return out
     exp.module(f"anonymize {video.name} {arm['name']}", "src.pipeline.phase2_generate.run",
                "--phase1-dir", det_dir, "--video", video.path, "--model", arm["backend"], "--out", out,
-               *arm_flags(arm, Path(arm["identity_cache"]) if "identity_cache" in arm else cache), *ctx_args())
+               *arm_flags(arm, Path(arm["identity_cache"]) if "identity_cache" in arm else cache),
+               # only BLANKET's main process stays on CPU (its two servers hold the GPU); CIAGAN with
+               # the P3 push takes ~6 s per face on CPU (2026-10-07), so the others use the GPU
+               *(ctx_args() if arm["backend"] == "blanket" else eval_ctx_args()))
     exp.module(f"compose {video.name} {arm['name']}", "src.pipeline.phase2_generate.compose_video",
                "--phase1-dir", det_dir, "--phase2-dir", out, "--video", video.path, "--out", out / "output.mp4")
     return out
