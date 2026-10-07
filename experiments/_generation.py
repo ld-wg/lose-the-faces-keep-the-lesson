@@ -109,6 +109,9 @@ def evaluate(exp: Experiment, video: Video, det_dir: Path, arm_dirs: Sequence[Pa
              noise_floor: bool = True) -> tuple[dict, list[dict]]:
     """One evaluate call for every arm of a video. Returns (eval.json, per-face rows with video=)."""
     utility = [u for u in ev["utility"] if u != "gaze"]   # gaze: a stated limitation (DECISIONS.md 10)
+    if _done(exp, out / "eval.json", out / "obs.csv"):
+        exp.note(f"reused/evaluate/{video.name}/{out.name}", str(out))
+        return json.loads((out / "eval.json").read_text()), load_obs(out / "obs.csv", video=video.name)
     exp.module(f"evaluate {video.name}", "src.eval.evaluate", "--phase1-dir", det_dir, "--video", video.path,
                *[a for d in arm_dirs for a in ("--phase2-dir", d)], "--far", ev["far"],
                "--utility", ",".join(utility), *(["--noise-floor"] if noise_floor else []),
