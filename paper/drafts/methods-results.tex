@@ -318,9 +318,16 @@ BLANKET's synthetic identities tend to smile, which a neutral classroom does not
 \textbf{Cost.} BLANKET is ten times slower than CIAGAN and two to three orders of
 magnitude slower than blur and mosaic (Table~\ref{tab:e2-cost}). The diffusion model runs once per track
 (2--3.5\,min per identity, with the published sequential CPU offload); the
-per-face swap, at about 0.2\,s per face with its file-based inter-process
-transport, dominates a long recording: \result{e2/pooled/blanket/fps} frames per
-second against \result{e2/pooled/ciagan/fps} for CIAGAN. % DIAG: per-identity and per-face timings from the run logs
+per-face work (swap, enhancement and composite) dominates a long recording:
+\result{e2/pooled/blanket/fps} frames per
+second against \result{e2/pooled/ciagan/fps} for CIAGAN. This figure overstates
+BLANKET's intrinsic cost. To leave the GPU to its two servers, BLANKET's main
+process ran on the CPU, where the head segmentation of the final composite takes
+412\,ms per face against 24\,ms on the GPU. On the same 60 frames, moving that
+process to the GPU cuts the wall time by $2.5\times$, and the remaining
+per-face cost is about 190\,ms, of which the GFPGAN enhancer takes 78\,ms.
+% DIAG: BLANKET_PROFILE, demo1 frames 0-59, 301 faces, 2026-10-20 (serra1 runs/profile-2026-10-20)
+% TODO: a cost arm in E2 with the main process on the GPU, so these become \result keys.
 
 \subsection{Contribution}
 
