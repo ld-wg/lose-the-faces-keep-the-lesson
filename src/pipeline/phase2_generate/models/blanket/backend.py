@@ -375,6 +375,9 @@ class Backend:
         p1_scale: float = 0.0,
         p1_tau: float = 0.2,
         p1_window: int = 3,
+        # GFPGAN after the swap: "on" (as published), "off", or a minimum face size in pixels
+        # (sqrt of the box area) below which it is skipped (cost study)
+        enhancer: str = "on",
     ):
         del weights  # accepted only for FaceGenerator's uniform construction contract, unused here
         self.ctx_id = ctx_id
@@ -392,6 +395,10 @@ class Backend:
             raise ValueError(f"unknown detection {detection!r}, choose from {DETECTIONS}")
         self.detection = detection
         self.p1 = {"scale": p1_scale, "tau": p1_tau, "window": p1_window} if p1_scale > 0 else None
+        enhancer = str(enhancer)
+        if enhancer not in ("on", "off") and not enhancer.isdigit():
+            raise ValueError(f"enhancer must be on, off or a minimum face size in pixels, not {enhancer!r}")
+        self.enhancer = enhancer
         self.last_skip_reason: Optional[str] = None
         self._failed: dict[int, str] = {}  # seed -> reason, seed-candidate mode only
         # Absolute: the swap server runs with BLANKET's repo root as its working
@@ -547,6 +554,7 @@ class Backend:
             if self._cache is not None:
                 path = str(self._cache.dir / f"seed_{seed}_c{attempt}.jpg")
                 shutil.copyfile(generated, path)
+                Path(generated).unlink(missing_ok=True)   # one copy only (real background, LGPD)
             if not self._swap_client.call("check_identity", identity_path=path):
                 reasons.append("identity_unusable")
                 if self._cache is not None:
@@ -608,6 +616,12 @@ class Backend:
             if self.detection == "phase1" and context is not None and context.landmarks_in_crop:
                 target = {"box": [float(v) for v in context.box_in_crop],
                           "landmarks5": [[float(x), float(y)] for x, y in context.landmarks_in_crop]}
+            if self.enhancer != "on":   # sent only off the published setting (older bridges lack it)
+                enhance = False
+                if self.enhancer.isdigit() and context is not None and context.box_in_crop is not None:
+                    bx1, by1, bx2, by2 = context.box_in_crop
+                    enhance = float(np.sqrt(max(0.0, (bx2 - bx1) * (by2 - by1)))) >= int(self.enhancer)
+                target["enhance"] = enhance
             t0 = time.perf_counter()
             reply = self._swap_client.call("swap_with_reason", identity_path=identity_path,
                                            crop_path=str(crop_path), mode=self.swap_mode,

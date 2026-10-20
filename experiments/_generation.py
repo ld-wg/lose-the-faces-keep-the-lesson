@@ -29,8 +29,10 @@ ARM_FLAGS = {
     "ciagan_push_tau": "--ciagan-push-tau", "ciagan_push_lambda": "--ciagan-push-lambda",
     "generate_min_conf": "--generate-min-conf", "privacy_gate": "--privacy-gate",
     "p1_scale": "--blanket-p1-scale", "p1_tau": "--blanket-p1-tau", "p1_window": "--blanket-p1-window",
+    "generate_every": "--generate-every", "generate_adaptive": "--generate-adaptive",
+    "generate_max_gap": "--generate-max-gap", "enhancer": "--blanket-enhancer",
 }
-NOT_FLAGS = {"name", "backend", "label", "identity_cache"}
+NOT_FLAGS = {"name", "backend", "label", "identity_cache", "main_gpu", "profile"}
 
 # Labels used in the paper's tables (short, so seven columns fit 160 mm).
 METRICS = {
@@ -100,16 +102,20 @@ def anonymize(exp: Experiment, video: Video, det_dir: Path, arm: dict, out: Path
     exp.module(f"anonymize {video.name} {arm['name']}", "src.pipeline.phase2_generate.run",
                "--phase1-dir", det_dir, "--video", video.path, "--model", arm["backend"], "--out", out,
                *arm_flags(arm, Path(arm["identity_cache"]) if "identity_cache" in arm else cache),
-               # only BLANKET's main process stays on CPU (its two servers hold the GPU); CIAGAN with
-               # the P3 push takes ~6 s per face on CPU (2026-10-07), so the others use the GPU
-               *(ctx_args() if arm["backend"] == "blanket" else eval_ctx_args()))
+               # BLANKET's main process stays on CPU (its two servers hold the GPU) unless the arm
+               # asks for the GPU (main_gpu: its head segmentation takes 412 ms per face on CPU,
+               # 24 on GPU, 2026-10-20); CIAGAN with the P3 push takes ~6 s per face on CPU, so
+               # the other backends use the GPU
+               *(ctx_args() if arm["backend"] == "blanket" and not arm.get("main_gpu") else eval_ctx_args()),
+               # per-face stage timings of the BLANKET backend and its swap server
+               env={"BLANKET_PROFILE": str(out / "profile.json")} if arm.get("profile") else None)
     exp.module(f"compose {video.name} {arm['name']}", "src.pipeline.phase2_generate.compose_video",
                "--phase1-dir", det_dir, "--phase2-dir", out, "--video", video.path, "--out", out / "output.mp4")
     return out
 
 
 def evaluate(exp: Experiment, video: Video, det_dir: Path, arm_dirs: Sequence[Path], ev: dict, out: Path,
-             noise_floor: bool = True) -> tuple[dict, list[dict]]:
+             noise_floor: bool = True, video_view: bool = False) -> tuple[dict, list[dict]]:
     """One evaluate call for every arm of a video. Returns (eval.json, per-face rows with video=)."""
     utility = [u for u in ev["utility"] if u != "gaze"]   # gaze: a stated limitation (DECISIONS.md 10)
     if _done(exp, out / "eval.json", out / "obs.csv"):
@@ -118,6 +124,7 @@ def evaluate(exp: Experiment, video: Video, det_dir: Path, arm_dirs: Sequence[Pa
     exp.module(f"evaluate {video.name}", "src.eval.evaluate", "--phase1-dir", det_dir, "--video", video.path,
                *[a for d in arm_dirs for a in ("--phase2-dir", d)], "--far", ev["far"],
                "--utility", ",".join(utility), *(["--noise-floor"] if noise_floor else []),
+               *(["--video-view"] if video_view else []),
                "--obs-out", out / "obs.csv", "--out", out, *eval_ctx_args())
     report = json.loads((out / "eval.json").read_text())
     return report, load_obs(out / "obs.csv", video=video.name)
@@ -131,8 +138,9 @@ def by_run(rows: Sequence[dict]) -> dict[str, list[dict]]:
 
 
 def cell(rows: Sequence[dict], metric: str, ev: dict):
-    if metric == "emotion_kappa":
-        est, half, _ = kappa_ci(rows, n=ev["bootstrap"], seed=ev["seed"])
+    if metric in ("emotion_kappa", "emotion_kappa_video"):
+        anon = "emotion_video" if metric.endswith("_video") else "emotion_anon"
+        est, half, _ = kappa_ci(rows, anon=anon, n=ev["bootstrap"], seed=ev["seed"])
     else:
         est, half, _ = obs_ci(rows, metric, n=ev["bootstrap"], seed=ev["seed"])
     return None if est is None else (est, half)

@@ -41,6 +41,15 @@ viewer sees after the fail-safe: a `reused` face is the track's last
 generated face, a `filled` one shows no face (never re-identified), an
 `exposed` one the real face.
 
+A fourth, `video` (--video-view), reads the composed output.mp4 itself at
+every detector face the video shows as `generated` or `reused`: privacy and
+utility probes run on those pixels, so a face reused over several frames
+(--generate-every / --generate-adaptive, or the fail-safe) is scored as it
+looks, stale expression included. It also scores motion: between consecutive
+frames of a track, how much the shown face's 106 landmarks change against how
+much the real face's change (`motion_err_video`, inter-ocular units; a frozen
+face and a jittering one both score high).
+
 In-domain threshold: genuine pairs are real frames of one track at least
 5 frames apart; impostor pairs are real frames of two tracks visible in
 the same frame (certainly different people, which avoids counting a
@@ -352,7 +361,8 @@ def final_embeddings(obs: list[AnonObs], compose: dict) -> dict[tuple[int, int],
 def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
                 calibration: dict, rng: np.random.Generator, gallery: Gallery, baseline: dict,
                 out_rows: Optional[list[dict]] = None, run_name: str = "",
-                compose: Optional[dict] = None) -> dict:
+                compose: Optional[dict] = None, video: Optional[dict] = None,
+                iods: Optional[dict] = None) -> dict:
     tids = gallery.tids
     final = final_embeddings(obs, compose) if compose is not None else None
 
@@ -390,6 +400,16 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
                     f"{rec}_final_rank": (None if gallery.counts[o.track_id] <= 1 else
                                           FILLED_RANK if shown is None else gallery.rank(rec, shown[rec], real)),
                     f"{rec}_final_verified": 0 if fcos is None or thr is None else int(fcos >= thr)})
+
+            if video is not None:
+                v = video.get((o.frame_id, o.track_id), {"outcome": "exposed"})
+                vshown = v.get("emb") if "emb" in v else (None if v["outcome"] == "filled" else o.emb)
+                vcos = None if vshown is None else float(vshown[rec] @ real.emb[rec])
+                obs_rows[(o.frame_id, o.track_id)].update({
+                    "video_outcome": v["outcome"],
+                    f"{rec}_video_rank": (None if gallery.counts[o.track_id] <= 1 else
+                                          FILLED_RANK if vshown is None else gallery.rank(rec, vshown[rec], real)),
+                    f"{rec}_video_verified": 0 if vcos is None or thr is None else int(vcos >= thr)})
 
         def summarize(rows):
             ranks = [k for _, _, k in rows if k is not None]
@@ -433,13 +453,45 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
                           "rank1_rate": f1, "rank5_rate": _mean(float(k <= 5) for k in franks),
                           "privacy_gain": _r(1 - f1 / base) if f1 is not None and base else None,
                           "outcomes": dict(Counter(r["outcome"] for r in fr))}
+        video_view = None
+        if video is not None:
+            vr = [obs_rows[(o.frame_id, o.track_id)] for o in obs]
+            vranks = [r[f"{rec}_video_rank"] for r in vr if r[f"{rec}_video_rank"] is not None]
+            v1 = _mean(float(k == 1) for k in vranks)
+            video_view = {"n": len(vr), "verified_rate": _mean(r[f"{rec}_video_verified"] for r in vr),
+                          "rank1_rate": v1, "rank5_rate": _mean(float(k <= 5) for k in vranks)}
         out["recognizers"][rec] = {
+            "video": video_view,
             "anonymized_only": summarize([row for row in per_obs if row[0].anonymized]),
             "all_passthrough_as_leak": summarize(per_obs),
             "final_video": final_view,
             "consistency_mean": _mean(consistency),
             "flicker_consecutive_cos": _mean(flicker),
             "per_track": per_track,
+        }
+    if video is not None:
+        motion = []
+        for o in obs:
+            key = (o.frame_id, o.track_id)
+            v = video.get(key, {})
+            row = obs_rows[key]
+            if "utility" in v:
+                row.update({f"{m}_video": _r(v["utility"].get(m)) for m in UTILITY_METRICS})
+                row["emotion_video"] = v["utility"].get("emotion_anon", "")
+            prev_v = video.get((o.frame_id - 1, o.track_id), {})
+            real, real_prev = real_by_key[key], real_by_key.get((o.frame_id - 1, o.track_id))
+            if (v.get("lmk106") is not None and prev_v.get("lmk106") is not None and real_prev is not None
+                    and "lmk106" in real.probes and "lmk106" in real_prev.probes and iods):
+                m_real = _expression_error(real.probes["lmk106"], real_prev.probes["lmk106"], iods[key])
+                m_video = _expression_error(v["lmk106"], prev_v["lmk106"], iods[key])
+                row.update({"motion_real": _r(m_real), "motion_video": _r(m_video),
+                            "motion_err_video": _r(abs(m_video - m_real))})
+                motion.append(abs(m_video - m_real))
+        out["video_view"] = {
+            "utility": {m: _mean(v["utility"].get(m) for v in video.values() if "utility" in v)
+                        for m in UTILITY_METRICS},
+            "motion_err": _mean(motion),
+            "outcomes": dict(Counter(v["outcome"] for v in video.values())),
         }
     if out_rows is not None:   # (not `rows`: the per-track summaries above reuse that name)
         for o in obs:
@@ -506,6 +558,9 @@ def main() -> None:
     p.add_argument("--out", default=None, help="output dir (default: runs/eval/<phase1-dir name>)")
     p.add_argument("--far", type=float, default=0.01)
     p.add_argument("--facenet-weights", default=None)
+    p.add_argument("--video-view", action="store_true",
+                   help="also score the composed output.mp4 of each run (privacy, utility and motion on "
+                        "the pixels the viewer sees, reused faces included); needs compose.jsonl")
     p.add_argument("--utility", default="",
                    help=f"comma list of utility probes: {','.join(UTILITY)} (or 'all')")
     p.add_argument("--expression", action="store_true", help="same as adding 'expression' to --utility")
@@ -546,6 +601,16 @@ def main() -> None:
     if not cap.isOpened():
         p.error(f"could not open source video: {video}")
 
+    composed_caps = {}
+    if args.video_view:
+        for run in runs:
+            if run.compose is not None and (run.dir / "output.mp4").is_file():
+                composed_caps[run.name] = cv2.VideoCapture(str(run.dir / "output.mp4"))
+            else:
+                logger.warning(f"--video-view: {run.name} has no composed video; skipped")
+    video_obs: dict[str, dict[tuple[int, int], dict]] = {name: {} for name in composed_caps}
+    run_by_name = {r.name: r for r in runs}
+
     t0 = time.time()
     reals: list[RealObs] = []
     real_by_key: dict[tuple[int, int], RealObs] = {}
@@ -563,6 +628,7 @@ def main() -> None:
             ret, frame = cap.read()
             if not ret:
                 break
+            composed = {name: c.read()[1] for name, c in composed_caps.items()}
             h, w = frame.shape[:2]
             for face in frame_rec.faces:
                 # Detector faces only: post-pass boxes (fill.py) have no landmarks and are
@@ -615,9 +681,28 @@ def main() -> None:
                         redetected=match is not None, emb=embed(anon_img, lm_a),
                         utility=compare(real_probes, probes.run(anon_img, box_a), iod, offset=(cx1, cy1)),
                     ))
+                for name, cframe in composed.items():
+                    run = run_by_name[name]
+                    outcome = run.compose.get(key, "exposed")
+                    if cframe is None or outcome not in ("generated", "reused"):
+                        video_obs[name][key] = {"outcome": outcome}
+                        continue
+                    cx1, cy1, cx2, cy2 = crop_box(h, w, face.box, run.context_ratio)
+                    vimg = cframe[cy1:cy2, cx1:cx2]
+                    expected = (x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1)
+                    match = redetector.match(vimg, expected)
+                    box_v, lm_v = match if match is not None else (expected, align.shift(face.landmarks, cx1, cy1))
+                    vprobes = probes.run(vimg, box_v)
+                    video_obs[name][key] = {
+                        "outcome": outcome, "emb": embed(vimg, lm_v), "redetected": match is not None,
+                        "utility": compare(real_probes, vprobes, iod, offset=(cx1, cy1)),
+                        "lmk106": (vprobes["lmk106"] + np.asarray((cx1, cy1), np.float32)
+                                   if "lmk106" in vprobes else None)}
             if num_frames % 50 == 0:
                 logger.info(f"evaluate: frame {num_frames}")
     cap.release()
+    for c in composed_caps.values():
+        c.release()
 
     rng = np.random.default_rng(0)
     scores: Optional[list[dict]] = [] if args.scores_out else None
@@ -641,7 +726,8 @@ def main() -> None:
                         "dir": str(run_info[name].dir) if name in run_info else None,
                         "context_ratio": run_info[name].context_ratio if name in run_info else None,
                         **run_metrics(obs, real_by_key, calibration, rng, gallery, baseline, obs_rows, name,
-                                      run_info[name].compose if name in run_info else None),
+                                      run_info[name].compose if name in run_info else None,
+                                      video_obs.get(name), iods),
                         "composition": composition(run_info[name].dir) if name in run_info else None}
                  for name, obs in per_run.items()},
         "seconds": round(time.time() - t0, 1),
