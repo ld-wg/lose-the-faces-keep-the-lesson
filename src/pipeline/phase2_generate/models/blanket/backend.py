@@ -284,6 +284,40 @@ class _IdentityCache:
         self.index_path.write_text(json.dumps({"settings": self.settings, "entries": self.entries}, indent=2))
 
 
+class _Profile:
+    """Per-face stage timings when BLANKET_PROFILE=<json path> is set (cost study):
+    this process's stages plus the swap server's own, written at exit."""
+
+    def __init__(self, path: Optional[str]):
+        self.path = Path(path) if path else None
+        self.times: dict[str, list[float]] = {}
+        if self.path is not None:
+            atexit.register(self.write)
+
+    def add(self, stage: str, seconds: float) -> None:
+        if self.path is not None:
+            self.times.setdefault(stage, []).append(seconds)
+
+    def stage(self, name: str):
+        prof = self
+
+        class _Timer:
+            def __enter__(self):
+                self.t = time.perf_counter()
+
+            def __exit__(self, *exc):
+                prof.add(name, time.perf_counter() - self.t)
+
+        return _Timer()
+
+    def write(self) -> None:
+        summary = {k: {"n": len(v), "mean_ms": round(1000 * sum(v) / len(v), 2),
+                       "total_s": round(sum(v), 2)} for k, v in self.times.items() if v}
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(summary, indent=2))
+        logger.info(f"blanket profile: {json.dumps(summary)}")
+
+
 class Backend:
     """BLANKET via two isolated external processes (`IdentityGenerator`, `FaceSwapper`).
 
@@ -410,6 +444,7 @@ class Backend:
             )
 
         self._identity_cache: dict[int, str] = {}  # seed -> identity image path on serra1's local disk
+        self._prof = _Profile(os.environ.get("BLANKET_PROFILE"))
         self._seg_model = None
         self._seg_resolution = None
         self._device = None
@@ -559,7 +594,8 @@ class Backend:
         if self.random_init:
             swapped = crop.copy()
         else:
-            crop_path = self._write_png(crop, "frame_in.png")
+            with self._prof.stage("client.write_png"):
+                crop_path = self._write_png(crop, "frame_in.png")
             push = None
             if self.swap_mode == "track":
                 p = getattr(context, "push_embedding", None)
@@ -572,9 +608,14 @@ class Backend:
             if self.detection == "phase1" and context is not None and context.landmarks_in_crop:
                 target = {"box": [float(v) for v in context.box_in_crop],
                           "landmarks5": [[float(x), float(y)] for x, y in context.landmarks_in_crop]}
+            t0 = time.perf_counter()
             reply = self._swap_client.call("swap_with_reason", identity_path=identity_path,
                                            crop_path=str(crop_path), mode=self.swap_mode,
-                                           push=push, beta=self.push_beta, **target)
+                                           push=push, beta=self.push_beta, **target,
+                                           **({"profile": True} if self._prof.path else {}))
+            self._prof.add("client.rpc_round_trip", time.perf_counter() - t0)
+            for stage, seconds in (reply.get("timing") or {}).items():
+                self._prof.add(f"server.{stage}", seconds)
             swapped_path = reply["path"]
             if swapped_path is None:
                 # identity_unusable / swap_no_face / swap_iou_rejected — see
@@ -582,7 +623,8 @@ class Backend:
                 # same contract as ciagan/ganonymization's no-landmarks case.
                 self.last_skip_reason = reply["reason"]
                 return None
-            swapped = cv2.imread(str(swapped_path))
+            with self._prof.stage("client.read_png"):
+                swapped = cv2.imread(str(swapped_path))
             if swapped is None:
                 raise _ExternalServiceError(
                     f"blanket/swap: RPC reported success but {swapped_path} is unreadable"
@@ -598,7 +640,9 @@ class Backend:
         # model for the FINAL composite is a real, testable improvement over
         # upstream's own compositing, not a claim upstream itself makes.
         self._load_segmentation()
-        mask = predict_head_mask(
-            self._seg_model, self._seg_resolution, cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), self._device,
-        )
-        return poisson_composite(crop, swapped, mask)
+        with self._prof.stage("client.head_segmentation"):
+            mask = predict_head_mask(
+                self._seg_model, self._seg_resolution, cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), self._device,
+            )
+        with self._prof.stage("client.poisson_composite"):
+            return poisson_composite(crop, swapped, mask)
