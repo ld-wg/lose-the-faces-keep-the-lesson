@@ -319,8 +319,8 @@ BLANKET's synthetic identities tend to smile, which a neutral classroom does not
 magnitude slower than blur and mosaic (Table~\ref{tab:e2-cost}). The diffusion model runs once per track
 (2--3.5\,min per identity, with the published sequential CPU offload); the
 per-face swap, at about 0.2\,s per face with its file-based inter-process
-transport, dominates a long recording. % DIAG: timings from the run logs
-% TODO: export the cost table's fps as \result keys (e2 has none today).
+transport, dominates a long recording: \result{e2/pooled/blanket/fps} frames per
+second against \result{e2/pooled/ciagan/fps} for CIAGAN. % DIAG: per-identity and per-face timings from the run logs
 
 \subsection{Contribution}
 
@@ -442,11 +442,16 @@ an interval that includes zero, and ArcFace rank-1 is unchanged
 (\result{e3g/pooled/P1-c-0.1-+-P2/arcface.rank1} against
 \result{e3g/pooled/P2/arcface.rank1}). The logs locate the loss. During the three
 guided steps, the ArcFace cosine between the predicted clean image and the real
-identity falls from 0.42 to 0.14 on average over the 63 generated identities,
-below $\tau$ for 73\% of them. % DIAG: identity_server "guided-step cos", E3 run.log
+identity falls from \result{e3g/pooled/guided-cos.p1-c0.1.first} to
+\result{e3g/pooled/guided-cos.p1-c0.1.last} on average over the
+\result{e3g/pooled/guided-cos.p1-c0.1.identities} generated identities, and ends
+below $\tau$ for a share of \result{e3g/pooled/guided-cos.p1-c0.1.last-below-tau}.
 In the identity image that leaves the identity model, after the unguided
-refiner, it is 0.28 with guidance against 0.33 without (median paired
-difference $-0.02$; lower with guidance for 58\% of 57 tracks). % DIAG: 2026-10-15, cached identity images vs. track quality_mean, ArcFace
+refiner, it is \result{e3g/pooled/identity-cos.p1-c0.1} with guidance against
+\result{e3g/pooled/identity-cos.plain} without (median paired difference
+\result{e3g/pooled/identity-cos.p1-c0.1.paired-median}; lower with guidance for
+a share of \result{e3g/pooled/identity-cos.p1-c0.1.lower-share} of
+\result{e3g/pooled/identity-cos.p1-c0.1.tracks} tracks).
 Most of the push is lost between the last guided step and the image that
 leaves the model: the final update and decoding of the base pass, and the SDXL
 refiner, an unguided image-to-image pass that re-noises the face and denoises
@@ -463,10 +468,13 @@ re-identified near chance (rank-1 \result{e3f/pooled/ciagan/facenet.rank1}), so
 a successful push could gain at most a few hundredths. It did not gain those:
 the change is \result{e3f/pooled/P3-tau-0.0/delta-facenet.rank1} at $\tau = 0$ and
 \result{e3f/pooled/P3-tau--0.2/delta-facenet.rank1} at $\tau = -0.2$. The cause is
-the optimization, not an inactive objective. The hinge was active for 91\%
-of the faces at $\tau = 0$ and for all of them at $\tau = -0.2$, and the 10 steps
-ran, yet the ArcFace cosine to the real identity fell only from 0.117 to 0.115
-on average, and the code kept 0.98 of its mass on the seed identity. % DIAG: generation.jsonl "push" scalars, 12,633 faces per arm
+the optimization, not an inactive objective. The hinge was active for a share
+of \result{e3f/pooled/P3-tau-0.0/push.active} of the faces at $\tau = 0$ and
+\result{e3f/pooled/P3-tau--0.2/push.active} at $\tau = -0.2$, and the optimizer
+ran \result{e3f/pooled/P3-tau--0.2/push.steps} steps on average, yet the ArcFace
+cosine to the real identity fell only from \result{e3f/pooled/P3-tau-0.0/push.cos-start}
+to \result{e3f/pooled/P3-tau-0.0/push.cos-end}, and the code kept
+\result{e3f/pooled/P3-tau-0.0/push.p-seed} of its mass on the seed identity.
 The pseudonym penalty and the softmax's flat gradient near its start hold the
 code in place, and within the convex hull of CIAGAN's training identities the
 output's identity barely changes. A stronger optimizer would trade the
