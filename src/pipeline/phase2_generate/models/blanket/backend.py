@@ -503,6 +503,8 @@ class Backend:
                 box=[float(v) for v in cand.box_in_crop], tag=f"c{attempt}",
                 **({"guidance_args": guidance} if guidance is not None else {}),
             )
+            # P1 diagnostic: ArcFace cos(predicted clean image, e_real) per guided step (scalars only)
+            guided_cos = self._identity_client.call("last_guidance") if guidance is not None else None
             if generated is None:
                 reasons.append("identity_no_face")
                 continue
@@ -520,7 +522,8 @@ class Backend:
             self._identity_cache[seed] = path
             if self._cache is not None:
                 self._cache.put(seed, {"status": "ok", "path": path,
-                                       "candidate_frame": cand.frame_id, "attempt": attempt})
+                                       "candidate_frame": cand.frame_id, "attempt": attempt,
+                                       **({"p1_guided_cos": guided_cos} if guided_cos is not None else {})})
             return path
 
         status = "identity_unusable" if "identity_unusable" in reasons else "identity_no_face"

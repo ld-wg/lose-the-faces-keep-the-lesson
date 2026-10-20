@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import json
 import os
+import statistics
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _common import SERIES, Experiment, obs_ci  # noqa: E402
-from _generation import (anonymize, by_run, cell, detect, eval_ctx_args, evaluate,  # noqa: E402
+from _generation import (_done, anonymize, by_run, cell, detect, eval_ctx_args, evaluate,  # noqa: E402
                          metric_keys, paired_rows)
 
 PARTS = [p for p in os.environ.get("E3_PARTS", "e3a,e3b,e3c,e3d,e3e,e3f,e3g").split(",") if p]
@@ -39,6 +40,8 @@ with Experiment(__file__) as exp:
     parts: dict[str, dict[str, str]] = {}          # part -> arm label -> run dir name
     pooled: dict[str, dict[str, list[dict]]] = {}  # part -> run dir name -> rows
     identity: dict[str, list[dict]] = {}           # e3a: video -> identity report
+    identity_images: dict[str, dict] = {}          # e3g: video -> identity-image report (P1 diagnosis)
+    push: dict[str, list[dict]] = {}               # e3f: arm label -> per-face P3 push scalars
 
     for video in exp.videos():
         out = exp.results / video.name
@@ -130,6 +133,17 @@ with Experiment(__file__) as exp:
                     "name": f"g-p1-c{scale}-{g['aggregation']}",
                     "identity_cache": str(exp.cache / video.name / f"blanket-p1-c{scale}")})
             part_eval("e3g", arms)
+            # where the guidance is lost: each identity image against the track's real identity,
+            # unguided vs guided; P1's per-step cosines from the cache (or this run's log, for
+            # caches made before the backend recorded them)
+            report = out / "e3g" / "identity_images.json"
+            if not _done(exp, report):
+                exp.module(f"identity images {video.name}", "src.eval.identity_images", "--phase1-dir", det_dir,
+                           "--video", video.path, "--aggregation", g["aggregation"], "--tau", g["tau"],
+                           "--cache", f"plain={cache}",
+                           *[a for sc in g["scales"] for a in ("--cache", f"p1-c{sc}={exp.cache / video.name / f'blanket-p1-c{sc}'}")],
+                           "--guidance-log", exp.results / "run.log", "--out", report, *eval_ctx_args())
+            identity_images[video.name] = json.loads(report.read_text())
 
         if "e3f" in PARTS:
             f = cfg["e3f"]
@@ -140,6 +154,13 @@ with Experiment(__file__) as exp:
                                            "ciagan_push_steps": f["steps"], "ciagan_push_lambda": f["lambda"],
                                            "ciagan_push_tau": tau})
             part_eval("e3f", arms)
+            for tau in f["taus"]:   # did the optimization act and move? (ledger scalars, no embeddings)
+                label = f"P3 τ {tau}"
+                with open(out / arms[label] / "generation.jsonl") as fh:
+                    for line in fh:
+                        rec = json.loads(line).get("push")
+                        if rec and "cos_start" in rec:
+                            push.setdefault(label, []).append({**rec, "tau": tau})
 
     # ---- tables, pooled over videos -------------------------------------------------
     def rows_of(part: str) -> dict[str, list[dict]]:
@@ -230,3 +251,34 @@ with Experiment(__file__) as exp:
 
     if "e3g" in parts:
         strength_table("e3g", "p1", "P2")
+
+    def mean(xs):
+        return round(sum(xs) / len(xs), 3) if xs else None
+
+    for label, recs in push.items():
+        exp.metric(f"e3f/pooled/{label}/push.faces", len(recs))
+        exp.metric(f"e3f/pooled/{label}/push.active", mean([float(r["cos_start"] > r["tau"]) for r in recs]))
+        exp.metric(f"e3f/pooled/{label}/push.cos-start", mean([r["cos_start"] for r in recs]))
+        exp.metric(f"e3f/pooled/{label}/push.cos-end", mean([r["cos_end"] for r in recs]))
+        exp.metric(f"e3f/pooled/{label}/push.steps", mean([r["steps"] for r in recs]))
+        exp.metric(f"e3f/pooled/{label}/push.p-seed", mean([r["p_seed"] for r in recs]))
+
+    if identity_images:
+        tau = cfg["e3g"]["tau"]
+        for c in identity_images[next(iter(identity_images))]["caches"]:
+            cos = [v for r in identity_images.values() for v in r["caches"][c]["per_track"].values()]
+            exp.metric(f"e3g/pooled/identity-cos.{c}", mean(cos))
+            exp.metric(f"e3g/pooled/identity-cos.{c}.tracks", len(cos))
+            guided = [g for r in identity_images.values() for g in r["caches"][c].get("guided", {}).get("per_identity", [])]
+            if guided:
+                exp.metric(f"e3g/pooled/guided-cos.{c}.first", mean([g[0] for g in guided]))
+                exp.metric(f"e3g/pooled/guided-cos.{c}.last", mean([g[-1] for g in guided]))
+                exp.metric(f"e3g/pooled/guided-cos.{c}.last-below-tau", mean([float(g[-1] < tau) for g in guided]))
+                exp.metric(f"e3g/pooled/guided-cos.{c}.identities", len(guided))
+            if c != "plain":   # paired by track against the unguided identity
+                diff = [r["caches"][c]["per_track"][s] - r["caches"]["plain"]["per_track"][s]
+                        for r in identity_images.values()
+                        for s in set(r["caches"][c]["per_track"]) & set(r["caches"]["plain"]["per_track"])]
+                if diff:
+                    exp.metric(f"e3g/pooled/identity-cos.{c}.paired-median", round(statistics.median(diff), 3))
+                    exp.metric(f"e3g/pooled/identity-cos.{c}.lower-share", mean([float(d < 0) for d in diff]))

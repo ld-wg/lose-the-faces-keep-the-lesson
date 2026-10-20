@@ -80,6 +80,9 @@ with Experiment(__file__) as exp:
               best={"Expr.": "min", "Pose (°)": "min", "Emotion κ": "max", "Age (y)": "min", "Gender": "max"},
               align="lrrrrrr")
 
+    for n in names:
+        if fps.get(n):
+            exp.metric(f"e2/pooled/{n}/fps", round(sum(fps[n]) / len(fps[n]), 3))
     exp.table("cost", ["Arm", "Frames / s", "Videos"], [
         [labels[n], round(sum(fps[n]) / len(fps[n]), 3), len(fps[n])] for n in names if fps.get(n)], align="lrr")
 
