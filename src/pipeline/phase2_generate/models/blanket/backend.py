@@ -625,6 +625,8 @@ class Backend:
                 return None
             with self._prof.stage("client.read_png"):
                 swapped = cv2.imread(str(swapped_path))
+            # the swapped crop carries real background (LGPD): it lives only until read
+            Path(swapped_path).unlink(missing_ok=True)
             if swapped is None:
                 raise _ExternalServiceError(
                     f"blanket/swap: RPC reported success but {swapped_path} is unreadable"
