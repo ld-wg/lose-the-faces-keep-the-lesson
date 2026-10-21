@@ -7,6 +7,9 @@
 % the compilation on purpose. Exceptions are marked "% DIAG": diagnostics read
 % from the run logs and ledgers (research/next-steps/results-2026-10-05.md),
 % not yet exported as \result keys. "% TODO" marks text still to write.
+% Citation keys not yet in sbc-template.bib (2026-10-21 fact-check): blanket,
+% mpgd, nan, qan, zhu-bmsb, nullface, revpers, bondalakunta, terhorst, meden
+% (main.tex cites it), hanisch; see research/next-steps/paper-synthesis-2026-10-21.md.
 
 \section{Methodology}
 
@@ -42,33 +45,47 @@ generator.
 Three generator families are compared in their published form: CIAGAN~\cite{ciagan}
 (a conditional GAN driven by landmarks and a one-hot identity code),
 GANonymization~\cite{hellmann} (pix2pix re-synthesis from dense landmarks) and
-BLANKET (an SDXL inpainting model with two ControlNets that generates one
-synthetic identity per track, followed by an \texttt{inswapper} face swap in
-every frame). Blur and mosaic of the detected box are the censorship baselines.
+BLANKET~\cite{blanket} in its released code (an SDXL inpainting model with two
+ControlNets and a refiner that generates one synthetic identity per track,
+followed by FaceFusion's \texttt{inswapper} face swap and GFPGAN enhancer in
+every frame; the paper describes a Stable Diffusion~1.5 variant). Blur and mosaic of the detected box are the censorship baselines.
 Each track receives a deterministic seed, so a student keeps one pseudonymous
 face throughout the video.
 
-Our contribution modifies the replacement in four places, which differ in where
-they act: on the estimate of who the person is (C2), on the swap (P2), on a
-GAN's identity code (P3) and inside the diffusion sampler (P1).
+We modify the replacement in four places, which differ in where they act: on
+the estimate of who the person is (C2), on the swap (P2), on a GAN's identity
+code (P3) and inside the diffusion sampler (P1). None of the mechanisms is new
+in isolation; what we study is where in a hybrid diffusion-and-swap pipeline
+an identity push survives to the final video.
 
 \textbf{(C2) Track-level real identity.} For every track, the ArcFace
 (\texttt{w600k\_r50}) embeddings of its frames are aggregated into one estimate
 of the real person's identity, weighted by a quality score (detection
 confidence, face size, head yaw) with outlier gating; it also selects the best
 frames from which the synthetic identity is generated. This estimate is the
-target that P1--P3 push away from.
+target that P1--P3 push away from. Quality-weighted template aggregation is
+standard in video face recognition~\cite{nan,qan}, and Zhu et al.~\cite{zhu-bmsb}
+average the ArcFace features of a single-subject video before perturbing them;
+we apply it per track, in multi-person footage, as a push target.
 
 \textbf{(P2) Swap-stage push.} The identity embedding that conditions the swap is
 moved away from that estimate,
 $\hat{e} = \mathrm{normalize}(e_{\mathrm{synth}} - \beta\, e_{\mathrm{real}})$,
-in the same space before \texttt{inswapper}'s projection, replacing BLANKET's
-fixed single-frame mix. The push costs one vector operation per track.
+in the same space before \texttt{inswapper}'s projection. It generalizes the mix
+FaceFusion already applies and BLANKET saturates
+($1.35\,e_{\mathrm{synth}} - 0.35\,e_{\mathrm{frame}}$, with the current frame's
+real embedding), with a controllable strength and the track's identity as the
+target. Negative identity conditioning is also how diffusion anonymizers steer
+away from the source (a negated ArcFace embedding in NullFace~\cite{nullface},
+$(1-d)\,Z$ with $d>1$ in~\cite{kung}, negative guidance
+in~\cite{revpers}); P2 applies it to a frozen swapper, whose output is known to
+leak the target's identity~\cite{bondalakunta}. The push costs one vector
+operation per track.
 
 \textbf{(P3) CIAGAN code optimization.} Per frame, a few gradient steps move
 CIAGAN's identity code to reduce
 $\max(0, \cos(\mathrm{ArcFace}(x), e_{\mathrm{real}}) - \tau)$. The code is a
-softmax over CIAGAN's 1200 training identities, so it stays inside their convex
+softmax over the 1200 training identities of CIAGAN's released checkpoint, so it stays inside their convex
 hull; its logits start at the track's seed identity with probability 0.9 (a
 saturated softmax has no gradient) or at the previous frame's code, and a
 penalty $\lambda\lVert p - \mathrm{onehot}\rVert^2$ keeps it near the seed's
@@ -131,7 +148,10 @@ from tracks visible in the same frame. Re-identification is closed-set: each
 face is compared with the mean real embedding of every track (its own frame
 left out), and rank-1/rank-5 record whether its own track ranks first or in the
 top five; chance rank-1 is one over the number of tracks, 0.045--0.063 here.
-Privacy Gain is $1 - \mathrm{rank1}_{\mathrm{anon}} / \mathrm{rank1}_{\mathrm{real}}$.
+We also report the relative rank-1 reduction,
+$1 - \mathrm{rank1}_{\mathrm{anon}} / \mathrm{rank1}_{\mathrm{real}}$ (the
+suppression rate of~\cite{terhorst}; the Privacy Gain of the survey~\cite{meden}
+is the absolute difference $\mathrm{rank1}_{\mathrm{real}} - \mathrm{rank1}_{\mathrm{anon}}$).
 Each metric is computed in three views: generated faces only (the generator's
 quality), all faces with passthrough counted as a leak (the method as
 published), and the final video after the fail-safe (what a viewer sees). The
@@ -240,7 +260,8 @@ median track length (frames), share of tracks shorter than 10 frames, and speed.
 \end{table}
 
 SCRFD-10GF reaches an AP of \result{e1/widerface/scrfd-10gf/ap-hard} on the hard
-set, within two points of its published value, which validates our port of the
+set, against 0.828 published for the keypoint variant that \texttt{buffalo\_l}
+ships (SCRFD\_10G\_KPS, single scale, 640\,px), which validates our port of the
 official evaluation. YOLO-FaceV2-s is the most sensitive detector: hard AP
 \result{e1/widerface/yolo-facev2-s/ap-hard} and a recall of
 \result{e1/widerface/yolo-facev2-s/recall-at-fppi-0.1} at 0.1 false positives
@@ -257,7 +278,7 @@ comparison between generators does not depend on this choice.
 
 \begin{table}[ht]\centering
 \caption{Privacy, pooled over videos: coverage and FaceNet rank-1 in three views
-(generated faces, all faces with passthrough as a leak, final video), Privacy Gain
+(generated faces, all faces with passthrough as a leak, final video), relative rank-1 reduction
 and verification on the final video. Mean $\pm$ half-width of the 95\% track bootstrap.}
 \label{tab:e2-main}
 \input{generated/e2_generation/tab-e2-main}
@@ -288,8 +309,9 @@ video against emotion agreement; the dashed line is the noise floor.}
 \label{fig:tradeoff}
 \end{figure}
 
-\textbf{The published view and the viewer's view disagree.} As published, BLANKET
-is the least private method: FaceNet ranks the right student first for
+\textbf{The published view and the viewer's view disagree.} In its released code,
+which passes through the faces it cannot generate (the paper hides the whole
+frame instead), BLANKET is the least private method: FaceNet ranks the right student first for
 \result{e2/pooled/blanket/facenet.rank1} of all faces, because BLANKET generates
 only \result{e2/pooled/blanket/anonymized} of them and passes the rest through.
 With the fail-safe, those faces are hidden instead, and the final video's rank-1
@@ -525,10 +547,13 @@ The three videos are not a consented dataset of children, so the study measures
 the method on classroom-like footage, not on its target population. Gaze is not
 measured: no permissively licensed estimator was validated on faces this small.
 Human-rated pedagogical analyzability, a re-trained (parrot) attacker and a
-demographic fairness analysis are not performed. The emotion classifier is
-trained on AffectNet, whose terms allow research use only, and the swap model
-(\texttt{inswapper}) is released for non-commercial research only. Privacy is
-measured against two recognizers and does not constitute a formal guarantee.
+demographic fairness analysis are not performed; the attacker is naive, which
+overestimates privacy~\cite{hanisch}. Several components are licensed for
+non-commercial research only: InsightFace's models (including \texttt{inswapper}
+and the ArcFace recognizer), GFPGAN's StyleGAN2 and DFDNet parts and its FFHQ
+training data, and the AffectNet benchmark the emotion classifier is reported on.
+Privacy is measured against two recognizers and does not constitute a formal
+guarantee.
 The diffusion-based pipeline is slow: at the measured throughput, one hour of
 class takes days on one GPU, which restricts it to offline processing of
 selected recordings until its cost is reduced. Faces the detector never finds
