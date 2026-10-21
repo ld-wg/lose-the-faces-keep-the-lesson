@@ -382,6 +382,34 @@ def kappa_ci(rows: Sequence[dict], real: str = "emotion_real", anon: str = "emot
     return est, float((hi - lo) / 2), len(allp)
 
 
+def paired_kappa_diff(rows_a: Sequence[dict], rows_b: Sequence[dict], real: str, anon: str, *,
+                      n: int = 2000, seed: int = 0) -> dict:
+    """Cohen's kappa of arm A minus arm B on the faces both label (joined on video,
+    frame, track), with a 95% bootstrap over tracks and whether it excludes zero."""
+    key = lambda r: (r.get("video"), r["frame_id"], r["track_id"])  # noqa: E731
+    b_by = {key(r): r for r in rows_b}
+    by_track: dict[Any, list[tuple[int, int, int, int]]] = {}
+    for a in rows_a:
+        b = b_by.get(key(a))
+        if b is None or None in (a.get(real), a.get(anon), b.get(real), b.get(anon)):
+            continue
+        by_track.setdefault((a.get("video"), a["track_id"]), []).append(
+            (int(a[real]), int(a[anon]), int(b[real]), int(b[anon])))
+    if not by_track:
+        return {"diff": None, "half": None, "excludes_zero": False, "n": 0}
+    tracks = [np.array(v) for v in by_track.values()]
+
+    def diff(sel):
+        x = np.concatenate(sel)
+        return _kappa(x[:, 0], x[:, 1]) - _kappa(x[:, 2], x[:, 3])
+    est = diff(tracks)
+    rng = np.random.default_rng(seed)
+    boots = [diff([tracks[i] for i in rng.integers(0, len(tracks), len(tracks))]) for _ in range(n)]
+    lo, hi = np.nanpercentile(boots, [2.5, 97.5])
+    return {"diff": est, "half": float((hi - lo) / 2), "excludes_zero": bool(lo > 0 or hi < 0),
+            "n": int(sum(len(t) for t in tracks))}
+
+
 def strata(rows: Sequence[dict], key: str, edges: Sequence[float]) -> list[tuple[str, list[dict]]]:
     """Rows split into [edges[i], edges[i+1]) bins of a covariate (face_px, abs_yaw, det_conf)."""
     out = []

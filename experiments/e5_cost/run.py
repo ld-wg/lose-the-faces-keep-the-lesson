@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _common import SERIES, Experiment, obs_ci  # noqa: E402
+from _common import SERIES, Experiment, obs_ci, paired_kappa_diff  # noqa: E402
 from _generation import anonymize, by_run, cell, detect, eval_ctx_args, evaluate, metric_keys, paired_rows  # noqa: E402
 
 PIPELINE_KEYS = ("identity_cache_from", "reference", "arms")   # [pipeline] entries that are not arm flags
@@ -96,9 +96,20 @@ with Experiment(__file__) as exp:
         s = cost[name]["stages"].get(stage)
         return round(1000 * s[0] / s[1], 1) if s and s[1] else None
 
+    def share(rows, pred):
+        return round(sum(1 for r in rows if pred(r)) / len(rows), 3) if rows else None
+
+    def hidden(rows):   # shown as a gray fill: generation failed or was rejected, and nothing to reuse
+        return share(rows, lambda r: r.get("video_outcome") == "filled")
+
+    def gated(rows):    # generated, then rejected by the privacy gate
+        return share(rows, lambda r: r.get("status") == "gated")
+
     for name in names:
         rows = pooled[name]
         metric_keys(exp, f"e5/pooled/{name}", rows, VIDEO, ev)
+        exp.metric(f"e5/pooled/{name}/hidden-share", hidden(rows))
+        exp.metric(f"e5/pooled/{name}/gated-share", gated(rows))
         exp.metric(f"e5/pooled/{name}/ms-per-face", round(ms_per_face(name), 1))
         exp.metric(f"e5/pooled/{name}/class-hours", round(class_hours(name), 1))
         exp.metric(f"e5/pooled/{name}/generated-share", round(cost[name]["calls"] / cost[name]["faces"], 3))
@@ -126,20 +137,30 @@ with Experiment(__file__) as exp:
         for n in names], best={"ms / face": "min", "h / class-h": "min"}, align="lrrrrrrrr")
 
     # What the viewer sees: privacy, utility and motion on the composed video.
-    exp.table("video", ["Arm", "FN R1", "Verified", "Expr.", "Pose (°)", "Emotion κ", "Motion"], [
-        [n, *(cell(pooled[n], m, ev) for m in ("facenet_video.rank1", "facenet_video.verified",
-                                                  "expression_video", "pose_err_video",
-                                                  "emotion_kappa_video", "motion_err_video"))]
-        for n in names], best={"FN R1": "min", "Motion": "min", "Expr.": "min"}, align="lrrrrrr")
+    exp.table("video", ["Arm", "FN R1", "Verified", "Hidden", "Expr.", "Pose (°)", "Emotion κ", "Motion"], [
+        [n, cell(pooled[n], "facenet_video.rank1", ev), cell(pooled[n], "facenet_video.verified", ev), hidden(pooled[n]),
+         *(cell(pooled[n], m, ev) for m in ("expression_video", "pose_err_video", "emotion_kappa_video", "motion_err_video"))]
+        for n in names], best={"FN R1": "min", "Motion": "min", "Expr.": "min", "Emotion κ": "max"}, align="lrrrrrrr")
 
     # Paired against the reference on the same faces: privacy, expression and motion.
     if ref in names:
         rows_by_arm = {n: pooled[n] for n in names}
         paired = {m: {r[0]: r for r in paired_rows(rows_by_arm, ref, m, ev)}
-                  for m in ("facenet_video.rank1", "expression_video", "motion_err_video")}
-        exp.table("paired", ["Arm", "Δ FN R1", "excl. 0", "Δ Expr.", "excl. 0", "Δ Motion", "excl. 0"], [
-            [n, *(x for m in paired for x in (paired[m][n][1], paired[m][n][2]))]
-            for n in names if n != ref], align="lrcrcrc")
+                  for m in ("facenet_video.rank1", "facenet_video.verified", "expression_video", "motion_err_video")}
+        kappa = {n: paired_kappa_diff(pooled[n], pooled[ref], "emotion_real_video", "emotion_video",
+                                      n=ev["bootstrap"], seed=ev["seed"]) for n in names if n != ref}
+        for n, k in kappa.items():
+            if k["diff"] is not None:
+                exp.metric(f"e5/pooled/{n}/delta-emotion_kappa_video", round(k["diff"], 3))
+                exp.metric(f"e5/pooled/{n}/delta-emotion_kappa_video.ci", round(k["half"], 3))
+                exp.metric(f"e5/pooled/{n}/delta-emotion_kappa_video.excludes-zero", "yes" if k["excludes_zero"] else "no")
+        # Δ and whether the paired interval excludes zero, as "Δ*" (excludes) or "Δ" (does not)
+        def mark(c, ex):
+            return None if c is None else (f"{c[0]:+.2f}" + ("*" if ex in ("yes", True) else ""))
+        exp.table("paired", ["Arm", "Δ FN R1", "Δ Verified", "Δ Expr.", "Δ Motion", "Δ Emotion κ"], [
+            [n, *(mark(paired[m][n][1], paired[m][n][2]) for m in paired),
+             mark((kappa[n]["diff"], kappa[n]["half"]) if kappa[n]["diff"] is not None else None, kappa[n]["excludes_zero"])]
+            for n in names if n != ref], align="lrrrrr")
         for m, by_arm in paired.items():
             for n, r in by_arm.items():
                 if r[1] is not None:
