@@ -397,12 +397,14 @@ verification rate, share of faces hidden, and paired difference against P2 alone
 \input{generated/e3_contribution/tab-e3-policies}
 \end{table}
 
-\textbf{C2: a track is a better witness than a frame.} Averaging a track's
-embeddings predicts its unseen frames with cosine
-\result{e3a/pooled/mean.heldout-cos}, against \result{e3a/pooled/first.heldout-cos}
-for the first frame and \result{e3a/pooled/best.heldout-cos} for the single
-best-quality frame (Table~\ref{tab:e3-identity}); quality weighting adds a few
-hundredths on top. As a push target, however, no mode is significantly better
+\textbf{C2: a track is a better witness than a frame.} Fitted on the first half
+of a track and scored on its second half (at least five frames later), the
+mean of its embeddings reaches cosine \result{e3a/pooled/mean.heldout-cos},
+against \result{e3a/pooled/first.heldout-cos} for the first frame and
+\result{e3a/pooled/best.heldout-cos} for the single best-quality frame
+(Table~\ref{tab:e3-identity}). Our hand-set quality weights do not help
+(\result{e3a/pooled/quality_mean.heldout-cos} for the weighted mean), even when
+the held-out frames are themselves weighted by quality. As a push target, however, no mode is significantly better
 than the first frame (Table~\ref{tab:e3-p2-target}): at the strengths that
 matter, the push moves the embedding far enough that the remaining error of
 the target does not change the ranking.
