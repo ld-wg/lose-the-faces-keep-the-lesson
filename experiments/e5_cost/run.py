@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _common import SERIES, Experiment, obs_ci, paired_kappa_diff  # noqa: E402
+from _common import SERIES, Experiment, paired_kappa_diff  # noqa: E402
 from _generation import anonymize, by_run, cell, detect, eval_ctx_args, evaluate, metric_keys, paired_rows  # noqa: E402
 
 PIPELINE_KEYS = ("identity_cache_from", "reference", "arms")   # [pipeline] entries that are not arm flags
@@ -172,23 +172,33 @@ with Experiment(__file__) as exp:
                     exp.metric(f"e5/pooled/{n}/delta-{short[m]}.ci", round(r[1][1], 3))
                     exp.metric(f"e5/pooled/{n}/delta-{short[m]}.excl", r[2])
 
-    # Trade-off figure: compute per hour of class against motion error and re-identification.
+    # Figure: one row per arm (cheapest at the top), four panels sharing the rows: GPU hours per
+    # hour of class, then FaceNet rank-1, emotion κ and motion error on the composed video, with
+    # 95% track intervals. ref-cpu ran on two videos only, so it stays in the cost table.
+    shown = sorted((n for n in names if n != "ref-cpu"), key=class_hours, reverse=True)
     fig_rows = []
-    with exp.figure("tradeoff", rows=fig_rows, height_in=2.6) as fig:
-        ax_m, ax_p = fig.subplots(1, 2)
-        for n in names:
-            x = class_hours(n)
-            color = SERIES[GROUPS.get(n, 5) % len(SERIES)]
-            for ax, metric in ((ax_m, "motion_err_video"), (ax_p, "facenet_video.rank1")):
-                y, h, _ = obs_ci(pooled[n], metric, n=ev["bootstrap"], seed=ev["seed"])
-                if y is None:
-                    continue
-                ax.errorbar(x, y, yerr=h, fmt="o", color=color, capsize=2, markersize=4)
-                ax.annotate(n, (x, y), textcoords="offset points", xytext=(4, 3), fontsize=6.5)
-                fig_rows.append({"arm": n, "class_hours": round(x, 2), "metric": metric,
-                                 "value": round(y, 4), "ci": round(h, 4)})
-        for ax in (ax_m, ax_p):
-            ax.set_xscale("log")
-            ax.set_xlabel("GPU hours per hour of class")
-        ax_m.set_ylabel("motion error (inter-ocular)")
-        ax_p.set_ylabel("FaceNet rank-1, composed video")
+    with exp.figure("tradeoff", rows=fig_rows, height_in=2.8) as fig:
+        axes = fig.subplots(1, 4, sharey=True)
+        ys = list(range(len(shown)))
+        panels = [("class_hours", "GPU h / class h"), ("facenet_video.rank1", "FaceNet rank-1"),
+                  ("emotion_kappa_video", "emotion κ"), ("motion_err_video", "motion error")]
+        for ax, (metric, title) in zip(axes, panels):
+            for y, n in zip(ys, shown):
+                color = SERIES[GROUPS.get(n, 5) % len(SERIES)]
+                if metric == "class_hours":
+                    v, h = class_hours(n), None
+                    ax.barh(y, v, color=color, height=0.6)
+                else:
+                    c = cell(pooled[n], metric, ev)
+                    if c is None:
+                        continue
+                    v, h = c
+                    ax.errorbar(v, y, xerr=h, fmt="o", color=color, capsize=2, markersize=4)
+                fig_rows.append({"arm": n, "metric": metric, "value": round(v, 4),
+                                 "ci": None if h is None else round(h, 4)})
+            ax.set_title(title)
+            ax.grid(axis="y", visible=False)
+        axes[0].set_yticks(ys)
+        axes[0].set_yticklabels(shown)
+        axes[0].invert_yaxis()
+        fig.tight_layout(w_pad=0.6)
