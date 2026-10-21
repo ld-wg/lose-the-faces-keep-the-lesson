@@ -307,10 +307,12 @@ def track_signflip_p(rows: Sequence[dict], metric: str, *, n: int = 10000, seed:
     keys, s, c = _track_sums(rows, metric)
     if len(keys) < 2:
         return None
-    d = s / np.maximum(c, 1)
-    observed = abs(d.mean())
-    signs = np.random.default_rng(seed).choice([-1.0, 1.0], size=(n, len(d)))
-    return float(((np.abs((signs * d).mean(1)) >= observed - 1e-12).sum() + 1) / (n + 1))
+    # The statistic is the face-weighted mean difference, the same estimand as the
+    # interval (sum over faces / faces): each track's sum of differences flips sign
+    # as a unit, and the face count does not change, so comparing |Σ ±s_t| suffices.
+    observed = abs(s.sum())
+    signs = np.random.default_rng(seed).choice([-1.0, 1.0], size=(n, len(s)))
+    return float(((np.abs((signs * s).sum(1)) >= observed - 1e-9).sum() + 1) / (n + 1))
 
 
 def privacy_gain_ci(rows: Sequence[dict], rec: str = "facenet", *, n: int = 2000,

@@ -139,8 +139,9 @@ def by_run(rows: Sequence[dict]) -> dict[str, list[dict]]:
 
 def cell(rows: Sequence[dict], metric: str, ev: dict):
     if metric in ("emotion_kappa", "emotion_kappa_video"):
-        anon = "emotion_video" if metric.endswith("_video") else "emotion_anon"
-        est, half, _ = kappa_ci(rows, anon=anon, n=ev["bootstrap"], seed=ev["seed"])
+        video = metric.endswith("_video")
+        est, half, _ = kappa_ci(rows, real="emotion_real_video" if video else "emotion_real",
+                                anon="emotion_video" if video else "emotion_anon", n=ev["bootstrap"], seed=ev["seed"])
     else:
         est, half, _ = obs_ci(rows, metric, n=ev["bootstrap"], seed=ev["seed"])
     return None if est is None else (est, half)

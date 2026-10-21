@@ -3,7 +3,7 @@
 # its own results/. Stops at the first failure; experiments whose components
 # do not exist yet are reported as pending and skipped.
 #
-#   experiments/run_all.sh                 # e0 → e3
+#   experiments/run_all.sh                 # every experiment folder, e0 → e5
 #   experiments/run_all.sh --only e0,e2    # a subset, still in order
 #   experiments/run_all.sh --fresh         # also clear cache/ (SDXL identities)
 #   experiments/run_all.sh --resume        # keep results/, skip completed generation steps

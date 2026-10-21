@@ -30,14 +30,15 @@ limitations it declares: [`DECISIONS.md`](DECISIONS.md).
 
 | ID | Folder | Question | Arms | Status |
 |---|---|---|---|---|
-| E0 | [`e0_instruments`](e0_instruments) | Do the recognizers and utility probes measure what we claim on this footage? | FaceNet, ArcFace; utility probes | runnable: TAR, mechanism, utility noise floors |
-| E1 | [`e1_detection`](e1_detection) | Which detector gives the best recall for its cost, and how does it behave in a classroom? | SCRFD-10GF, SCRFD-34GF, YOLO-FaceV2-s | runnable (WIDER FACE official AP, recall at FPPI, track statistics) |
-| E2 | [`e2_generation`](e2_generation) | What is the privacy–utility trade-off of each generator family, against censorship? | blur, mosaic, CIAGAN, GANonymization, BLANKET (original) | runnable |
-| E3 | [`e3_contribution`](e3_contribution) | Do our ideas improve privacy without costing utility? | C2 modes; BLANKET ± seed candidates and Phase 1 detection; P2 strength and target; fail-closed policies; P3 (CIAGAN); P1 (SDXL, after its spike) | runnable |
+| E0 | [`e0_instruments`](e0_instruments) | Do the recognizers and utility probes measure what we claim on this footage? | FaceNet, ArcFace; utility probes | run 2026-10-05 |
+| E1 | [`e1_detection`](e1_detection) | Which detector gives the best recall for its cost, and how does it behave in a classroom? | SCRFD-10GF, SCRFD-34GF, YOLO-FaceV2-s | run 2026-10-05 |
+| E2 | [`e2_generation`](e2_generation) | What is the privacy–utility trade-off of each generator family, against censorship? | blur, mosaic, CIAGAN, GANonymization, BLANKET (original) | run 2026-10-06 |
+| E3 | [`e3_contribution`](e3_contribution) | Do our ideas improve privacy without costing utility? | C2 modes; BLANKET ± seed candidates and Phase 1 detection; P2 strength and target; fail-closed policies; P3 (CIAGAN); P1 (SDXL, after its spike) | run 2026-10-06 to 10-09 |
+| E5 | [`e5_cost`](e5_cost) | How much cheaper can the final pipeline get, and what does each speed-up cost the viewer? | main process on GPU vs CPU; GFPGAN off / ≥ 96 px; fixed and adaptive frame sampling | running (2026-10-21) |
 
-Inputs: three classroom videos, `demo1` (239 frames, 15 tracks), `demo2` (244
-frames, 24 tracks) and `demo3` (355 frames, 32 tracks), plus WIDER FACE val for
-E1. Unless E1 says otherwise, E2 and E3 use SCRFD-10GF detections.
+Inputs: three classroom videos, `demo1` (239 frames, 16 tracks), `demo2` (244
+frames, 21 tracks) and `demo3` (355 frames, 22 tracks) under the pipeline's
+Phase 1 (conf 0.1 with the post-pass), plus WIDER FACE val for E1. Unless E1 says otherwise, E2 and E3 use SCRFD-10GF detections.
 
 ## Metrics
 
@@ -48,11 +49,11 @@ Grouped by the question they answer. Definitions and implementation notes:
 |---|---|---|
 | Coverage | Is every face anonymized? | share generated; passthrough causes |
 | Exposure | Does the final video show any real face? | share of face boxes generated / reused / filled (`compose.jsonl`, fail-closed, DECISIONS.md 32–37); boxes by Phase 1 source; faces never detected (needs annotated frames) |
-| Privacy | Can the person still be recognized? | **rank-1** (primary) and rank-5, verification at FAR 1%, cosine to the real face, Privacy Gain; FaceNet (held-out) next to ArcFace (the space the push is computed in); two views: anonymized faces only, and all faces with passthrough counted as a leak |
+| Privacy | Can the person still be recognized? | **rank-1** (primary) and rank-5, verification at FAR 1%, cosine to the real face, Privacy Gain; FaceNet (held-out) next to ArcFace (the space the push is computed in); views: anonymized faces only, all faces with passthrough counted as a leak, the final video after the fail-safe, and (E5) the composed video's own pixels |
 | Pseudonym | Does each person keep one stable synthetic identity? | within-track consistency |
-| Temporal | Does the face flicker? | consecutive-frame similarity |
-| Utility | Is the behavioral signal kept? | emotion agreement, expression error (106 landmarks), head-pose error, gaze error, age error, gender agreement, re-detection |
-| Cost | Can it run on standard hardware? | latency / fps, peak GPU memory |
+| Temporal | Does the face flicker or freeze? | consecutive-frame similarity; motion error on the composed video (E5) |
+| Utility | Is the behavioral signal kept? | emotion Cohen's κ, expression error (106 landmarks), head-pose error, age error, gender agreement, re-detection (gaze: a limitation, DECISIONS.md 10) |
+| Cost | Can it run on standard hardware? | fps; per-face stage timings and GPU hours per hour of class (E5); peak memory is not measured |
 | Validity | Is the instrument valid here? | TAR at FAR 1% on real pairs; noise floor of every utility metric between consecutive real frames |
 
 Every metric is reported per video and pooled, with 95% bootstrap confidence

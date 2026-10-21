@@ -17,14 +17,16 @@ compared with plain censorship? (Hypotheses (a) and (b); objectives 2–4.)
 **Metrics** (see `experiments/README.md`):
 - **coverage**, with passthrough causes;
 - **privacy:** FaceNet (held-out) and ArcFace rank-1 and rank-5, verification
-  at FAR 1%, cosine to the real face, Privacy Gain. Each in two views:
-  anonymized faces only, and all faces with passthrough counted as a leak;
-- **utility:** emotion agreement, expression error, head-pose error, gaze
-  error, age error and gender agreement, re-detection. Each is read against
+  at FAR 1%, cosine to the real face, Privacy Gain. Each in three views:
+  anonymized faces only, all faces with passthrough counted as a leak, and the
+  final video after the fail-safe;
+- **utility:** emotion (Cohen's κ), expression error, head-pose error, age
+  error and gender agreement, re-detection (gaze is a limitation). Each is read against
   the E0 noise floor;
 - **temporal:** within-track consistency, flicker;
-- **cost:** fps and peak GPU memory;
-- **robustness:** the same metrics stratified by face size and absolute yaw.
+- **cost:** fps (peak memory is not measured);
+- **robustness:** FaceNet rank-1 stratified by face size, absolute yaw and
+  detection confidence.
 
 Per video and pooled, with 95% bootstrap intervals over tracks.
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Smoke test of every pipeline and evaluation component on a few frames, before
-# a long experiment run. Writes to a scratch folder (default /tmp/smoke), keeps
-# nothing in results/. Stops at the first failure.
+# a long experiment run. Writes to a private scratch folder (default: a fresh
+# mktemp dir) that is deleted on exit; keeps nothing in results/. Stops at the
+# first failure.
 #
 #   experiments/smoke.sh [video] [frames]          # default: demo1, 20 frames
 #   env: BLANKET_REPO, IDENTITY_GPU, SWAP_GPU, CTX_ID (as for the experiments), SMOKE_DIR
@@ -19,13 +20,16 @@ set -euo pipefail
 export PYTHONUTF8=1   # non-interactive shells on serra1 have an ASCII locale
 cd "$(dirname "$0")/.."
 VIDEO=${1:-demo1} N=${2:-20}
-S=${SMOKE_DIR:-/tmp/smoke}
+# private scratch (crops, videos and identity images show real people: LGPD), deleted on exit
+S=${SMOKE_DIR:-$(mktemp -d /tmp/smoke.XXXXXX)}
+chmod 700 "$S"
+trap 'rm -rf "$S"' EXIT
 BR=${BLANKET_REPO:-$HOME/projects/blanket-anonymizer-bridge}
 CTX=${CTX_ID:-0}
 V=$(ls data/videos/$VIDEO.* | head -1)
 step() { echo; echo "$(date '+%T') == $*"; }
 py() { uv run python "$@"; }
-rm -rf "$S"; mkdir -p "$S"
+mkdir -p "$S"
 
 step "phase1 on $VIDEO"
 py -m src.pipeline.phase1_detect.run --input "$V" --out "$S/det" > "$S/det.log" 2>&1

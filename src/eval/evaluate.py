@@ -478,6 +478,8 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
             if "utility" in v:
                 row.update({f"{m}_video": _r(v["utility"].get(m)) for m in UTILITY_METRICS})
                 row["emotion_video"] = v["utility"].get("emotion_anon", "")
+                # the real label of the same face: every shown face, not only the generated ones
+                row["emotion_real_video"] = v["utility"].get("emotion_real", "")
             prev_v = video.get((o.frame_id - 1, o.track_id), {})
             real, real_prev = real_by_key[key], real_by_key.get((o.frame_id - 1, o.track_id))
             if (v.get("lmk106") is not None and prev_v.get("lmk106") is not None and real_prev is not None

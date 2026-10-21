@@ -405,6 +405,7 @@ class Backend:
             z = (onehot * self.push_init_logit).clone().requires_grad_(True)
         opt = torch.optim.Adam([z], lr=self.push_lr)
         cos0 = cos = None
+        updates = 0
         for step in range(self.push_steps):
             code = torch.softmax(z, dim=1)
             gen = self._model(input_gen, onehot=code)
@@ -419,6 +420,7 @@ class Backend:
             opt.zero_grad()
             loss.backward()
             opt.step()
+            updates += 1
         z = z.detach()
         if track_id is not None:
             self._codes[track_id] = (context.frame_id, z)
@@ -426,7 +428,7 @@ class Backend:
         with torch.no_grad():   # the cosine of the code actually returned
             gen = self._model(input_gen, onehot=code)
             emb = self._arcface(affine_sample(gen * mask_t + face128_t * (1 - mask_t), out_to_in, align.ARCFACE_SIZE))[0]
-        self.last_push = {"cos_start": round(cos0, 4), "cos_end": round(float(emb @ target), 4), "steps": step + 1,
+        self.last_push = {"cos_start": round(cos0, 4), "cos_end": round(float(emb @ target), 4), "steps": updates,
                           "p_seed": round(float((code * onehot).sum()), 4)}
         return code
 

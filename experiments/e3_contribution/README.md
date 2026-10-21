@@ -8,7 +8,8 @@ utility?
 
 ## Design
 
-Four parts, all on `demo1`, `demo2` and `demo3` with SCRFD-10GF detections.
+Seven parts (E3a–E3g; the table covers the first four, the Status section all),
+all on `demo1`, `demo2` and `demo3` with SCRFD-10GF detections.
 Arms within a part share faces and, for BLANKET, the same frozen SDXL
 identities, so they differ only in the factor under test and are compared
 pairwise.
@@ -17,7 +18,7 @@ pairwise.
 |---|---|---|---|
 | **E3a** · C2 | Does the whole-track estimate represent the person better than one frame? | aggregation modes `first`, `best`, `mean`, `quality_mean`, `ema_adaptive` (α_f sweep) | cosine to the unseen half of the track (plain and quality-weighted); convergence vs frames seen; Spearman quality × agreement (pooled, within track); cross-track floor |
 | **E3b** · seed candidates and Phase 1 detection | Do quality-ranked seed crops, and swapping the face Phase 1 found (plus the lenient identity detector), fix BLANKET's coverage? | BLANKET original; with candidates; with candidates and `detection = phase1` (DECISIONS.md 36) | coverage by cause; privacy and utility as controls |
-| **E3c** · P2 strength | How far does the push cut re-identification, and at what utility cost? | `native`, `none`, `track` with β ∈ {0.2, 0.35, 0.5, 0.8, 1.2, 1.6} | E2's metric set, plus the transfer gap (ArcFace − FaceNet rank-1) |
+| **E3c** · P2 strength | How far does the push cut re-identification, and at what utility cost? | `native`, `none`, `track` with β ∈ {0.2, 0.35, 0.5, 0.8, 1.2, 1.6} | E2's metric set, with ArcFace and FaceNet side by side (the transfer gap is read from them) |
 | **E3d** · P2 target | Does the aggregated identity make a better push target than one frame? | at β 1.2: targets `quality_mean`, `mean`, `best`, `first`, `ema_adaptive` | as E3c |
 
 GANonymization is not included: it has no identity input, so the ideas do not

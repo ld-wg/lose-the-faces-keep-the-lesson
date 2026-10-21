@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
 import logging
 import sys
 import time
@@ -241,6 +242,16 @@ def main() -> None:
                    help="Smoke test: random generator weights, output is NOT real anonymization")
     p.add_argument("--limit", type=int, default=None, help="Stop after this many frames (testing)")
     args = p.parse_args()
+    # a killed run still deletes its scratch files (real crops, LGPD): SIGTERM exits through atexit
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
+    if args.generate_every < 1:
+        p.error("--generate-every must be >= 1")
+    # compose_video.py reuses a generated face for at most 10 frames (--reuse-frames); past that
+    # a skipped face would be filled gray, which is not what a sampling arm means to measure
+    if args.generate_every > 11 or (args.generate_adaptive is not None and args.generate_max_gap > 11):
+        p.error("--generate-every / --generate-max-gap above 11 exceed compose_video.py's reuse window")
+    if args.generate_adaptive is not None and args.generate_every != 1:
+        p.error("--generate-adaptive and --generate-every are alternatives")
 
     phase1_dir = Path(args.phase1_dir)
     out_dir = Path(args.out)
@@ -391,10 +402,6 @@ def main() -> None:
             # in memory only: the two embeddings are compared and dropped (LGPD)
             return normalize(_arcface.embed(image, landmarks))
 
-    if args.generate_every < 1:
-        p.error("--generate-every must be >= 1")
-    if args.generate_adaptive is not None and args.generate_every != 1:
-        p.error("--generate-adaptive and --generate-every are alternatives")
     landmarker = None
     if args.generate_adaptive is not None:
         from ..identity import align
@@ -408,7 +415,7 @@ def main() -> None:
             return float(np.linalg.norm(b @ m[:, :2].T + m[:, 2] - a, axis=1).mean() / max(iod, 1e-6))
     # track_id -> (frame_id, real 106 landmarks or None) of its last generated ("ok") face
     last_generated: dict[int, tuple[int, Optional[np.ndarray]]] = {}
-    t_loop = None
+    t_loop = t_steady = None   # the loop starts; the first generated face is done (servers and models up)
 
     with jsonl_path.open() as jf, ledger_path.open("w") as lf:
         t_loop = time.time()
@@ -537,12 +544,17 @@ def main() -> None:
                 if generator.last_push is not None:
                     record["push"] = generator.last_push  # scalars only (cosines, steps)
                 lf.write(json.dumps(record) + "\n")
+                if t_steady is None:   # backends and their servers load lazily on the first call
+                    t_steady = time.time()
 
             if num_frames % 100 == 0:
                 logger.info(f"frame {num_frames}")
 
     cap.release()
-    loop_seconds = time.time() - t_loop if t_loop is not None else None
+    t_end = time.time()
+    # steady-state cost: from the end of the first generated face (lazy start-up excluded)
+    loop_seconds = t_end - t_steady if t_steady is not None else None
+    startup_seconds = t_steady - t_loop if t_steady is not None else None
     dt = time.time() - t0
     fps = num_frames / dt if dt > 0 else 0
     passthrough_total = sum(s["num_frames_passthrough"] for s in stats.values())
@@ -560,8 +572,11 @@ def main() -> None:
         "generate_min_conf": args.generate_min_conf, "privacy_gate": args.privacy_gate,
         "generate_every": args.generate_every, "generate_adaptive": args.generate_adaptive,
         "generate_max_gap": args.generate_max_gap if args.generate_adaptive is not None else None,
-        # cost of the frame loop alone (excludes the pre-pass and server start-up), and what it did
+        # cost of the frame loop after its first generated face (excludes the pre-pass and the
+        # lazy start-up of the backend and its servers, reported apart), and what it did
         "loop_seconds": round(loop_seconds, 2) if loop_seconds is not None else None,
+        "startup_seconds": round(startup_seconds, 2) if startup_seconds is not None else None,
+        "ctx_id": args.ctx_id,
         "generate_calls": sum(s["num_frames_generated"] + s["num_frames_passthrough"] + s.get("num_frames_gated", 0)
                               for s in stats.values()),
         "backend_config": backend_config,

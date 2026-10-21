@@ -236,8 +236,8 @@ class _IdentityCache:
     candidate crop with only the target face inpainted, so its *background
     is real footage*: hair, clothing, and sometimes other people's faces at
     the crop's edges. Treat the directory like `run.py`'s `generated/`
-    output, which carries the same real backgrounds: under `runs/`
-    (gitignored), on serra1 only, deleted with the run. No embedding is
+    output, which carries the same real backgrounds: under `cache/` or
+    `runs/` (both gitignored), on serra1 only, deleted when no longer needed. No embedding is
     stored. `index.json` records the settings the identities were made
     with; a directory made with different settings is refused rather than
     silently mixed.
@@ -291,11 +291,12 @@ class _Profile:
     def __init__(self, path: Optional[str]):
         self.path = Path(path) if path else None
         self.times: dict[str, list[float]] = {}
+        self.warm = False   # the first face's stages include lazy start-up: not recorded
         if self.path is not None:
             atexit.register(self.write)
 
     def add(self, stage: str, seconds: float) -> None:
-        if self.path is not None:
+        if self.path is not None and self.warm:
             self.times.setdefault(stage, []).append(seconds)
 
     def stage(self, name: str):
@@ -409,6 +410,9 @@ class Backend:
 
         self._scratch_dir = Path(tempfile.mkdtemp(prefix="blanket_ipc_"))
         atexit.register(shutil.rmtree, self._scratch_dir, ignore_errors=True)
+        # identity images the bridge wrote and no cache keeps (real background, LGPD): gone at exit
+        self._bridge_identities: list[str] = []
+        atexit.register(lambda: [Path(p).unlink(missing_ok=True) for p in self._bridge_identities])
 
         identity_python = Path(identity_python) if identity_python else (
             self.bridge_repo / ".venv-identity" / "bin" / "python" if self.bridge_repo else None
@@ -452,6 +456,7 @@ class Backend:
 
         self._identity_cache: dict[int, str] = {}  # seed -> identity image path on serra1's local disk
         self._prof = _Profile(os.environ.get("BLANKET_PROFILE"))
+        self._prof_seen = False
         self._seg_model = None
         self._seg_resolution = None
         self._device = None
@@ -496,6 +501,7 @@ class Backend:
             # attempt, since a later frame may have a clearer face.
             return None
         self._identity_cache[seed] = identity_path
+        self._bridge_identities.append(identity_path)
         return identity_path
 
     def _identity_from_candidates(self, seed: int, candidates: list, e_real=None) -> Optional[str]:
@@ -551,6 +557,8 @@ class Backend:
                 reasons.append("identity_no_face")
                 continue
             path = generated
+            if self._cache is None:
+                self._bridge_identities.append(generated)
             if self._cache is not None:
                 path = str(self._cache.dir / f"seed_{seed}_c{attempt}.jpg")
                 shutil.copyfile(generated, path)
@@ -587,6 +595,9 @@ class Backend:
         otherwise from the first crop BLANKET's own detector accepts, as before.
         """
         self.last_skip_reason = None
+        # the profile starts with the second face: the first one pays the servers' lazy start-up
+        self._prof.warm = self._prof_seen
+        self._prof_seen = True
         track = getattr(context, "track", None)
         if track is not None and track.seed_candidates:
             identity_path = self._identity_from_candidates(seed, track.seed_candidates, track.embedding)

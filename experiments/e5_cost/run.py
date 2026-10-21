@@ -37,6 +37,7 @@ with Experiment(__file__) as exp:
     ref = pipe["reference"]
     pooled: dict[str, list[dict]] = {}
     cost: dict[str, dict] = {}   # arm -> summed loop seconds, generate calls, detector faces, profile stages
+    per_video: dict[str, dict[str, tuple[float, int]]] = {}   # arm -> video -> (loop seconds, detector faces)
 
     for video in exp.videos():
         out = exp.results / video.name
@@ -49,6 +50,9 @@ with Experiment(__file__) as exp:
             exp.module(f"calibrate {video.name}", "src.eval.evaluate", "--phase1-dir", det_dir, "--video",
                        video.path, "--calibration-only", "--far", ev["far"], "--out", cal, *eval_ctx_args())
         tau = json.loads((cal / "eval.json").read_text())["calibration"]["arcface"]["threshold"]
+        if tau is None:   # no impostor pairs: the final pipeline cannot be built for this video (as E3e)
+            exp.note(f"e5/{video.name}", "skipped: no in-domain ArcFace threshold for the privacy gate")
+            continue
         exp.metric(f"e5/{video.name}/gate-tau", tau)
 
         dirs = {}
@@ -68,6 +72,7 @@ with Experiment(__file__) as exp:
             m = json.loads((dirs[name] / "run_manifest.json").read_text())
             c = cost.setdefault(name, {"seconds": 0.0, "calls": 0, "faces": 0, "stages": {}})
             c["seconds"] += m["loop_seconds"]
+            per_video.setdefault(name, {})[video.name] = (m["loop_seconds"], len(run_rows))
             c["calls"] += m["generate_calls"]
             c["faces"] += len(run_rows)          # detector faces with a real reference
             prof = dirs[name] / "profile.json"
@@ -101,16 +106,24 @@ with Experiment(__file__) as exp:
             v = stage_ms(name, stage)
             if v is not None:
                 exp.metric(f"e5/pooled/{name}/stage-{label.lower().rstrip('.')}-ms", v)
+    speedup: dict[str, float] = {}
     if ref in names:
+        # on the videos both arms ran (ref-cpu runs on a subset): faces differ in size and density
         for name in names:
             if name != ref:
-                exp.metric(f"e5/pooled/{name}/speedup", round(ms_per_face(ref) / ms_per_face(name), 2))
+                common = set(per_video[name]) & set(per_video[ref])
+                ms = {a: sum(per_video[a][v][0] for v in common) / sum(per_video[a][v][1] for v in common)
+                      for a in (name, ref)}
+                speedup[name] = round(ms[ref] / ms[name], 2)
+                exp.metric(f"e5/pooled/{name}/speedup", speedup[name])
+                exp.note(f"e5/speedup/{name}/videos", sorted(common))
 
     # Cost: what each arm does and spends, per detector face (skipped faces included).
-    exp.table("cost", ["Arm", "Generated", "ms / face", *STAGES.values(), "h / class-h"], [
+    # (ms / face pools each arm's own videos; the speed-up compares with ref on the videos both ran)
+    exp.table("cost", ["Arm", "Generated", "ms / face", *STAGES.values(), "× ref", "h / class-h"], [
         [n, round(cost[n]["calls"] / cost[n]["faces"], 2), round(ms_per_face(n)),
-         *(stage_ms(n, s) for s in STAGES), round(class_hours(n), 1)]
-        for n in names], best={"ms / face": "min", "h / class-h": "min"}, align="lrrrrrrr")
+         *(stage_ms(n, s) for s in STAGES), speedup.get(n, 1.0 if n == ref else None), round(class_hours(n), 1)]
+        for n in names], best={"ms / face": "min", "h / class-h": "min"}, align="lrrrrrrrr")
 
     # What the viewer sees: privacy, utility and motion on the composed video.
     exp.table("video", ["Arm", "FN R1", "Verified", "Expr.", "Pose (°)", "Emotion κ", "Motion"], [
@@ -153,4 +166,4 @@ with Experiment(__file__) as exp:
             ax.set_xscale("log")
             ax.set_xlabel("GPU hours per hour of class")
         ax_m.set_ylabel("motion error (inter-ocular)")
-        ax_p.set_ylabel("FaceNet rank-1, final video")
+        ax_p.set_ylabel("FaceNet rank-1, composed video")

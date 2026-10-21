@@ -89,9 +89,10 @@ is unchanged.
 all. \emph{Hide-low} never generates a face whose detection confidence is below
 0.5 (it is hidden by the fail-safe instead), since weak detections are the
 partially visible faces the swap handles worst. The \emph{privacy gate} embeds
-every generated face and hides it when its ArcFace similarity to its own track's
-real identity is still above the video's in-domain verification threshold at a
-1\% false-accept rate, i.e.\ when a verifier would still accept it.
+every generated face and hides it when its ArcFace similarity to the real face it
+replaces, in the same frame, is at or above the video's in-domain verification
+threshold at a 1\% false-accept rate, i.e.\ when a verifier would still accept
+the pair.
 
 Two engineering changes made BLANKET usable on classroom footage. The swap uses
 the face Stage~1 found (its box and five landmarks) instead of re-detecting it,
