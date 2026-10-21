@@ -3,10 +3,12 @@
 # its own results/. Stops at the first failure; experiments whose components
 # do not exist yet are reported as pending and skipped.
 #
-#   experiments/run_all.sh                 # e0 → e3
+#   experiments/run_all.sh                 # every experiment folder, e0 → e5
 #   experiments/run_all.sh --only e0,e2    # a subset, still in order
 #   experiments/run_all.sh --fresh         # also clear cache/ (SDXL identities)
+#   experiments/run_all.sh --resume        # keep results/, skip completed generation steps
 set -euo pipefail
+export PYTHONUTF8=1   # non-interactive shells on serra1 have an ASCII locale
 
 cd "$(dirname "$0")/.."
 only="" extra=()
@@ -14,6 +16,7 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --only) only=$2; shift 2 ;;
     --fresh) extra+=(--fresh); shift ;;
+    --resume) extra+=(--resume); shift ;;
     -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 1 ;;
   esac

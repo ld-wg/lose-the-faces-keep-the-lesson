@@ -43,6 +43,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 CONVERGENCE_NS = (1, 2, 3, 5, 10, 20, 40)
+HELDOUT_GAP = 5   # frames between the fitted and the held-out half (as the evaluator's genuine pairs)
 
 
 def _r(x, nd=4):
@@ -96,6 +97,10 @@ def main() -> None:
     p.add_argument("--no-pose", action="store_true", help="skip the 3D-68 pose model (pose term = 1)")
     p.add_argument("--ema-alphas", type=float, nargs="+", default=[0.5, 0.7, 0.8, 0.9, 0.95],
                    help="α_f values to sweep for ema_adaptive (Deep OC-SORT uses 0.95)")
+    p.add_argument("--split", choices=("contiguous", "interleaved"), default="contiguous",
+                   help="held-out halves for the aggregation modes: the track's first half fits and its "
+                        "second half, at least 5 frames later, scores (default); or even/odd frames, "
+                        "whose neighbours make the score optimistic (the runs before 2026-10-21)")
     p.add_argument("--limit", type=int, default=None)
     args = p.parse_args()
 
@@ -185,7 +190,13 @@ def main() -> None:
     for obs in obs_by_track.values():
         if len(obs) < 6:
             continue
-        half_a, half_b = obs[0::2], obs[1::2]
+        if args.split == "interleaved":   # the 2026-10 runs; adjacent frames make it optimistic
+            half_a, half_b = obs[0::2], obs[1::2]
+        else:   # first half fits, the second half (at least MIN_GAP frames later) scores
+            half_a = obs[: len(obs) // 2]
+            half_b = [o for o in obs[len(obs) // 2:] if o.frame_id - half_a[-1].frame_id >= HELDOUT_GAP]
+            if len(half_b) < 3:
+                continue
         units_b = np.stack([o.unit for o in half_b])
         w_b = np.array([o.quality for o in half_b])
         w_b = w_b if w_b.sum() > 0 else np.ones_like(w_b)
@@ -208,6 +219,7 @@ def main() -> None:
             ema_sweep[a].append(plain)
             ema_sweep_q[a].append(weighted)
     report["modes_heldout_half"] = {
+        "split": args.split,
         "per_mode_mean_cos": {m: _r(np.mean(v)) if v else None for m, v in per_mode.items()},
         "per_mode_quality_weighted_cos": {m: _r(np.mean(v)) if v else None for m, v in per_mode_q.items()},
         "ema_alpha_floor_sweep": {str(a): {"mean_cos": _r(np.mean(ema_sweep[a])),
@@ -219,6 +231,7 @@ def main() -> None:
         "convergence_num_tracks": {str(n): len(conv["mean"][n]) for n in CONVERGENCE_NS},
     }
 
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, indent=2))
     logger.info(f"wrote {out_path}")
     logger.info(f"held-out-half cosine by mode: {report['modes_heldout_half']['per_mode_mean_cos']}")
