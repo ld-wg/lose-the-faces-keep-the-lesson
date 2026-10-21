@@ -151,9 +151,9 @@ with Experiment(__file__) as exp:
                                       n=ev["bootstrap"], seed=ev["seed"]) for n in names if n != ref}
         for n, k in kappa.items():
             if k["diff"] is not None:
-                exp.metric(f"e5/pooled/{n}/delta-emotion_kappa_video", round(k["diff"], 3))
-                exp.metric(f"e5/pooled/{n}/delta-emotion_kappa_video.ci", round(k["half"], 3))
-                exp.metric(f"e5/pooled/{n}/delta-emotion_kappa_video.excludes-zero", "yes" if k["excludes_zero"] else "no")
+                exp.metric(f"e5/pooled/{n}/delta-kappa", round(k["diff"], 3))
+                exp.metric(f"e5/pooled/{n}/delta-kappa.ci", round(k["half"], 3))
+                exp.metric(f"e5/pooled/{n}/delta-kappa.excl", "yes" if k["excludes_zero"] else "no")
         # Δ and whether the paired interval excludes zero, as "Δ*" (excludes) or "Δ" (does not)
         def mark(c, ex):
             return None if c is None else (f"{c[0]:+.2f}" + ("*" if ex in ("yes", True) else ""))
@@ -161,12 +161,14 @@ with Experiment(__file__) as exp:
             [n, *(mark(paired[m][n][1], paired[m][n][2]) for m in paired),
              mark((kappa[n]["diff"], kappa[n]["half"]) if kappa[n]["diff"] is not None else None, kappa[n]["excludes_zero"])]
             for n in names if n != ref], align="lrrrrr")
+        short = {"facenet_video.rank1": "fn-r1", "facenet_video.verified": "fn-ver",
+                 "expression_video": "expr", "motion_err_video": "motion"}   # keys fit a line
         for m, by_arm in paired.items():
             for n, r in by_arm.items():
                 if r[1] is not None:
-                    exp.metric(f"e5/pooled/{n}/delta-{m}", round(r[1][0], 3))
-                    exp.metric(f"e5/pooled/{n}/delta-{m}.ci", round(r[1][1], 3))
-                    exp.metric(f"e5/pooled/{n}/delta-{m}.excludes-zero", r[2])
+                    exp.metric(f"e5/pooled/{n}/delta-{short[m]}", round(r[1][0], 3))
+                    exp.metric(f"e5/pooled/{n}/delta-{short[m]}.ci", round(r[1][1], 3))
+                    exp.metric(f"e5/pooled/{n}/delta-{short[m]}.excl", r[2])
 
     # Trade-off figure: compute per hour of class against motion error and re-identification.
     fig_rows = []
