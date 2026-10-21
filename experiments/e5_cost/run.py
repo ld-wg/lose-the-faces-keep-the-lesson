@@ -131,10 +131,12 @@ with Experiment(__file__) as exp:
 
     # Cost: what each arm does and spends, per detector face (skipped faces included).
     # (ms / face pools each arm's own videos; the speed-up compares with ref on the videos both ran)
-    exp.table("cost", ["Arm", "Generated", "ms / face", *STAGES.values(), "× ref", "h / class-h"], [
-        [n, round(cost[n]["calls"] / cost[n]["faces"], 2), round(ms_per_face(n)),
-         *(stage_ms(n, s) for s in STAGES), speedup.get(n, 1.0 if n == ref else None), round(class_hours(n), 1)]
-        for n in names], best={"ms / face": "min", "h / class-h": "min"}, align="lrrrrrrrr")
+    # (integers and short headers so nine columns fit 160 mm; GPU-h = GPU hours per hour of class)
+    exp.table("cost", ["Arm", "Gen.", "ms/face", *STAGES.values(), "× ref", "GPU-h"], [
+        [n, round(cost[n]["calls"] / cost[n]["faces"], 2), int(round(ms_per_face(n))),
+         *(None if stage_ms(n, s) is None else int(round(stage_ms(n, s))) for s in STAGES),
+         speedup.get(n, 1.0 if n == ref else None), int(round(class_hours(n)))]
+        for n in names], decimals=2, best={"ms/face": "min", "GPU-h": "min"}, align="lrrrrrrrr")
 
     # What the viewer sees: privacy, utility and motion on the composed video.
     exp.table("video", ["Arm", "FN R1", "Verified", "Hidden", "Expr.", "Pose (°)", "Emotion κ", "Motion"], [
