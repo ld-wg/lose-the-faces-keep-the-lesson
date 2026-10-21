@@ -547,8 +547,11 @@ bootstrap interval that excludes zero.}
 
 \begin{figure}[ht]\centering
 \includegraphics[width=\linewidth]{generated/e5_cost/fig-e5-tradeoff}
-\caption{E5: GPU hours per hour of class against motion error and against
-FaceNet rank-1 on the composed video.}
+\caption{E5, one row per arm (most expensive at the top): GPU hours per hour of
+class, and FaceNet rank-1, emotion $\kappa$ and motion error on the composed
+video, with 95\% track bootstrap intervals. Colors group the factor changed:
+reference, enhancer, fixed sampling, adaptive sampling, combined. \emph{ref-cpu}
+(two videos) is in Table~\ref{tab:e5-cost} only.}
 \label{fig:e5}
 \end{figure}
 
