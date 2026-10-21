@@ -284,6 +284,16 @@ The literature review is in `research/stages/identification-occlusion.md`.
       deletes the mask and ControlNet maps once used, and the bridge's copy of an
       identity image once cached (bridge `16cf02d`).
 
+52. **E5 results (2026-10-21) change the final pipeline.**
+    - The main process runs on the GPU: 3.3× faster, no paired difference.
+    - Adaptive sampling at τ 0.08 with a max gap of 6 is added: 2.5× faster;
+      motion and κ slightly better; rank-1 +0.01, not significant.
+    - GFPGAN stays on for the privacy-first pipeline. Turning it off is the
+      documented behavior-first variant: κ +0.29, but 24% of faces hidden by the
+      gate.
+    - The E5 re-run used the audited code: steady-state timing, κ over every
+      shown face, the speed-up on common videos.
+
 ## Paper text to revise (not done here; `paper/main.tex` has uncommitted edits)
 
 - **Methodology, Stage 3.** Replace gradient injection on a canonical latent
