@@ -29,14 +29,15 @@ missed face is a leak.)
 
 | File | Content |
 |---|---|
-| `latex/tab-e1-widerface.tex` | AP easy/medium/hard, P/R/F1 @ 0.3, recall @ FPPI, latency, memory, params, GFLOPs |
+| `latex/tab-e1-widerface-ap.tex` | official AP easy/medium/hard, latency, params |
+| `latex/tab-e1-widerface-recall.tex` | P/R/F1 at 0.3 and recall at FPPI 0.01 / 0.1 (hard set) |
 | `latex/tab-e1-videos.tex` | per video and detector: faces/frame, tracks, median length, short-track share, fps |
-| `latex/fig-e1-pr.pdf` (+ `.csv`) | precision–recall curves on the hard split |
 | `latex/results.tex` | `\result{e1/<detector>/wider.hard.ap}`, `…recall.fppi0.1`, … |
 
 ## Status
 
-Runnable (2026-10-01), not yet run on serra1.
+Run on serra1 2026-10-05 (19 min); exported to `paper/generated/e1_detection/`.
+SCRFD-10GF hard AP 0.813, within 1.8 points of the published 83.05.
 - `src/eval/widerface.py` ports the official protocol. The ground-truth
   `.mat` files are fetched if missing.
 - `src/eval/detection_stats.py` gives the track statistics.

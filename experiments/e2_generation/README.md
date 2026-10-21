@@ -32,16 +32,19 @@ Per video and pooled, with 95% bootstrap intervals over tracks.
 
 | File | Content |
 |---|---|
-| `latex/tab-e2-main.tex` | coverage, FaceNet / ArcFace rank-1, emotion agreement, expression error, consistency (pooled) |
+| `latex/tab-e2-main.tex` | coverage, FaceNet rank-1 in three views, Privacy Gain and verification on the final video (pooled) |
 | `latex/tab-e2-privacy.tex`, `tab-e2-utility.tex` | the full privacy and utility metric sets |
-| `latex/tab-e2-strata.tex` | privacy and utility by face size and yaw |
-| `latex/fig-e2-tradeoff.pdf` (+ `.csv`) | privacy (FaceNet rank-1) vs utility (emotion agreement), one point per arm and video |
+| `latex/tab-e2-strata-face-px.tex`, `-abs-yaw.tex`, `-det-conf.tex` | FaceNet rank-1 on generated faces by face size, \|yaw\| and detection confidence |
+| `latex/tab-e2-cost.tex` | frames per second per arm |
+| `latex/fig-e2-tradeoff.pdf` (+ `.csv`) | privacy (FaceNet rank-1, final video) vs emotion κ, one point per arm, pooled |
 | `latex/results.tex` | `\result{e2/<video|pooled>/<arm>/<metric>}` |
 | `<video>/<arm>/output.mp4` | the anonymized videos (never exported to the paper) |
 
 ## Status
 
-Runnable (2026-10-01), not yet run on serra1.
+Run on serra1 2026-10-06 (three restarts on the shared machine, finished with
+`--resume`); exported to `paper/generated/e2_generation/`. BLANKET's main
+process ran on CPU, so its fps here is pessimistic (E5, DECISIONS.md 47).
 
 Privacy is reported in three views (DECISIONS.md 40):
 - generated faces only;

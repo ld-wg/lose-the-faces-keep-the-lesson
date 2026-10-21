@@ -114,8 +114,9 @@ the fallback, since both are reversible or attackable for small faces.
 
 \textbf{Data.} Detection is benchmarked on the WIDER FACE validation split with
 the official protocol. The video experiments use three classroom recordings
-(239, 244 and 355 frames) with 15, 21 and 23 tracks, respectively, under
-SCRFD-10GF (Table~\ref{tab:e1-videos}).
+(239, 244 and 355 frames) with 16, 21 and 22 tracks, respectively, under the
+pipeline's Stage~1 (Table~\ref{tab:e1-videos} reports the detectors at their
+E1 threshold of 0.3).
 % TODO: state the source and terms of the three videos, and that no frame of a
 % real person is reproduced in this paper; they are not a consented dataset of
 % children (limitation).
@@ -128,7 +129,7 @@ false-accept rate, with genuine pairs from the same track and impostor pairs
 from tracks visible in the same frame. Re-identification is closed-set: each
 face is compared with the mean real embedding of every track (its own frame
 left out), and rank-1/rank-5 record whether its own track ranks first or in the
-top five; chance rank-1 is one over the number of tracks, about 0.04--0.07 here.
+top five; chance rank-1 is one over the number of tracks, 0.045--0.063 here.
 Privacy Gain is $1 - \mathrm{rank1}_{\mathrm{anon}} / \mathrm{rank1}_{\mathrm{real}}$.
 Each metric is computed in three views: generated faces only (the generator's
 quality), all faces with passthrough counted as a leak (the method as

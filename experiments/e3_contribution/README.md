@@ -27,17 +27,20 @@ apply to it.
 
 | File | Content |
 |---|---|
-| `latex/tab-e3-aggregation.tex` | E3a: cosine to unseen frames per mode, per video and pooled |
+| `latex/tab-e3-identity.tex` | E3a: cosine to unseen frames per mode (plain and quality-weighted), pooled |
 | `latex/tab-e3-coverage.tex` | E3b: coverage by cause, original vs candidates vs Phase 1 detection |
 | `latex/tab-e3-p2-strength.tex` | E3c: privacy and utility per arm, with paired intervals vs `native` |
 | `latex/tab-e3-p2-target.tex` | E3d |
 | `latex/fig-e3-p2-curve.pdf` (+ `.csv`) | FaceNet and ArcFace rank-1 vs β, with expression and emotion as guards |
-| `latex/fig-e3-convergence.pdf` (+ `.csv`) | E3a convergence |
+| `latex/tab-e3-policies.tex` | E3e: hide-low and the privacy gate on top of P2 β 1.2 |
+| `latex/tab-e3-p3.tex`, `tab-e3-p1.tex` | E3f, E3g: P3 and P1 against their references |
 | `latex/results.tex` | `\result{e3c/<video|pooled>/<arm>/<metric>}`, … |
 
 ## Status
 
-Runnable (2026-10-01), not yet run on serra1. Parts:
+Run on serra1 2026-10-06 to 10-09 (~50 h); exported to `paper/generated/e3_contribution/`.
+Diagnostic keys (P3 push scalars, P1 guided-step and identity-image cosines)
+added 2026-10-20 with `--resume`. Parts:
 - **e3a:** C2;
 - **e3b:** coverage;
 - **e3c, e3d:** P2 strength and target;

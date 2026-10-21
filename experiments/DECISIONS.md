@@ -17,7 +17,8 @@ listed at the end; the paper is not edited in this PR.
    real identity), seed candidates with Phase 1 boxes, and P2 (identity push in
    the swap embedding). P3 (CIAGAN identity-code optimization) and P1 (SDXL
    guidance) become future work. The paper reports measured contributions, not
-   planned ones.
+   planned ones. *Superseded by 43–44 (2026-10-01): P1 and P3 were implemented and
+   measured in E3f/E3g; both are reported as negative results.*
 3. **E1 uses WIDER FACE val plus our videos.** Our classroom videos have no
    face annotations, so on their own they only give operational statistics.
    WIDER FACE gives AP, precision / recall / F1 and recall at fixed false
@@ -241,6 +242,47 @@ The literature review is in `research/stages/identification-occlusion.md`.
     - The residual miss rate is reported with a bootstrap interval over
       frames.
     - The sheets show real people: local only, deleted after annotation.
+
+## Final pipeline and cost (2026-10-07 to 10-21)
+
+47. **BLANKET's main process ran on CPU in E2 and E3** (`CTX_ID=-1`, `78d9a4d`),
+    to leave the shared GPU to its two servers after an OOM caused by another
+    user. The fail-closed composite's head segmentation then took 412 ms per
+    face (24 ms on the GPU, profile of 2026-10-20). E2's BLANKET fps is
+    therefore pessimistic. Privacy and utility do not depend on the device.
+48. **The final pipeline** (2026-10-15) is the measured E3e `gate` arm:
+    - Phase 1 with the post-pass;
+    - BLANKET with Phase 1 detection, C2 `quality_mean` and P2 β 1.2;
+    - the privacy gate;
+    - fail-closed composition.
+
+    β 1.2 rather than 1.6: ArcFace saturates there, and the policies were
+    measured on it. The gate rather than hide-low: same rank-1 with half the
+    hidden faces. P1 and P3 are left out (negative, with diagnostics).
+49. **Diagnostics are `\result` keys**, not hand-copied numbers:
+    - P3 push scalars from the ledger;
+    - P1 per-step cosines, from the identity cache (`last_guidance` RPC,
+      bridge `f376d0b`) or recovered from the run log for the existing cache;
+    - the identity-image cosine (`src/eval/identity_images.py`);
+    - E2 fps.
+50. **E5, the cost study.** Arms of the final pipeline change one cost factor
+    each: main-process device, GFPGAN (off, ≥ 96 px), fixed sampling (every 2 or
+    3 frames) and adaptive sampling (regenerate when the 106-landmark error vs the
+    last generated frame reaches τ, or after 6 frames).
+    - Scored on the composed video itself (`--video-view`): a reused face is
+      measured as shown.
+    - Adds a motion error: |change of the shown face's landmarks − change of the
+      real face's| between consecutive frames.
+    - The E5 smoke test (30 frames of demo1) showed that GFPGAN-off raises
+      FaceNet verification (0.47 vs 0.03 with GFPGAN): the enhancer is part of the
+      privacy, not only of the looks. E5 measures it with intervals.
+51. **Data protection fixes found during profiling.**
+    - The bridge kept every swapped crop (6,864, real background) and every
+      identity image, mask and ControlNet debug map. All deleted on 2026-10-20/21
+      with the author's go-ahead.
+    - Each swapped crop is now deleted once read (`5550812`). The identity server
+      deletes the mask and ControlNet maps once used, and the bridge's copy of an
+      identity image once cached (bridge `16cf02d`).
 
 ## Paper text to revise (not done here; `paper/main.tex` has uncommitted edits)
 

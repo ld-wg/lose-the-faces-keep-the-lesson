@@ -57,7 +57,8 @@ Grouped by the question they answer. Definitions and implementation notes:
 
 Every metric is reported per video and pooled, with 95% bootstrap confidence
 intervals over tracks. Arms that share faces and identities are compared with
-paired tests (paired bootstrap; McNemar for per-face rank-1).
+paired tests (paired track bootstrap with a track-level sign-flip p; McNemar was
+replaced because faces of one track are not independent, `bb4a2d5`).
 
 ## Conclusion criteria (fixed before running)
 
