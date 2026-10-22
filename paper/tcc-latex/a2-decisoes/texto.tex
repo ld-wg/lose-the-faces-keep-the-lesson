@@ -1,0 +1,46 @@
+\chapter{Registro de decisões}
+\label{ap:decisoes}
+
+% Resumo de experiments/DECISIONS.md (1--52) e do log do vault (70-decisions).
+
+\section{Detecção}
+\begin{itemize}
+\item 2026-08-06: o ``RetinaFace'' do \texttt{buffalo\_l} é SCRFD-10GF; texto corrigido.
+\item 2026-09-18: detectores trocáveis; \texttt{onnxruntime-gpu} (CUDA 12): SCRFD de 0,4 para 9,3 quadros/s.
+\item 2026-09-30: limiar 0,1 (era 0,5 por bug); pós-passe de recall por padrão.
+\item 2026-10-15: SCRFD-10GF mantido (licença do YOLO-FaceV2 não verificada).
+\end{itemize}
+
+\section{Geração}
+\begin{itemize}
+\item 2026-09-22/23: CIAGAN e GANonymization calibrados; GANs considerados esgotados (máscara só de rosto; qualidade do gerador).
+\item 2026-09-23: Reverse Personalization descartado (sem crianças, sem vídeo).
+\item 2026-09-24: BLANKET integrado em ponte isolada; prompt sem ``baby face''.
+\item 2026-09-26: P2 funciona (FaceNet cai de forma monotônica com $\beta$).
+\item 2026-09-30: troca usa o rosto do Estágio~1; detector permissivo para imagens de identidade.
+\end{itemize}
+
+\section{Avaliação}
+\begin{itemize}
+\item FaceNet como avaliador não usado na otimização; ArcFace ao lado.
+\item APIs comerciais de reconhecimento: removidas (ética, LGPD).
+\item \emph{Parrot attack}, ID-switch, avaliação humana, equidade: limitações.
+\item Emoção como $\kappa$ (não concordância bruta).
+\item McNemar substituído por teste de inversão de sinal por track (rostos de um track não são independentes).
+\item Três visões de privacidade; vídeo composto no E5.
+\item Critérios fixados antes de rodar (2026-09-29).
+\end{itemize}
+
+\section{Composição e dados}
+\begin{itemize}
+\item 2026-09-30: \emph{fail-closed}; colar só pixels alterados; elipse cinza em vez de blur.
+\item 2026-10-20/21: crops com fundo real e rascunhos de identidade apagados após uso; arquivos antigos apagados.
+\end{itemize}
+
+\section{Contribuição e pipeline final}
+\begin{itemize}
+\item 2026-09-24: contribuição escolhida: empurrão de identidade em três pontos (P1, P2, P3) contra a identidade real do track (C2).
+\item 2026-10-15: P1 e P3 negativos; pipeline final = E3e \emph{gate}.
+\item 2026-10-21: correções da auditoria (split do E3a, $p$ ponderado, $\kappa$ no vídeo composto, tempo em regime).
+\item 2026-10-21: E5; processo principal na GPU e amostragem adaptativa entram no pipeline final; GFPGAN mantido.
+\end{itemize}

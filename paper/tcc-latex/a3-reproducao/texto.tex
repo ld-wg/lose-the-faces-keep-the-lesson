@@ -1,0 +1,18 @@
+\chapter{Infraestrutura e reprodução}
+\label{ap:reproducao}
+
+\begin{itemize}
+\item Servidor: serra1 (UFPR), 2$\times$ NVIDIA RTX A5000 24\,GB, 48 núcleos, 125\,GB RAM, compartilhado.
+\item Ambiente: Python com \texttt{uv}; \texttt{onnxruntime-gpu} 1.20.2 (CUDA 12); dois venvs isolados para a ponte do BLANKET.
+\item Ponte: repositório \texttt{blanket-anonymizer-bridge} (servidores de identidade e de troca, RPC por socket Unix).
+\item Experimentos: \texttt{experiments/e0..e5}, cada um com \texttt{config.toml}, \texttt{run.py}, README.
+  \begin{itemize}
+  \item \texttt{run\_all.sh} (\texttt{--only}, \texttt{--resume}); \texttt{smoke.sh};
+  \item proveniência por execução (commit, hashes das entradas, comandos);
+  \item \texttt{export\_paper.sh} copia tabelas, figuras e chaves \texttt{\textbackslash result} para \texttt{paper/generated};
+  \item \texttt{check\_latex.sh}: tudo compila e cabe em 160\,mm.
+  \end{itemize}
+\item Tempos: E0 61\,min; E1 19\,min; E2 $\sim$1 dia; E3 $\sim$50\,h; E5 8,2\,h.
+\item Identidades SDXL congeladas em cache por vídeo; seeds determinísticas por track.
+\item Código: \texttt{github.com/ld-wg/lose-the-faces-keep-the-lesson}, PR \#12.
+\end{itemize}
