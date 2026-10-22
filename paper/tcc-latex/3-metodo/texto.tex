@@ -29,7 +29,13 @@
   \item dilatação de 3 quadros antes e depois de cada track;
   \item tracks com menos de 3 detecções: ocultados, sem identidade sintética.
   \end{itemize}
-\item Cada caixa registra a origem: \texttt{detector}, \texttt{interpolated}, \texttt{dilated}, \texttt{unconfirmed}. Só caixas do detector (com landmarks) vão ao gerador.
+\item Cada caixa registra a origem:
+  \begin{itemize}
+  \item \texttt{detector}: detecção real, com landmarks; a única que vai ao gerador;
+  \item \texttt{interpolated}: lacuna preenchida;
+  \item \texttt{dilated}: extensão antes ou depois do track;
+  \item \texttt{unconfirmed}: track com menos de 3 detecções.
+  \end{itemize}
 \item Seed por track: hash BLAKE2b de (vídeo, id do track). Problema conhecido: depende do caminho do arquivo.
 \end{itemize}
 
