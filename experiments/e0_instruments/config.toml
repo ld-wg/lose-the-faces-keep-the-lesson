@@ -19,4 +19,6 @@ enabled = true
 faces = 300              # real face crops sampled from the first video
 
 [noise_floor]
-enabled = false          # needs the utility probes (emotion, pose, gaze, attributes)
+enabled = true
+# the probes E2/E3 report; gaze is a stated limitation (DECISIONS.md 10)
+utility = ["expression", "pose", "emotion", "attributes"]

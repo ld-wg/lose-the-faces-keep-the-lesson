@@ -1,0 +1,83 @@
+\chapter{Configuração experimental}
+\label{cap:experimentos}
+
+% Rascunho em tópicos (2026-10-22). Desenho completo: experiments/README.md e
+% experiments/*/README.md; decisões: experiments/DECISIONS.md.
+
+\section{Dados}
+\begin{itemize}
+\item WIDER FACE val, protocolo oficial (E1) \citep{widerface}.
+\item Três vídeos de sala de aula: 239, 244 e 355 quadros; 16, 21 e 22 tracks com o Estágio~1 do pipeline.
+\item Acaso do rank-1 $= 1/N$: 0,045--0,063.
+\item Origem e termos dos vídeos: pendente (não é conjunto consentido de crianças).
+\end{itemize}
+
+\section{Privacidade}
+\begin{itemize}
+\item FaceNet (InceptionResnetV1, VGGFace2): avaliador não usado na otimização \citep{facenet,vggface2}.
+\item ArcFace \texttt{w600k\_r50}: o espaço em que P1--P3 empurram \citep{arcface}.
+\item Limiar por vídeo a FAR 1\%:
+  \begin{itemize}
+  \item pares genuínos: quadros do mesmo track com $\ge 5$ quadros de distância;
+  \item pares impostores: tracks visíveis no mesmo quadro.
+  \end{itemize}
+\item Reidentificação em conjunto fechado: cada rosto contra o embedding médio de cada track (o próprio quadro fora); rank-1 e rank-5.
+\item Verificação: cosseno $\ge$ limiar.
+\item Redução relativa de rank-1: $1 - R_{\mathrm{anon}}/R_{\mathrm{real}}$ (o \emph{Privacy Gain} de \citealp{meden} é a diferença absoluta).
+\item Visões:
+  \begin{itemize}
+  \item rostos gerados;
+  \item todos os rostos, passthrough como vazamento (como publicado);
+  \item vídeo final, após o \emph{fail-safe} (\texttt{compose.jsonl}): oculto nunca reidentificado; reaproveitado com o embedding do rosto de origem;
+  \item vídeo composto (E5): probes nos pixels do \texttt{output.mp4}, reaproveitados como aparecem.
+  \end{itemize}
+\item Medida primária: FaceNet rank-1 no vídeo final.
+\end{itemize}
+
+\section{Utilidade}
+\begin{itemize}
+\item Expressão: 106 landmarks (\texttt{2d106det}) após alinhamento por similaridade, em unidades de IOD.
+\item Pose: erro absoluto médio de pitch, yaw, roll (\texttt{1k3d68}).
+\item Idade e gênero: \texttt{genderage} \citep{insightface}.
+\item Emoção: HSEmotion, 8 classes, $\kappa$ de Cohen \citep{hsemotion,cohen}. Concordância bruta descartada: 73\% dos rostos reais são neutros.
+\item Re-detecção: SCRFD no rosto gerado.
+\item Movimento (E5): $|\Delta_{\mathrm{mostrado}} - \Delta_{\mathrm{real}}|$ dos 106 landmarks entre quadros consecutivos; pega rosto congelado e rosto tremido.
+\item Piso de ruído: a mesma métrica entre quadros reais consecutivos.
+\item Olhar (\emph{gaze}): não medido (sem estimador validado em rostos tão pequenos).
+\end{itemize}
+
+\section{Estatística}
+\begin{itemize}
+\item Intervalos de 95\%: bootstrap percentil reamostrando tracks inteiros (2000 reamostras) \citep{efron}.
+\item Braços comparados nos mesmos rostos: diferença pareada (vídeo, quadro, track) com intervalo; ``exclui zero'' como critério.
+\item Teste de inversão de sinal por track (10000), ponderado por rosto.
+\item Estratos: tamanho do rosto (0--48, 48--96, $\ge 96$\,px), $|$yaw$|$, confiança de detecção.
+\item Critérios fixados antes de rodar: melhora de privacidade = rank-1 cai e o intervalo pareado exclui zero; utilidade preservada = dentro do intervalo do braço de referência, lido contra o piso de ruído.
+\end{itemize}
+
+\section{Experimentos}
+\begin{itemize}
+\item E0, instrumentos: TAR dos reconhecedores, mecanismo do mix nativo, pisos de ruído.
+\item E1, detecção: SCRFD-10GF, SCRFD-34GF, YOLO-FaceV2-s; AP, recall a FPPI, latência; estatísticas de tracks nos vídeos.
+\item E2, geradores na forma publicada: blur, mosaico, CIAGAN, GANonymization, BLANKET; mesmas detecções.
+\item E3, contribuição (BLANKET; CIAGAN em P3):
+  \begin{itemize}
+  \item E3a, C2: modos de agregação; ajuste na primeira metade do track, avaliação na segunda ($\ge 5$ quadros depois);
+  \item E3b, cobertura: original, \emph{seed candidates}, detecção do Estágio~1;
+  \item E3c, força do P2: $\beta \in \{0{,}2;\, 0{,}35;\, 0{,}5;\, 0{,}8;\, 1{,}2;\, 1{,}6\}$, contra o mix nativo e sem mix;
+  \item E3d, alvo do P2: cada modo do C2 em $\beta = 1{,}2$, contra o primeiro quadro;
+  \item E3e, políticas: \emph{hide-low} e \emph{gate} sobre P2 $\beta = 1{,}2$;
+  \item E3f, P3: $\tau \in \{0, -0{,}2\}$, contra CIAGAN puro;
+  \item E3g, P1: escala 0,1 sobre P2 $\beta = 1{,}2$, contra P2.
+  \end{itemize}
+\item E5, custo: pipeline final com um fator de custo por braço:
+  \begin{itemize}
+  \item \emph{ref}: processo principal na GPU, todo quadro, GFPGAN ligado;
+  \item \emph{ref-cpu}: processo principal na CPU, como em E2/E3 (demo1 e demo2);
+  \item GFPGAN desligado; GFPGAN só em rostos $\ge 96$\,px;
+  \item amostragem fixa a cada 2 e 3 quadros;
+  \item adaptativa com $\tau = 0{,}05$ e $0{,}08$ (máximo de 6 quadros);
+  \item \emph{fast}: GFPGAN $\ge 96$\,px mais adaptativa 0,05.
+  \end{itemize}
+\item E4 (identidade só por texto): proposto, não executado (Cap.~\ref{cap:conclusao}).
+\end{itemize}

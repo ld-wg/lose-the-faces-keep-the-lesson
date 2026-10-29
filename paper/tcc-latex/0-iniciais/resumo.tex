@@ -1,0 +1,25 @@
+\begin{resumo}
+
+% Rascunho factual (2026-10-22): uma frase por fato, para reescrever depois.
+Vídeos de sala de aula expõem a identidade de alunos e professores. Este
+trabalho substitui cada rosto detectado por um rosto sintético e mede, no vídeo
+que o espectador vê, quanto da identidade some e quanto do comportamento
+(expressão, pose, emoção) permanece. O pipeline tem três estágios: detecção
+SCRFD-10GF com rastreamento e um pós-passe de recall; substituição com BLANKET
+(identidade sintética SDXL por track e troca de rosto \texttt{inswapper} por
+quadro); e composição \emph{fail-closed}, que nunca mostra um rosto conhecido
+real. A contribuição principal empurra o embedding de identidade usado pela
+troca para longe da identidade real estimada no track (P2). Em três vídeos, o
+rank-1 do FaceNet (reconhecedor não usado na otimização) cai de
+\result{e3c/pooled/native/facenet.rank1} para
+\result{e3c/pooled/b-1.6/facenet.rank1}, sem custo em expressão e pose. Com o
+\emph{privacy gate}, o vídeo final fica em
+\result{e3e/pooled/gate/facenet_final.rank1}, contra
+\result{e2/pooled/blur/facenet_final.rank1} do blur, que apaga o comportamento.
+Orientação por gradiente no amostrador de difusão (P1) e otimização do código
+de identidade do CIAGAN (P3) não têm efeito mensurável. Processo principal na
+GPU e amostragem adaptativa de quadros levam o custo a
+\result{e5/pooled/adapt-0.08/class-hours} GPU-horas por hora de aula. Nenhum
+método preserva a emoção perto do piso de ruído.
+
+\end{resumo}

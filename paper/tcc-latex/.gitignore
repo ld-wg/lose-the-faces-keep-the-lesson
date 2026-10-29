@@ -1,0 +1,12 @@
+*.aux
+*.log
+*.toc
+*.bbl
+*.blg
+*.out
+*.lof
+*.lot
+*.acr
+*.smb
+main_*.pdf
+!main_maziero.pdf

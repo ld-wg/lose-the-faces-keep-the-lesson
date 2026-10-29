@@ -29,7 +29,7 @@ E2/E3), then three measurements:
      happen in one space?).
 
    The crops are deleted as soon as the check ends.
-3. **Utility noise floors** — *pending, needs the utility probes.* The same
+3. **Utility noise floors** (run 2026-10-05). The same
    metric between consecutive real frames of a track, for emotion, expression,
    pose, gaze and attributes. It gives what the probe fluctuates by itself;
    E2/E3 drift is read against it.

@@ -1,0 +1,19 @@
+\chapter{Componentes e licenças}
+\label{ap:licencas}
+
+% Verificado em 2026-10-21 nas páginas dos projetos.
+
+\begin{itemize}
+\item SCRFD, ArcFace \texttt{w600k\_r50}, \texttt{2d106det}, \texttt{1k3d68}, \texttt{genderage} (pacote \texttt{buffalo\_l}): código MIT; modelos apenas para pesquisa não comercial \citep{insightface}.
+\item \texttt{inswapper\_128}: apenas pesquisa não comercial; licenciamento comercial via InsightFace (desde 2025-11).
+\item BLANKET: GPL-3.0; isolado em processos próprios na ponte \citep{blanket}.
+\item FaceFusion: OpenRAIL-AS \citep{facefusion}.
+\item GFPGAN: Apache-2.0, com partes não comerciais (StyleGAN2 da NVIDIA; DFDNet CC BY-NC-SA); treinado em FFHQ (CC BY-NC-SA 4.0) \citep{gfpgan,ffhq}.
+\item SDXL inpainting, refiner e ControlNets: licenças dos respectivos cards (OpenRAIL++).
+\item CIAGAN: MIT \citep{ciagan}.
+\item GANonymization: MIT \citep{hellmann}.
+\item facenet-pytorch: MIT; pesos VGGFace2 \citep{facenetpytorch,vggface2}.
+\item HSEmotion: código Apache-2.0; pesos sem licença declarada; reporta resultados em AffectNet, cujos termos permitem só pesquisa \citep{hsemotion,affectnet}.
+\item YOLO-FaceV2: README diz MIT, mas deriva do YOLOv5 (AGPL-3.0); não verificado \citep{yolofacev2}.
+\item Conclusão: uso acadêmico apenas; uso comercial exigiria trocar \texttt{inswapper}, os modelos do InsightFace e o GFPGAN.
+\end{itemize}

@@ -36,9 +36,15 @@ Outputs (in --out dir):
                         "skipped_no_frame" (the source video ended before this
                         frame_id), "skipped_no_identity" (track_id missing
                         from tracks.json — a Phase 1 data-integrity gap) or
-                        "failsafe" (a Phase 1 post-pass box, not a detection:
-                        `reason` is its source; nothing is generated and
-                        compose_video.py hides it).
+                        "failsafe" (not generated, hidden by compose_video.py:
+                        a Phase 1 post-pass box, `reason` = its source; a
+                        detection below --generate-min-conf, `reason` =
+                        "low_conf"; or a frame --generate-every/--generate-
+                        adaptive skips, `reason` = "subsampled", which
+                        compose_video.py covers with the track's last
+                        generated face) or "gated" (generated, but --privacy-gate
+                        found it still too close to the real face; the crop
+                        is kept for evaluation, compose_video.py hides it).
     run_manifest.json   run-level summary: config + per-identity frame counts.
 """
 
@@ -46,12 +52,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
 import logging
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 import cv2
+import numpy as np
 
 # allow running as a module from repo root
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -181,16 +190,68 @@ def main() -> None:
     p.add_argument("--blanket-push-beta", type=float, default=0.35,
                    help="blanket --blanket-swap-mode track: push strength (0.35 = the magnitude of "
                         "BLANKET's own native push)")
+    p.add_argument("--ciagan-push", choices=("none", "track"), default="none",
+                   help="ciagan: P3, optimize the identity code per frame away from the pre-pass's "
+                        "track identity (needs --identity-prepass)")
+    p.add_argument("--ciagan-push-steps", type=int, default=10, help="ciagan --ciagan-push: Adam steps per frame")
+    p.add_argument("--ciagan-push-lr", type=float, default=0.5, help="ciagan --ciagan-push: Adam step size on the logits")
+    p.add_argument("--ciagan-push-tau", type=float, default=0.2,
+                   help="ciagan --ciagan-push: hinge threshold on ArcFace cos(output, real); stops below it")
+    p.add_argument("--ciagan-push-lambda", type=float, default=1.0,
+                   help="ciagan --ciagan-push: weight of ||code − seed one-hot||² (keeps the pseudonym)")
+    p.add_argument("--generate-min-conf", type=float, default=0.0,
+                   help="detections below this confidence are not generated, only hidden by the "
+                        "fail-safe (status failsafe, reason low_conf); 0 generates every detection")
+    p.add_argument("--privacy-gate", type=float, default=None, metavar="TAU",
+                   help="reject a generated face whose ArcFace cosine to the real face is still >= TAU "
+                        "(status gated; the fail-safe hides it). Typically the in-domain ArcFace "
+                        "threshold at FAR 1%% from E0. Off by default")
+    p.add_argument("--generate-every", type=int, default=1, metavar="N",
+                   help="cost: generate a track's face on at most one of every N of its frames; the frames "
+                        "in between are not generated (status failsafe, reason subsampled) and "
+                        "compose_video.py shows the track's last generated face (1 = every frame)")
+    p.add_argument("--generate-adaptive", type=float, default=None, metavar="TAU",
+                   help="cost: generate a track's face again only when the real face changed since its last "
+                        "generated frame: mean 106-landmark distance after similarity alignment, in "
+                        "inter-ocular units (the evaluator's expression error) >= TAU; or after "
+                        "--generate-max-gap frames. Off by default")
+    p.add_argument("--generate-max-gap", type=int, default=6, metavar="K",
+                   help="--generate-adaptive: regenerate after at most K frames regardless (must stay "
+                        "within compose_video.py's --reuse-frames, 10)")
+    p.add_argument("--censor-mode", choices=("blur", "mosaic"), default="blur",
+                   help="censor: blur or mosaic of the detected box (E2 baseline)")
+    p.add_argument("--mosaic-blocks", type=int, default=8,
+                   help="censor --censor-mode mosaic: cells across the box's shorter side")
+    p.add_argument("--blanket-p1-scale", type=float, default=0.0,
+                   help="blanket: P1, ArcFace guidance in the SDXL identity generation away from the track's "
+                        "real identity; step size on the predicted clean latent (0 = off)")
+    p.add_argument("--blanket-p1-tau", type=float, default=0.2,
+                   help="blanket P1: hinge threshold on ArcFace cos(identity, real); stops pushing below it")
+    p.add_argument("--blanket-p1-window", type=int, default=3,
+                   help="blanket P1: guide the last N denoising steps of the base pass (0 = all; 7 run)")
     p.add_argument("--blanket-detection", choices=("phase1", "upstream"), default="phase1",
                    help="blanket: which face detection the swap uses. phase1 = this project's own "
                         "detection (box and 5 points) for the target face, plus FaceFusion's lenient "
                         "detector for identity images yolo_face rejects; upstream = BLANKET's own "
                         "yolo_face re-detection and IoU filter everywhere (runs before 2026-09-30)")
+    p.add_argument("--blanket-enhancer", default="on", metavar="on|off|MIN_PX",
+                   help="blanket: BLANKET's GFPGAN face enhancer after the swap: on (as published), off, "
+                        "or only on faces whose sqrt(box area) is at least MIN_PX pixels (cost study)")
     p.add_argument("--ctx-id", type=int, default=0, help="0 for GPU/MPS, -1 for CPU")
     p.add_argument("--random-init", action="store_true",
                    help="Smoke test: random generator weights, output is NOT real anonymization")
     p.add_argument("--limit", type=int, default=None, help="Stop after this many frames (testing)")
     args = p.parse_args()
+    # a killed run still deletes its scratch files (real crops, LGPD): SIGTERM exits through atexit
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
+    if args.generate_every < 1:
+        p.error("--generate-every must be >= 1")
+    # compose_video.py reuses a generated face for at most 10 frames (--reuse-frames); past that
+    # a skipped face would be filled gray, which is not what a sampling arm means to measure
+    if args.generate_every > 11 or (args.generate_adaptive is not None and args.generate_max_gap > 11):
+        p.error("--generate-every / --generate-max-gap above 11 exceed compose_video.py's reuse window")
+    if args.generate_adaptive is not None and args.generate_every != 1:
+        p.error("--generate-adaptive and --generate-every are alternatives")
 
     phase1_dir = Path(args.phase1_dir)
     out_dir = Path(args.out)
@@ -252,7 +313,12 @@ def main() -> None:
             dlib_predictor=dlib_predictor, portrait_scale=args.portrait_scale,
             refine_mask=refine_mask,
             segmentation_weights=segmentation_weights if refine_mask else None,
+            push_mode=args.ciagan_push, push_steps=args.ciagan_push_steps, push_lr=args.ciagan_push_lr,
+            push_tau=args.ciagan_push_tau, push_lambda=args.ciagan_push_lambda,
         )
+        if args.ciagan_push == "track" and not args.identity_prepass:
+            p.error("--ciagan-push track needs --identity-prepass (the push target is the "
+                    "pre-pass's track-level real identity)")
     elif args.model == "ganonymization":
         backend_kwargs.update(
             img_size=img_size, segmentation_weights=segmentation_weights,
@@ -260,6 +326,8 @@ def main() -> None:
             min_detection_confidence=args.min_detection_confidence,
             enhance_detection_input=args.enhance_detection_input,
         )
+    elif args.model == "censor":
+        backend_kwargs.update(mode=args.censor_mode, mosaic_blocks=args.mosaic_blocks)
     elif args.model == "blanket":
         backend_kwargs.update(
             bridge_repo=blanket_repo,
@@ -276,7 +344,11 @@ def main() -> None:
             swap_mode=args.blanket_swap_mode,
             push_beta=args.blanket_push_beta,
             detection=args.blanket_detection,
+            p1_scale=args.blanket_p1_scale, p1_tau=args.blanket_p1_tau, p1_window=args.blanket_p1_window,
+            enhancer=args.blanket_enhancer,
         )
+        if args.blanket_p1_scale > 0 and not args.identity_prepass:
+            p.error("--blanket-p1-scale needs --identity-prepass (the guidance target is the track identity)")
         if args.blanket_swap_mode == "track" and not args.identity_prepass:
             p.error("--blanket-swap-mode track needs --identity-prepass (the push target is the "
                     "pre-pass's track-level real identity)")
@@ -319,7 +391,34 @@ def main() -> None:
         gc.collect()
     tracks = prepass.tracks if prepass is not None else {}
 
+    gate_embedder = None
+    if args.privacy_gate is not None:
+        from ..identity.aggregate import normalize
+        from ..identity.embedder import ArcFaceEmbedder
+
+        _arcface = ArcFaceEmbedder(ctx_id=args.ctx_id)
+
+        def gate_embedder(image, landmarks):
+            # in memory only: the two embeddings are compared and dropped (LGPD)
+            return normalize(_arcface.embed(image, landmarks))
+
+    landmarker = None
+    if args.generate_adaptive is not None:
+        from ..identity import align
+        from ..identity.embedder import Landmark106
+
+        landmarker = Landmark106(ctx_id=args.ctx_id)
+
+        def face_change(a: np.ndarray, b: np.ndarray, iod: float) -> float:
+            # the evaluator's expression error (src/eval/evaluate.py), between two real frames
+            m = align.fit_similarity(b, a)
+            return float(np.linalg.norm(b @ m[:, :2].T + m[:, 2] - a, axis=1).mean() / max(iod, 1e-6))
+    # track_id -> (frame_id, real 106 landmarks or None) of its last generated ("ok") face
+    last_generated: dict[int, tuple[int, Optional[np.ndarray]]] = {}
+    t_loop = t_steady = None   # the loop starts; the first generated face is done (servers and models up)
+
     with jsonl_path.open() as jf, ledger_path.open("w") as lf:
+        t_loop = time.time()
         for line in jf:
             if args.limit is not None and num_frames >= args.limit:
                 break
@@ -370,6 +469,36 @@ def main() -> None:
                     }) + "\n")
                     continue
 
+                if face.confidence < args.generate_min_conf:
+                    s["num_frames_failsafe"] += 1
+                    lf.write(json.dumps({
+                        "frame_id": frame_rec.frame_id, "track_id": face.track_id,
+                        "status": "failsafe", "reason": "low_conf", "output_path": None,
+                        "model": args.model, "seed": identity.seed, "identity_class": None,
+                    }) + "\n")
+                    continue
+
+                lmk = None
+                if landmarker is not None:
+                    lmk = landmarker.landmarks(video_frame, face.box)
+                prev = last_generated.get(face.track_id)
+                if prev is not None:
+                    gap = frame_rec.frame_id - prev[0]
+                    if args.generate_adaptive is not None:
+                        iod = (float(np.linalg.norm(np.subtract(face.landmarks[0], face.landmarks[1])))
+                               if face.landmarks else (face.box[2] - face.box[0]) / 2.5)
+                        skip = gap < args.generate_max_gap and face_change(prev[1], lmk, iod) < args.generate_adaptive
+                    else:
+                        skip = gap < args.generate_every
+                    if skip:
+                        s["num_frames_subsampled"] = s.get("num_frames_subsampled", 0) + 1
+                        lf.write(json.dumps({
+                            "frame_id": frame_rec.frame_id, "track_id": face.track_id,
+                            "status": "failsafe", "reason": "subsampled", "output_path": None,
+                            "model": args.model, "seed": identity.seed, "identity_class": None,
+                        }) + "\n")
+                        continue
+
                 fh, fw = video_frame.shape[:2]
                 cx1, cy1, cx2, cy2 = crop_box(fh, fw, face.box, context_ratio)
                 crop = video_frame[cy1:cy2, cx1:cx2]
@@ -395,20 +524,37 @@ def main() -> None:
                     cv2.imwrite(str(out_path), crop)
                 else:
                     status = "ok"
-                    s["num_frames_generated"] += 1
+                    if gate_embedder is not None and face.landmarks:
+                        cos = float(gate_embedder(video_frame, face.landmarks)
+                                    @ gate_embedder(out_img, context.landmarks_in_crop))
+                        if cos >= args.privacy_gate:
+                            status, reason = "gated", "privacy_gate"
+                            s["num_frames_gated"] = s.get("num_frames_gated", 0) + 1
+                    if status == "ok":
+                        s["num_frames_generated"] += 1
+                        last_generated[face.track_id] = (frame_rec.frame_id, lmk)
                     cv2.imwrite(str(out_path), out_img)
 
-                lf.write(json.dumps({
+                record = {
                     "frame_id": frame_rec.frame_id, "track_id": face.track_id,
                     "status": status, "reason": reason, "output_path": str(out_path.relative_to(out_dir)),
                     "model": args.model, "seed": identity.seed,
                     "identity_class": generator.identity_class(identity.seed),
-                }) + "\n")
+                }
+                if generator.last_push is not None:
+                    record["push"] = generator.last_push  # scalars only (cosines, steps)
+                lf.write(json.dumps(record) + "\n")
+                if t_steady is None:   # backends and their servers load lazily on the first call
+                    t_steady = time.time()
 
             if num_frames % 100 == 0:
                 logger.info(f"frame {num_frames}")
 
     cap.release()
+    t_end = time.time()
+    # steady-state cost: from the end of the first generated face (lazy start-up excluded)
+    loop_seconds = t_end - t_steady if t_steady is not None else None
+    startup_seconds = t_steady - t_loop if t_steady is not None else None
     dt = time.time() - t0
     fps = num_frames / dt if dt > 0 else 0
     passthrough_total = sum(s["num_frames_passthrough"] for s in stats.values())
@@ -423,6 +569,16 @@ def main() -> None:
         "phase1_dir": str(phase1_dir), "video": video_path, "model": args.model,
         "weights": str(weights) if weights else None, "random_init": args.random_init,
         "context_ratio": context_ratio, "img_size": img_size,
+        "generate_min_conf": args.generate_min_conf, "privacy_gate": args.privacy_gate,
+        "generate_every": args.generate_every, "generate_adaptive": args.generate_adaptive,
+        "generate_max_gap": args.generate_max_gap if args.generate_adaptive is not None else None,
+        # cost of the frame loop after its first generated face (excludes the pre-pass and the
+        # lazy start-up of the backend and its servers, reported apart), and what it did
+        "loop_seconds": round(loop_seconds, 2) if loop_seconds is not None else None,
+        "startup_seconds": round(startup_seconds, 2) if startup_seconds is not None else None,
+        "ctx_id": args.ctx_id,
+        "generate_calls": sum(s["num_frames_generated"] + s["num_frames_passthrough"] + s.get("num_frames_gated", 0)
+                              for s in stats.values()),
         "backend_config": backend_config,
         "identities": [
             {"track_id": tid, "seed": s["seed"],
@@ -431,6 +587,8 @@ def main() -> None:
              "num_frames_passthrough": s["num_frames_passthrough"],
              "num_frames_skipped_no_identity": s["num_frames_skipped_no_identity"],
              "num_frames_failsafe": s["num_frames_failsafe"],
+             "num_frames_gated": s.get("num_frames_gated", 0),
+             "num_frames_subsampled": s.get("num_frames_subsampled", 0),
              "passthrough_reasons": s["passthrough_reasons"]}
             for tid, s in stats.items()
         ],

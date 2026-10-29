@@ -5,8 +5,12 @@ pre-pass already have — no separate face-image-quality model:
 
 - `det = clip((conf − σ) / (1 − σ))`: detector confidence rescaled the way
   Deep OC-SORT (Maggiolino et al., arXiv:2302.11813) rescales it for its
-  adaptive EMA; σ = 0.3 is Phase 1's own `--conf` threshold, the lowest
-  confidence a stored detection can have.
+  adaptive EMA. σ = 0.3 was Phase 1's `--conf` threshold when this was
+  written; since 2026-09-30 Phase 1 keeps detections down to 0.1 (they only
+  extend tracks), so detections between 0.1 and 0.3 get `det = 0`: zero weight
+  in `quality_mean` and never a seed candidate. Kept on purpose (weak
+  detections are the least reliable evidence of who the person is), and the
+  E3 results use it.
 - `size = min(1, sqrt(box area) / 112)`: faces smaller than the ArcFace
   input side get upsampled before embedding, and the pixelated tracks in
   `models/blanket/NOTICE.md` are exactly the small ones.

@@ -1,0 +1,49 @@
+# E5 — cost of the final pipeline: what each speed-up costs in privacy, utility and motion.
+# Every arm is the final pipeline (BLANKET, Phase 1 detection, C2 quality_mean, P2 β 1.2, privacy
+# gate, fail-closed) with one cost factor changed. BLANKET identities are E3's, frozen per video,
+# so every arm swaps the same synthetic faces.
+# GPU placement for BLANKET's servers comes from the environment (IDENTITY_GPU, SWAP_GPU).
+
+[inputs]
+videos = ["demo1", "demo2", "demo3"]
+
+[detect]
+model = "scrfd-10gf"
+conf = 0.1
+det_size = 640
+
+[pipeline]                             # the final pipeline (paper, "Final pipeline")
+backend = "blanket"
+identity_prepass = true
+seed_candidates = 5
+max_identity_attempts = 3
+detection = "phase1"
+swap_mode = "track"
+push_beta = 1.2
+aggregation = "quality_mean"
+privacy_gate = "arcface"               # the video's in-domain ArcFace threshold at FAR 1%, as in E3e
+identity_cache_from = "e3_contribution" # reuse E3's frozen identities (cache/<that>/<video>/blanket)
+
+reference = "ref"
+arms = [
+  { name = "ref" },                                               # every frame, GFPGAN on, main process on the GPU
+  { name = "ref-cpu", main_gpu = false, videos = ["demo1", "demo2"] }, # as in the campaign: main process on CPU
+  { name = "enh-off", enhancer = "off" },                         # no GFPGAN
+  { name = "enh-96", enhancer = "96" },                           # GFPGAN only on faces >= 96 px
+  { name = "every2", generate_every = 2 },                        # ~15 fps of generation
+  { name = "every3", generate_every = 3 },                        # ~10 fps
+  { name = "adapt-0.05", generate_adaptive = 0.05, generate_max_gap = 6 },  # regenerate on change
+  { name = "adapt-0.08", generate_adaptive = 0.08, generate_max_gap = 6 },
+  { name = "fast", enhancer = "96", generate_adaptive = 0.05, generate_max_gap = 6 },
+]
+
+[projection]                           # one hour of class, for the cost table
+fps = 30
+faces_per_frame = 20
+
+[eval]
+far = 0.01
+recognizers = ["facenet", "arcface"]
+utility = ["expression", "pose", "emotion", "attributes"]
+bootstrap = 2000
+seed = 0

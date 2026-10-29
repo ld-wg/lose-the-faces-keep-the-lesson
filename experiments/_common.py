@@ -38,6 +38,7 @@ import logging
 import math
 import os
 import platform
+import re
 import shlex
 import shutil
 import subprocess
@@ -52,6 +53,7 @@ from typing import Any, Callable, Iterable, Optional, Sequence
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[1]
+os.environ.setdefault("PYTHONUTF8", "1")   # a non-interactive shell on serra1 has an ASCII locale
 VIDEOS_DIR = Path(os.environ.get("VIDEOS_DIR", REPO / "data" / "videos"))
 PENDING_EXIT = 2          # run_all.sh reports it as "pending" and continues
 
@@ -133,7 +135,19 @@ def _versions() -> dict:
 
 
 _LATEX_ESCAPES = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#",
-                  "_": r"\_", "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}"}
+                  "|": r"\textbar{}", "<": r"\textless{}", ">": r"\textgreater{}",
+                  "_": r"\_", "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
+                  # inputenc's utf8 (the SBC template) has no Greek or math symbols
+                  "β": r"$\beta$", "τ": r"$\tau$", "κ": r"$\kappa$", "Δ": r"$\Delta$", "≥": r"$\geq$", "≤": r"$\leq$",
+                  "±": r"$\pm$", "×": r"$\times$", "°": r"\textdegree{}"}
+
+_KEY_SUBS = {"β": "b", "τ": "tau", "κ": "kappa", "Δ": "d", "≥": "ge", "≤": "le", "°": "deg"}
+
+
+def result_key(key: str) -> str:
+    """ASCII form of a \\result key: letters, digits and . / _ + - only."""
+    key = "".join(_KEY_SUBS.get(c, c) for c in key)
+    return re.sub(r"[^A-Za-z0-9./_+-]+", "-", key).strip("-")
 
 
 def latex_escape(text: str) -> str:
@@ -146,7 +160,11 @@ def _fmt(value: Any, decimals: int) -> str:
         return "--"
     if isinstance(value, tuple):
         v, ci = value
-        return f"{_fmt(v, decimals)}\\,{{\\scriptsize$\\pm${ci:.{decimals}f}}}" if ci is not None else _fmt(v, decimals)
+        if ci is None:
+            return _fmt(v, decimals)
+        half = f"{ci:.{decimals}f}"
+        half = half[1:] if half.startswith("0.") else half   # ±.05: narrower columns
+        return f"{_fmt(v, decimals)}\\,{{\\scriptsize$\\pm${half}}}"
     if isinstance(value, bool):
         return "yes" if value else "no"
     if isinstance(value, int):
@@ -216,6 +234,192 @@ def mcnemar_p(a: Sequence[bool], b: Sequence[bool]) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Per-face observations (src.eval.evaluate --obs-out): one row per (run, frame, track)
+
+def load_obs(path: Path, **extra: Any) -> list[dict]:
+    """Rows of an --obs-out CSV with numbers parsed; `extra` fields (e.g. video=...)
+    are added to every row so videos can be pooled."""
+    def parse(v: str):
+        if v == "":
+            return None
+        try:
+            return int(v)
+        except ValueError:
+            try:
+                return float(v)
+            except ValueError:
+                return v
+    with open(path, newline="") as f:
+        return [{**{k: parse(v) for k, v in r.items()}, **extra} for r in csv.DictReader(f)]
+
+
+def obs_value(row: dict, metric: str) -> Optional[float]:
+    """`facenet.rank1` / `.rank5` / `.cos` / `.verified`, `real_facenet.rank1`, or a
+    utility column (`expression`, `pose_err`, `age_err`, `gender_agree`, `emotion_agree`)."""
+    if "." in metric:
+        rec, what = metric.split(".", 1)
+        if what in ("rank1", "rank5"):
+            rank = row.get(f"{rec}_rank")
+            return None if rank is None else float(rank <= (1 if what == "rank1" else 5))
+        v = row.get(f"{rec}_{what}")
+    else:
+        v = row.get(metric)
+    return None if v is None else float(v)
+
+
+def _track_sums(rows: Sequence[dict], metric: str) -> tuple[list, np.ndarray, np.ndarray]:
+    sums: dict[Any, list[float]] = {}
+    for r in rows:
+        v = obs_value(r, metric)
+        if v is not None:
+            s = sums.setdefault((r.get("video"), r["track_id"]), [0.0, 0])
+            s[0] += v
+            s[1] += 1
+    keys = list(sums)
+    return keys, np.array([sums[k][0] for k in keys]), np.array([sums[k][1] for k in keys], dtype=float)
+
+
+def obs_interval(rows: Sequence[dict], metric: str, *, n: int = 2000, seed: int = 0,
+                 level: float = 0.95) -> tuple[Optional[float], Optional[float], Optional[float], int]:
+    """(mean, low, high, n faces): a percentile bootstrap resampling whole tracks."""
+    keys, s, c = _track_sums(rows, metric)
+    if not keys or c.sum() == 0:
+        return None, None, None, 0
+    est = float(s.sum() / c.sum())
+    pick = np.random.default_rng(seed).integers(0, len(keys), (n, len(keys)))
+    boots = s[pick].sum(1) / np.maximum(c[pick].sum(1), 1)
+    lo, hi = np.percentile(boots, [(1 - level) / 2 * 100, (1 + level) / 2 * 100])
+    return est, float(lo), float(hi), int(c.sum())
+
+
+def obs_ci(rows: Sequence[dict], metric: str, *, n: int = 2000, seed: int = 0,
+           level: float = 0.95) -> tuple[Optional[float], Optional[float], int]:
+    """(mean, half-width of the 95% interval, n faces), for tables: the half-width
+    summarizes an interval that may be asymmetric; tests use obs_interval."""
+    est, lo, hi, m = obs_interval(rows, metric, n=n, seed=seed, level=level)
+    return (None, None, 0) if est is None else (est, (hi - lo) / 2, m)
+
+
+def track_signflip_p(rows: Sequence[dict], metric: str, *, n: int = 10000, seed: int = 0) -> Optional[float]:
+    """Two-sided p of a paired difference, with tracks as the unit: random sign
+    flips of the per-track mean differences (frames of a track are not
+    independent, so a per-frame test such as McNemar would be far too optimistic)."""
+    keys, s, c = _track_sums(rows, metric)
+    if len(keys) < 2:
+        return None
+    # The statistic is the face-weighted mean difference, the same estimand as the
+    # interval (sum over faces / faces): each track's sum of differences flips sign
+    # as a unit, and the face count does not change, so comparing |Σ ±s_t| suffices.
+    observed = abs(s.sum())
+    signs = np.random.default_rng(seed).choice([-1.0, 1.0], size=(n, len(s)))
+    return float(((np.abs((signs * s).sum(1)) >= observed - 1e-9).sum() + 1) / (n + 1))
+
+
+def privacy_gain_ci(rows: Sequence[dict], rec: str = "facenet", *, n: int = 2000,
+                    seed: int = 0) -> tuple[Optional[float], Optional[float]]:
+    """1 − rank1(anonymized) / rank1(real), with a track-bootstrap half-width,
+    over the faces that have both ranks."""
+    rows = [r for r in rows if obs_value(r, f"{rec}.rank1") is not None
+            and obs_value(r, f"real_{rec}.rank1") is not None]
+    keys_a, sa, ca = _track_sums(rows, f"{rec}.rank1")
+    keys_b, sb, cb = _track_sums(rows, f"real_{rec}.rank1")
+    if not keys_a or keys_a != keys_b or sb.sum() == 0:
+        return None, None
+    est = 1 - (sa.sum() / ca.sum()) / (sb.sum() / cb.sum())
+    pick = np.random.default_rng(seed).integers(0, len(keys_a), (n, len(keys_a)))
+    boots = 1 - (sa[pick].sum(1) / np.maximum(ca[pick].sum(1), 1)) / np.maximum(
+        sb[pick].sum(1) / np.maximum(cb[pick].sum(1), 1), 1e-12)
+    lo, hi = np.percentile(boots, [2.5, 97.5])
+    return float(est), float((hi - lo) / 2)
+
+
+def paired_obs(rows_a: Sequence[dict], rows_b: Sequence[dict], metric: str, *, n: int = 2000,
+               seed: int = 0) -> dict:
+    """Arm A minus arm B on the faces both scored (joined on video, frame, track):
+    mean difference with a track-bootstrap 95% interval, whether that interval
+    excludes zero, and a track-level sign-flip p."""
+    key = lambda r: (r.get("video"), r["frame_id"], r["track_id"])  # noqa: E731
+    b_by = {key(r): r for r in rows_b}
+    diffs, xa, xb = [], [], []
+    for r in rows_a:
+        other = b_by.get(key(r))
+        va, vb = obs_value(r, metric), obs_value(other, metric) if other else None
+        if va is not None and vb is not None:
+            diffs.append({"video": r.get("video"), "track_id": r["track_id"], "d": va - vb})
+            xa.append(va)
+            xb.append(vb)
+    est, lo, hi, m = obs_interval(diffs, "d", n=n, seed=seed)
+    return {"diff": est, "half": None if est is None else (hi - lo) / 2, "low": lo, "high": hi, "n": m,
+            "excludes_zero": est is not None and (lo > 0 or hi < 0),
+            "p": track_signflip_p(diffs, "d", seed=seed)}
+
+
+def _kappa(a: np.ndarray, b: np.ndarray, k: int = 8) -> float:
+    po = float((a == b).mean())
+    pe = float((np.bincount(a, minlength=k) / len(a)) @ (np.bincount(b, minlength=k) / len(b)))
+    return (po - pe) / (1 - pe) if pe < 1 else float("nan")
+
+
+def kappa_ci(rows: Sequence[dict], real: str = "emotion_real", anon: str = "emotion_anon", *,
+             n: int = 2000, seed: int = 0) -> tuple[Optional[float], Optional[float], int]:
+    """Cohen's kappa between two label columns (chance-corrected agreement), with
+    the half-width of a 95% track bootstrap."""
+    by_track: dict[Any, list[tuple[int, int]]] = {}
+    for r in rows:
+        if r.get(real) is not None and r.get(anon) is not None:
+            by_track.setdefault((r.get("video"), r["track_id"]), []).append((int(r[real]), int(r[anon])))
+    if not by_track:
+        return None, None, 0
+    tracks = [np.array(v) for v in by_track.values()]
+    allp = np.concatenate(tracks)
+    est = _kappa(allp[:, 0], allp[:, 1])
+    rng = np.random.default_rng(seed)
+    boots = []
+    for _ in range(n):
+        pick = np.concatenate([tracks[i] for i in rng.integers(0, len(tracks), len(tracks))])
+        boots.append(_kappa(pick[:, 0], pick[:, 1]))
+    lo, hi = np.nanpercentile(boots, [2.5, 97.5])
+    return est, float((hi - lo) / 2), len(allp)
+
+
+def paired_kappa_diff(rows_a: Sequence[dict], rows_b: Sequence[dict], real: str, anon: str, *,
+                      n: int = 2000, seed: int = 0) -> dict:
+    """Cohen's kappa of arm A minus arm B on the faces both label (joined on video,
+    frame, track), with a 95% bootstrap over tracks and whether it excludes zero."""
+    key = lambda r: (r.get("video"), r["frame_id"], r["track_id"])  # noqa: E731
+    b_by = {key(r): r for r in rows_b}
+    by_track: dict[Any, list[tuple[int, int, int, int]]] = {}
+    for a in rows_a:
+        b = b_by.get(key(a))
+        if b is None or None in (a.get(real), a.get(anon), b.get(real), b.get(anon)):
+            continue
+        by_track.setdefault((a.get("video"), a["track_id"]), []).append(
+            (int(a[real]), int(a[anon]), int(b[real]), int(b[anon])))
+    if not by_track:
+        return {"diff": None, "half": None, "excludes_zero": False, "n": 0}
+    tracks = [np.array(v) for v in by_track.values()]
+
+    def diff(sel):
+        x = np.concatenate(sel)
+        return _kappa(x[:, 0], x[:, 1]) - _kappa(x[:, 2], x[:, 3])
+    est = diff(tracks)
+    rng = np.random.default_rng(seed)
+    boots = [diff([tracks[i] for i in rng.integers(0, len(tracks), len(tracks))]) for _ in range(n)]
+    lo, hi = np.nanpercentile(boots, [2.5, 97.5])
+    return {"diff": est, "half": float((hi - lo) / 2), "excludes_zero": bool(lo > 0 or hi < 0),
+            "n": int(sum(len(t) for t in tracks))}
+
+
+def strata(rows: Sequence[dict], key: str, edges: Sequence[float]) -> list[tuple[str, list[dict]]]:
+    """Rows split into [edges[i], edges[i+1]) bins of a covariate (face_px, abs_yaw, det_conf)."""
+    out = []
+    for lo, hi in zip(edges, edges[1:]):
+        label = f"{lo:g}–{hi:g}" if hi < 1e5 else f"≥{lo:g}"
+        out.append((label, [r for r in rows if r.get(key) is not None and lo <= r[key] < hi]))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # The experiment context
 
 
@@ -233,6 +437,9 @@ class Experiment:
         p.add_argument("--video", action="append", default=None,
                        help="override config.toml inputs (repeatable): short name or path")
         p.add_argument("--fresh", action="store_true", help="also clear this experiment's cache/")
+        p.add_argument("--resume", action="store_true",
+                       help="keep results/ and skip generation steps whose outputs are complete "
+                            "(after an interruption on a shared machine); every table is recomputed")
         self.args = p.parse_args(argv)
 
         self._metrics: dict[str, Any] = {}
@@ -245,8 +452,10 @@ class Experiment:
     # -- lifecycle ---------------------------------------------------------
 
     def __enter__(self) -> "Experiment":
-        if self.results.exists():
+        if self.results.exists() and not self.args.resume:
             shutil.rmtree(self.results)
+        if self.args.resume and self.latex.exists():
+            shutil.rmtree(self.latex)   # paper artifacts always come from this run's tables
         self.latex.mkdir(parents=True)
         if self.args.fresh and self.cache.exists():
             shutil.rmtree(self.cache)
@@ -259,9 +468,12 @@ class Experiment:
         for h in (logging.FileHandler(self.results / "run.log"), logging.StreamHandler(sys.stdout)):
             h.setFormatter(fmt)
             root.addHandler(h)
-        (self.results / "commands.sh").write_text(
+        mode = "a" if self.args.resume and (self.results / "commands.sh").exists() else "w"
+        with open(self.results / "commands.sh", mode) as f:
+            f.write(
             f"#!/usr/bin/env bash\n# Commands run by experiments/{self.name}/run.py, {self._started}.\n"
-            f"# Re-run any step by hand from the repository root.\nset -euo pipefail\ncd {shlex.quote(str(REPO))}\n")
+            f"# Re-run any step by hand from the repository root.\nset -euo pipefail\ncd {shlex.quote(str(REPO))}\n"
+            + ("# --resume: steps with complete outputs were reused, not re-run\n" if self.args.resume else ""))
         log.info(f"{self.name}: results -> {self.results}")
         return self
 
@@ -322,8 +534,9 @@ class Experiment:
     # -- outputs -------------------------------------------------------------
 
     def metric(self, key: str, value: Any) -> None:
-        """A number the paper may cite: metrics.json, and \\result{key} in results.tex."""
-        self._metrics[key] = value
+        """A number the paper may cite: metrics.json, and \\result{key} in results.tex
+        (key made ASCII: β 1.2 -> b-1.2)."""
+        self._metrics[result_key(key)] = value
 
     def table(self, name: str, columns: Sequence[str], rows: Iterable[Sequence[Any]], *,
               decimals: int = 3, best: Optional[dict[str, str]] = None, align: Optional[str] = None) -> None:
@@ -340,6 +553,11 @@ class Experiment:
                 target = (min if how == "min" else max)(v for _, v in vals)
                 bold |= {(i, j) for i, v in vals if v == target}
         align = align or "l" + "r" * (len(columns) - 1)
+        with_ci = any(isinstance(v, tuple) for r in rows for v in r)
+        if with_ci:
+            # value ± interval in every cell: two decimals and tighter columns, so seven fit 160 mm
+            decimals = min(decimals, 2)
+            align = "@{}" + "@{\\hspace{5pt}}".join(align) + "@{}"
 
         tex = [f"% generated by experiments/{self.name}/run.py — do not edit",
                f"\\begin{{tabular}}{{{align}}}", "\\toprule",
@@ -349,14 +567,14 @@ class Experiment:
             cells = [f"\\textbf{{{c}}}" if (i, j) in bold else c for j, c in enumerate(cells)]
             tex.append(" & ".join(cells) + " \\\\")
         tex += ["\\bottomrule", "\\end{tabular}", ""]
-        (self.latex / f"tab-{self.id}-{name}.tex").write_text("\n".join(tex))
+        (self.latex / f"tab-{self.id}-{name}.tex").write_text("\n".join(tex), encoding="utf-8")
 
         md_lines = ["| " + " | ".join(columns) + " |", "|" + "---|" * len(columns)]
         for i, r in enumerate(rows):
             cells = [_plain(v, decimals) for v in r]
             cells = [f"**{c}**" if (i, j) in bold else c for j, c in enumerate(cells)]
             md_lines.append("| " + " | ".join(cells) + " |")
-        (self.results / f"{name}.md").write_text("\n".join(md_lines) + "\n")
+        (self.results / f"{name}.md").write_text("\n".join(md_lines) + "\n", encoding="utf-8")
 
     @contextlib.contextmanager
     def figure(self, name: str, rows: Sequence[dict], *, height_in: float = 2.4, width_in: float = FIG_WIDTH_IN):
@@ -401,7 +619,7 @@ class Experiment:
                 continue
             lines.append(f"\\@namedef{{result@{key}}}{{{_fmt(value, 3)}}}")
         lines += ["\\makeatother", ""]
-        (self.latex / "results.tex").write_text("\n".join(lines))
+        (self.latex / "results.tex").write_text("\n".join(lines), encoding="utf-8")
 
     def _write_provenance(self, status: str, error: Optional[str]) -> None:
         dirty = bool(_git("status", "--porcelain", "--untracked-files=no"))

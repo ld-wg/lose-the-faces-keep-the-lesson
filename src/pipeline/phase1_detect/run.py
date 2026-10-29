@@ -219,6 +219,12 @@ def run_video(args, detector: FaceDetector, tracker: FaceTracker) -> None:
 
     dt = time.time() - t0
     fps = frame_id / dt if dt > 0 else 0
+    (out_dir / "run_stats.json").write_text(json.dumps({
+        "model": args.model, "conf": args.conf, "det_size": args.det_size, "fill": bool(args.fill and not args.webcam),
+        "frames": frame_id, "seconds": round(dt, 2), "fps": round(fps, 2),
+        "detector_boxes": total_faces, "tracks": len(confirmed), "tracks_spawned": len(track_stats),
+        "boxes_by_source": count_sources(frames),
+    }, indent=2) + "\n")
     logger.info(f"Done: {frame_id} frames, {total_faces} face-detections, "
                 f"{len(confirmed)} unique tracks, {fps:.1f} fps")
     logger.info(f"Output: {jsonl_path}, {manifest_path}")

@@ -236,8 +236,8 @@ class _IdentityCache:
     candidate crop with only the target face inpainted, so its *background
     is real footage*: hair, clothing, and sometimes other people's faces at
     the crop's edges. Treat the directory like `run.py`'s `generated/`
-    output, which carries the same real backgrounds: under `runs/`
-    (gitignored), on serra1 only, deleted with the run. No embedding is
+    output, which carries the same real backgrounds: under `cache/` or
+    `runs/` (both gitignored), on serra1 only, deleted when no longer needed. No embedding is
     stored. `index.json` records the settings the identities were made
     with; a directory made with different settings is refused rather than
     silently mixed.
@@ -245,7 +245,7 @@ class _IdentityCache:
 
     VERSION = 1
 
-    def __init__(self, directory: Path, max_attempts: int, lenient: bool = False):
+    def __init__(self, directory: Path, max_attempts: int, lenient: bool = False, p1: Optional[dict] = None):
         self.dir = directory
         # With the swap server's lenient identity detector, a failure recorded
         # without it may now succeed, so it is retried; successes stay frozen
@@ -256,6 +256,8 @@ class _IdentityCache:
         self.index_path = self.dir / "index.json"
         self.settings = {"version": self.VERSION, "identity_source": "seed_candidates",
                          "max_attempts": max_attempts}
+        if p1 is not None:   # guided identities are a different population: never mixed with unguided ones
+            self.settings["p1"] = p1
         if self.index_path.is_file():
             index = json.loads(self.index_path.read_text())
             if index.get("settings") != self.settings:
@@ -280,6 +282,41 @@ class _IdentityCache:
             entry = {**entry, "lenient": True}
         self.entries[str(seed)] = entry
         self.index_path.write_text(json.dumps({"settings": self.settings, "entries": self.entries}, indent=2))
+
+
+class _Profile:
+    """Per-face stage timings when BLANKET_PROFILE=<json path> is set (cost study):
+    this process's stages plus the swap server's own, written at exit."""
+
+    def __init__(self, path: Optional[str]):
+        self.path = Path(path) if path else None
+        self.times: dict[str, list[float]] = {}
+        self.warm = False   # the first face's stages include lazy start-up: not recorded
+        if self.path is not None:
+            atexit.register(self.write)
+
+    def add(self, stage: str, seconds: float) -> None:
+        if self.path is not None and self.warm:
+            self.times.setdefault(stage, []).append(seconds)
+
+    def stage(self, name: str):
+        prof = self
+
+        class _Timer:
+            def __enter__(self):
+                self.t = time.perf_counter()
+
+            def __exit__(self, *exc):
+                prof.add(name, time.perf_counter() - self.t)
+
+        return _Timer()
+
+    def write(self) -> None:
+        summary = {k: {"n": len(v), "mean_ms": round(1000 * sum(v) / len(v), 2),
+                       "total_s": round(sum(v), 2)} for k, v in self.times.items() if v}
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(summary, indent=2))
+        logger.info(f"blanket profile: {json.dumps(summary)}")
 
 
 class Backend:
@@ -332,6 +369,16 @@ class Backend:
         # BLANKET's own yolo_face re-detection and IoU filter (the bridge's
         # swap_server.py docstring has the measurements).
         detection: str = "phase1",
+        # P1 (contribution plan D8, Step 6): ArcFace guidance inside the SDXL
+        # identity generation, away from the track's real identity (bridge
+        # p1_guidance.py). 0 = off; > 0 = step size on the predicted clean
+        # latent (unit-RMS gradient), over the last `p1_window` steps (0 = all).
+        p1_scale: float = 0.0,
+        p1_tau: float = 0.2,
+        p1_window: int = 3,
+        # GFPGAN after the swap: "on" (as published), "off", or a minimum face size in pixels
+        # (sqrt of the box area) below which it is skipped (cost study)
+        enhancer: str = "on",
     ):
         del weights  # accepted only for FaceGenerator's uniform construction contract, unused here
         self.ctx_id = ctx_id
@@ -348,16 +395,24 @@ class Backend:
         if detection not in DETECTIONS:
             raise ValueError(f"unknown detection {detection!r}, choose from {DETECTIONS}")
         self.detection = detection
+        self.p1 = {"scale": p1_scale, "tau": p1_tau, "window": p1_window} if p1_scale > 0 else None
+        enhancer = str(enhancer)
+        if enhancer not in ("on", "off") and not enhancer.isdigit():
+            raise ValueError(f"enhancer must be on, off or a minimum face size in pixels, not {enhancer!r}")
+        self.enhancer = enhancer
         self.last_skip_reason: Optional[str] = None
         self._failed: dict[int, str] = {}  # seed -> reason, seed-candidate mode only
         # Absolute: the swap server runs with BLANKET's repo root as its working
         # directory, so a relative image path would resolve somewhere else there.
         self._cache = (_IdentityCache(Path(identity_cache_dir).resolve(), max_identity_attempts,
-                                      lenient=detection == "phase1")
+                                      lenient=detection == "phase1", p1=self.p1)
                        if identity_cache_dir else None)
 
         self._scratch_dir = Path(tempfile.mkdtemp(prefix="blanket_ipc_"))
         atexit.register(shutil.rmtree, self._scratch_dir, ignore_errors=True)
+        # identity images the bridge wrote and no cache keeps (real background, LGPD): gone at exit
+        self._bridge_identities: list[str] = []
+        atexit.register(lambda: [Path(p).unlink(missing_ok=True) for p in self._bridge_identities])
 
         identity_python = Path(identity_python) if identity_python else (
             self.bridge_repo / ".venv-identity" / "bin" / "python" if self.bridge_repo else None
@@ -378,7 +433,7 @@ class Backend:
             self._identity_client = _RpcClient(
                 socket_path=identity_socket, python=identity_python,
                 server_script=self.bridge_repo / "identity_server.py", cwd=self.bridge_repo,
-                extra_args=[], timeout=self.server_timeout, label="blanket/identity",
+                extra_args=["--p1"] if self.p1 else [], timeout=self.server_timeout, label="blanket/identity",
                 gpu=identity_gpu,
             )
             swap_args = [] if swap_face_detector_score is None else [
@@ -400,6 +455,8 @@ class Backend:
             )
 
         self._identity_cache: dict[int, str] = {}  # seed -> identity image path on serra1's local disk
+        self._prof = _Profile(os.environ.get("BLANKET_PROFILE"))
+        self._prof_seen = False
         self._seg_model = None
         self._seg_resolution = None
         self._device = None
@@ -444,9 +501,10 @@ class Backend:
             # attempt, since a later frame may have a clearer face.
             return None
         self._identity_cache[seed] = identity_path
+        self._bridge_identities.append(identity_path)
         return identity_path
 
-    def _identity_from_candidates(self, seed: int, candidates: list) -> Optional[str]:
+    def _identity_from_candidates(self, seed: int, candidates: list, e_real=None) -> Optional[str]:
         """Seed-candidate mode (contribution plan, Step 3): build the track's
         identity from its best-quality real crops, in order, instead of from
         whichever crop arrives first.
@@ -481,17 +539,30 @@ class Backend:
         reasons = []
         for attempt, cand in enumerate(candidates[: self.max_identity_attempts]):
             crop_path = self._write_png(cand.crop, f"seed_{seed}_cand{attempt}.png")
+            guidance = None
+            if self.p1 is not None:
+                if e_real is None:
+                    raise ValueError("P1 needs the track identity (run.py --identity-prepass)")
+                # e_real goes over the local socket and stays in the server's memory (LGPD)
+                guidance = {**self.p1, "e_real": [float(v) for v in e_real],
+                            "landmarks5": [[float(x), float(y)] for x, y in cand.landmarks_in_crop]}
             generated = self._identity_client.call(
                 "generate", crop_path=str(crop_path), seed=seed,
                 box=[float(v) for v in cand.box_in_crop], tag=f"c{attempt}",
+                **({"guidance_args": guidance} if guidance is not None else {}),
             )
+            # P1 diagnostic: ArcFace cos(predicted clean image, e_real) per guided step (scalars only)
+            guided_cos = self._identity_client.call("last_guidance") if guidance is not None else None
             if generated is None:
                 reasons.append("identity_no_face")
                 continue
             path = generated
+            if self._cache is None:
+                self._bridge_identities.append(generated)
             if self._cache is not None:
                 path = str(self._cache.dir / f"seed_{seed}_c{attempt}.jpg")
                 shutil.copyfile(generated, path)
+                Path(generated).unlink(missing_ok=True)   # one copy only (real background, LGPD)
             if not self._swap_client.call("check_identity", identity_path=path):
                 reasons.append("identity_unusable")
                 if self._cache is not None:
@@ -502,7 +573,8 @@ class Backend:
             self._identity_cache[seed] = path
             if self._cache is not None:
                 self._cache.put(seed, {"status": "ok", "path": path,
-                                       "candidate_frame": cand.frame_id, "attempt": attempt})
+                                       "candidate_frame": cand.frame_id, "attempt": attempt,
+                                       **({"p1_guided_cos": guided_cos} if guided_cos is not None else {})})
             return path
 
         status = "identity_unusable" if "identity_unusable" in reasons else "identity_no_face"
@@ -523,9 +595,12 @@ class Backend:
         otherwise from the first crop BLANKET's own detector accepts, as before.
         """
         self.last_skip_reason = None
+        # the profile starts with the second face: the first one pays the servers' lazy start-up
+        self._prof.warm = self._prof_seen
+        self._prof_seen = True
         track = getattr(context, "track", None)
         if track is not None and track.seed_candidates:
-            identity_path = self._identity_from_candidates(seed, track.seed_candidates)
+            identity_path = self._identity_from_candidates(seed, track.seed_candidates, track.embedding)
             if identity_path is None:
                 self.last_skip_reason = self._failed.get(seed, "identity_no_face")
                 return None
@@ -538,7 +613,8 @@ class Backend:
         if self.random_init:
             swapped = crop.copy()
         else:
-            crop_path = self._write_png(crop, "frame_in.png")
+            with self._prof.stage("client.write_png"):
+                crop_path = self._write_png(crop, "frame_in.png")
             push = None
             if self.swap_mode == "track":
                 p = getattr(context, "push_embedding", None)
@@ -551,9 +627,20 @@ class Backend:
             if self.detection == "phase1" and context is not None and context.landmarks_in_crop:
                 target = {"box": [float(v) for v in context.box_in_crop],
                           "landmarks5": [[float(x), float(y)] for x, y in context.landmarks_in_crop]}
+            if self.enhancer != "on":   # sent only off the published setting (older bridges lack it)
+                enhance = False
+                if self.enhancer.isdigit() and context is not None and context.box_in_crop is not None:
+                    bx1, by1, bx2, by2 = context.box_in_crop
+                    enhance = float(np.sqrt(max(0.0, (bx2 - bx1) * (by2 - by1)))) >= int(self.enhancer)
+                target["enhance"] = enhance
+            t0 = time.perf_counter()
             reply = self._swap_client.call("swap_with_reason", identity_path=identity_path,
                                            crop_path=str(crop_path), mode=self.swap_mode,
-                                           push=push, beta=self.push_beta, **target)
+                                           push=push, beta=self.push_beta, **target,
+                                           **({"profile": True} if self._prof.path else {}))
+            self._prof.add("client.rpc_round_trip", time.perf_counter() - t0)
+            for stage, seconds in (reply.get("timing") or {}).items():
+                self._prof.add(f"server.{stage}", seconds)
             swapped_path = reply["path"]
             if swapped_path is None:
                 # identity_unusable / swap_no_face / swap_iou_rejected — see
@@ -561,7 +648,10 @@ class Backend:
                 # same contract as ciagan/ganonymization's no-landmarks case.
                 self.last_skip_reason = reply["reason"]
                 return None
-            swapped = cv2.imread(str(swapped_path))
+            with self._prof.stage("client.read_png"):
+                swapped = cv2.imread(str(swapped_path))
+            # the swapped crop carries real background (LGPD): it lives only until read
+            Path(swapped_path).unlink(missing_ok=True)
             if swapped is None:
                 raise _ExternalServiceError(
                     f"blanket/swap: RPC reported success but {swapped_path} is unreadable"
@@ -577,7 +667,9 @@ class Backend:
         # model for the FINAL composite is a real, testable improvement over
         # upstream's own compositing, not a claim upstream itself makes.
         self._load_segmentation()
-        mask = predict_head_mask(
-            self._seg_model, self._seg_resolution, cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), self._device,
-        )
-        return poisson_composite(crop, swapped, mask)
+        with self._prof.stage("client.head_segmentation"):
+            mask = predict_head_mask(
+                self._seg_model, self._seg_resolution, cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), self._device,
+            )
+        with self._prof.stage("client.poisson_composite"):
+            return poisson_composite(crop, swapped, mask)

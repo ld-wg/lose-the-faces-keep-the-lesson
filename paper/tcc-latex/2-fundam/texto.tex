@@ -1,0 +1,83 @@
+\chapter{Fundamentação e trabalhos relacionados}
+\label{cap:fundam}
+
+% Rascunho em tópicos (2026-10-22). Cada item: o que é, o que usamos, o que importa aqui.
+
+\section{Detecção de faces}
+\begin{itemize}
+\item WIDER FACE: benchmark com subconjuntos \emph{easy}/\emph{medium}/\emph{hard} \citep{widerface}. Outros: LFW \citep{wildface}, FDDB \citep{fddb}.
+\item SCRFD: redistribuição de amostras e computação; variantes 0.5--34 GFLOPs \citep{scrfd}.
+  \begin{itemize}
+  \item O pacote \texttt{buffalo\_l} do InsightFace traz SCRFD-10GF com keypoints (\texttt{det\_10g}), não RetinaFace \citep{insightface}.
+  \item AP publicado da variante com keypoints (SCRFD\_10G\_KPS): 95,40 / 94,01 / 82,80; 4,23 M parâmetros.
+  \end{itemize}
+\item RetinaFace: detector de estágio único com localização multinível \citep{retinaface}.
+\item YOLO-FaceV2: escala e oclusão; variante \emph{s} \citep{yolofacev2}.
+\item Em sala de aula: RetinaFace e YOLOFace com recall alto em dados de sala de aula \citep{gf-ananda}; YOLOv9 para rostos de crianças \citep{ahmed}.
+\item Outros considerados: MogFace \citep{mogface}, ADYOLOv5-Face \citep{adyolov5face}.
+\end{itemize}
+
+\section{Rastreamento}
+\begin{itemize}
+\item ByteTrack: associa primeiro detecções de alta confiança; as de baixa confiança só estendem tracks existentes \citep{bytetrack}.
+\item Deep OC-SORT: média móvel exponencial da aparência com peso pela confiança \citep{deepocsort}.
+\end{itemize}
+
+\section{Reconhecimento facial}
+\begin{itemize}
+\item ArcFace: margem angular aditiva \citep{arcface}; usamos \texttt{w600k\_r50} (ResNet-50, WebFace600K, subconjunto de \citealp{webface260m}).
+\item FaceNet: embedding por perda tripla \citep{facenet}; usamos InceptionResnetV1 treinado em VGGFace2 \citep{vggface2,facenetpytorch}.
+\item Agregação de templates em vídeo ponderada por qualidade: NAN \citep{nan}, QAN \citep{qan}.
+\end{itemize}
+
+\section{Anonimização por censura e GAN}
+\begin{itemize}
+\item Blur e mosaico: removem identidade e comportamento; reversíveis ou atacáveis em rostos pequenos \citep{fantomas}.
+\item DeepPrivacy: o gerador nunca vê o rosto original \citep{deepprivacy}; DeepPrivacy2: corpo inteiro \citep{deeprivacy2}.
+\item CIAGAN: landmarks (contorno, boca, nariz), fundo mascarado, código de identidade \emph{one-hot} \citep{ciagan}.
+\item GANonymization: 478 landmarks (MediaPipe) re-sintetizados por pix2pix \citep{hellmann,facemesh,pix2pix}.
+\item PP-GAN: verificador contrastivo mais SSIM \citep{yifan-wu}; G$^2$Face: priors generativo e geométrico, reversível \citep{h-yang}.
+\item FALCO: otimização no latente do StyleGAN2 \citep{falco}.
+\item Fantômas: 11 de 15 anonimizadores são parcialmente reversíveis; DeepPrivacy e CIAGAN entre os não reversíveis \citep{fantomas}.
+\end{itemize}
+
+\section{Anonimização por difusão}
+\begin{itemize}
+\item Difusão latente \citep{ldm}; SDXL \citep{sdxl}; ControlNet \citep{controlnet}; SDEdit (\emph{strength}) \citep{sdedit}.
+\item BLANKET: identidade sintética por difusão mais troca de rosto em vídeo \citep{blanket}.
+  \begin{itemize}
+  \item Artigo: SD~1.5 (Realistic Vision), oculta o quadro inteiro quando a detecção falha.
+  \item Código liberado: SDXL \emph{inpainting} 896$\times$896, ControlNets OpenPose e Canny, refiner SDXL; FaceFusion \texttt{inswapper\_128} e GFPGAN 1.4 \citep{facefusion,gfpgan}; rostos que falham passam reais.
+  \item Não é treinado em crianças: o viés infantil vinha do prompt.
+  \end{itemize}
+\item FAMS: ReferenceNet; distância controlada por $(1-d)Z$ \citep{kung}.
+\item NullFace: embedding ArcFace negado via IP-Adapter, sem treino \citep{nullface}.
+\item Reverse Personalization: CFG negativa na identidade \citep{revpers}.
+\item LDFA: inpainting por difusão latente \citep{klemp}.
+\item Zhu et al.: média ArcFace da identidade real de um vídeo de uma pessoa, perturbada com ruído \citep{zhu-bmsb}.
+\item DiffAIM: injeção de gradiente para personificação \citep{wang}.
+\item MPGD: orientação no $\hat{x}_0$ previsto, sem retropropagar pela UNet \citep{mpgd}.
+\item Pseudonimização só por texto (atributos $\to$ template $\to$ gerador) \citep{lee2026}.
+\item Trocadores de rosto vazam a identidade do alvo \citep{bondalakunta}.
+\end{itemize}
+
+\section{Avaliação de privacidade}
+\begin{itemize}
+\item Survey de biometria com privacidade; \emph{Privacy Gain} como diferença absoluta de rank-1 \citep{meden}.
+\item Atacante ingênuo superestima a privacidade; recomenda reconhecedor não usado na otimização e atacante ciente \citep{hanisch}.
+\item Reversibilidade como critério \citep{fantomas}.
+\end{itemize}
+
+\section{Afeto e atributos}
+\begin{itemize}
+\item AffectNet, 8 classes \citep{affectnet}; CK+ \citep{ck+}; FACES \citep{faces}.
+\item HSEmotion \texttt{enet\_b0\_8\_best\_vgaf} \citep{hsemotion}.
+\item Concordância corrigida pelo acaso: $\kappa$ de Cohen \citep{cohen}.
+\end{itemize}
+
+\section{O que nenhum trabalho cobre (lacuna)}
+\begin{itemize}
+\item Vídeo multipessoa de sala de aula com uma identidade estável por pessoa.
+\item Avaliação no vídeo final, com o que falha contando como vazamento ou como oculto.
+\item Onde, num pipeline híbrido difusão + troca, um empurrão de identidade sobrevive até o vídeo.
+\end{itemize}

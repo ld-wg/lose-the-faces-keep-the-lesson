@@ -1,0 +1,677 @@
+% Draft: Methodology (as built), Experimental Setup, Results, Final pipeline, Limitations.
+% Written 2026-10-02 from experiments/README.md, experiments/DECISIONS.md and the code;
+% numbers and readings added 2026-10-15 after the E0--E3 campaign (git a5eee3d).
+% Not \input by main.tex: the author merges what they keep. Every number comes
+% from \result{...} (paper/generated/results.tex, preamble: \input{generated/results}),
+% so this compiles only after experiments/export_paper.sh; a missing key stops
+% the compilation on purpose. Exceptions are marked "% DIAG": diagnostics read
+% from the run logs and ledgers (research/next-steps/results-2026-10-05.md),
+% not yet exported as \result keys. "% TODO" marks text still to write.
+% Citation keys not yet in sbc-template.bib (2026-10-21 fact-check): blanket,
+% mpgd, nan, qan, zhu-bmsb, nullface, revpers, bondalakunta, terhorst, meden
+% (main.tex cites it), hanisch; see research/next-steps/paper-synthesis-2026-10-21.md.
+
+\section{Methodology}
+
+The framework is an offline, three-stage pipeline: (1)~face detection and
+tracking with a recall post-pass, (2)~per-track face replacement by a
+generative model, and (3)~a fail-closed composition of the output video.
+Temporal consistency is obtained by fixing one synthetic identity per track
+rather than by a separate stabilization network.
+
+\subsection{Stage 1: detection, tracking and recall}
+
+Faces are detected by SCRFD-10GF~\cite{scrfd} (InsightFace's \texttt{buffalo\_l}
+pack, inference only, 640\,px input) and associated across frames by a
+ByteTrack-style tracker: detections at or above 0.5 are matched first and may
+start new tracks, while detections between 0.1 and 0.5 can only extend an
+existing track, which recovers partially occluded or bowed faces without
+creating spurious tracks. Because the pipeline is offline, a post-pass over the
+whole video then places a box wherever a tracked face almost certainly is:
+tracks are emitted from their first detection rather than after a
+confirmation delay, gaps of up to 30 frames inside a track are filled by
+linear interpolation, each track is extended by three frames at both ends, and
+tracks with fewer than three detections are kept for hiding but receive no
+synthetic identity. Every box records its origin (detector, interpolated,
+dilated, unconfirmed); only detector boxes, which carry landmarks, reach the
+generator.
+
+% Note for the text: the SCRFD-10GF threshold defaulted to 0.5 inside InsightFace
+% regardless of the configured value before 2026-09-30 (DECISIONS.md 35); every
+% number in this draft uses the corrected pipeline.
+
+\subsection{Stage 2: face replacement}
+
+Three generator families are compared in their published form: CIAGAN~\cite{ciagan}
+(a conditional GAN driven by landmarks and a one-hot identity code),
+GANonymization~\cite{hellmann} (pix2pix re-synthesis from dense landmarks) and
+BLANKET~\cite{blanket} in its released code (an SDXL inpainting model with two
+ControlNets and a refiner that generates one synthetic identity per track,
+followed by FaceFusion's \texttt{inswapper} face swap and GFPGAN enhancer in
+every frame; the paper describes a Stable Diffusion~1.5 variant). Blur and mosaic of the detected box are the censorship baselines.
+Each track receives a deterministic seed, so a student keeps one pseudonymous
+face throughout the video.
+
+We modify the replacement in four places, which differ in where they act: on
+the estimate of who the person is (C2), on the swap (P2), on a GAN's identity
+code (P3) and inside the diffusion sampler (P1). None of the mechanisms is new
+in isolation; what we study is where in a hybrid diffusion-and-swap pipeline
+an identity push survives to the final video.
+
+\textbf{(C2) Track-level real identity.} For every track, the ArcFace
+(\texttt{w600k\_r50}) embeddings of its frames are aggregated into one estimate
+of the real person's identity, weighted by a quality score (detection
+confidence, face size, head yaw) with outlier gating; it also selects the best
+frames from which the synthetic identity is generated. This estimate is the
+target that P1--P3 push away from. Quality-weighted template aggregation is
+standard in video face recognition~\cite{nan,qan}, and Zhu et al.~\cite{zhu-bmsb}
+average the ArcFace features of a single-subject video before perturbing them;
+we apply it per track, in multi-person footage, as a push target.
+
+\textbf{(P2) Swap-stage push.} The identity embedding that conditions the swap is
+moved away from that estimate,
+$\hat{e} = \mathrm{normalize}(e_{\mathrm{synth}} - \beta\, e_{\mathrm{real}})$,
+in the same space before \texttt{inswapper}'s projection. It generalizes the mix
+FaceFusion already applies and BLANKET saturates
+($1.35\,e_{\mathrm{synth}} - 0.35\,e_{\mathrm{frame}}$, with the current frame's
+real embedding), with a controllable strength and the track's identity as the
+target. Negative identity conditioning is also how diffusion anonymizers steer
+away from the source (a negated ArcFace embedding in NullFace~\cite{nullface},
+$(1-d)\,Z$ with $d>1$ in~\cite{kung}, negative guidance
+in~\cite{revpers}); P2 applies it to a frozen swapper, whose output is known to
+leak the target's identity~\cite{bondalakunta}. The push costs one vector
+operation per track.
+
+\textbf{(P3) CIAGAN code optimization.} Per frame, a few gradient steps move
+CIAGAN's identity code to reduce
+$\max(0, \cos(\mathrm{ArcFace}(x), e_{\mathrm{real}}) - \tau)$. The code is a
+softmax over the 1200 training identities of CIAGAN's released checkpoint, so it stays inside their convex
+hull; its logits start at the track's seed identity with probability 0.9 (a
+saturated softmax has no gradient) or at the previous frame's code, and a
+penalty $\lambda\lVert p - \mathrm{onehot}\rVert^2$ keeps it near the seed's
+pseudonym. ArcFace is made differentiable by converting the same
+\texttt{w600k\_r50} network to PyTorch and aligning the output with a
+differentiable warp.
+% DIAG: conversion parity min cos 0.99986; through the warp, min 0.986 (cv2 uint8 rounding).
+
+\textbf{(P1) Diffusion guidance.} During BLANKET's identity generation, the
+predicted clean latent of each of the last base-model steps is pushed by the
+gradient of the same hinge, computed through the VAE decoder and the
+differentiable ArcFace, in the manner of MPGD~\cite{mpgd}, without
+back-propagating through the denoising network. The refiner pass that follows
+is unchanged.
+% TODO: add the MPGD bib entry (He et al., ICLR 2024, "Manifold Preserving Guided Diffusion").
+
+\textbf{Release policies.} Two policies decide which generated faces are shown at
+all. \emph{Hide-low} never generates a face whose detection confidence is below
+0.5 (it is hidden by the fail-safe instead), since weak detections are the
+partially visible faces the swap handles worst. The \emph{privacy gate} embeds
+every generated face and hides it when its ArcFace similarity to the real face it
+replaces, in the same frame, is at or above the video's in-domain verification
+threshold at a 1\% false-accept rate, i.e.\ when a verifier would still accept
+the pair.
+
+Two engineering changes made BLANKET usable on classroom footage. The swap uses
+the face Stage~1 found (its box and five landmarks) instead of re-detecting it,
+and identity images the swapper's detector rejects are re-examined with a
+more permissive detector. Together they raise the share of faces BLANKET
+generates from \result{e3b/pooled/original/anonymized} to
+\result{e3b/pooled/phase1/anonymized} (Table~\ref{tab:e3-coverage}).
+
+\textbf{Adaptive sampling.} A face need not be generated in every frame. For each
+track, the 106 landmarks of the real face are compared, after similarity
+alignment, with those of the last frame whose face was generated; the face is
+generated again when their mean distance reaches a threshold (in inter-ocular
+units) or after a maximum gap, and otherwise the composition reuses the last
+generated face. Fixed sampling (one frame in $N$) is the simpler alternative.
+
+\subsection{Stage 3: fail-closed composition}
+
+The output video never shows a face the pipeline knows about. Generated faces
+are pasted back pixel-exactly (only the pixels the generator changed, so a
+neighbour's background cannot overwrite them); every other box---a generation
+failure, a post-pass box, a rejected swap, a face withheld by a release
+policy---is hidden by the same track's most recent generated face (if at most 10
+frames old) or by a neutral gray ellipse. Blur and pixelation are not used as
+the fallback, since both are reversible or attackable for small faces.
+
+\section{Experimental Setup}
+
+\textbf{Data.} Detection is benchmarked on the WIDER FACE validation split with
+the official protocol. The video experiments use three classroom recordings
+(239, 244 and 355 frames) with 16, 21 and 22 tracks, respectively, under the
+pipeline's Stage~1 (Table~\ref{tab:e1-videos} reports the detectors at their
+E1 threshold of 0.3).
+% TODO: state the source and terms of the three videos, and that no frame of a
+% real person is reproduced in this paper; they are not a consented dataset of
+% children (limitation).
+
+\textbf{Privacy.} Two recognizers are reported side by side: FaceNet
+(InceptionResnetV1 trained on VGGFace2), a held-out evaluator never used to
+build or steer the pipeline, and ArcFace (\texttt{w600k\_r50}), the space in
+which P1--P3 push. Thresholds are calibrated in-domain, per video, at a 1\%
+false-accept rate, with genuine pairs from the same track and impostor pairs
+from tracks visible in the same frame. Re-identification is closed-set: each
+face is compared with the mean real embedding of every track (its own frame
+left out), and rank-1/rank-5 record whether its own track ranks first or in the
+top five; chance rank-1 is one over the number of tracks, 0.045--0.063 here.
+We also report the relative rank-1 reduction,
+$1 - \mathrm{rank1}_{\mathrm{anon}} / \mathrm{rank1}_{\mathrm{real}}$ (the
+suppression rate of~\cite{terhorst}; the Privacy Gain of the survey~\cite{meden}
+is the absolute difference $\mathrm{rank1}_{\mathrm{real}} - \mathrm{rank1}_{\mathrm{anon}}$).
+Each metric is computed in three views: generated faces only (the generator's
+quality), all faces with passthrough counted as a leak (the method as
+published), and the final video after the fail-safe (what a viewer sees). The
+primary measure is FaceNet rank-1 on the final video.
+
+\textbf{Utility.} Between each real face and its replacement: emotion agreement
+(8 classes, HSEmotion, reported as Cohen's $\kappa$ because classroom faces are
+mostly neutral and raw agreement rewards outputs that read as the dominant
+class), expression error (106 landmarks after similarity alignment, in
+inter-ocular units), head-pose error (mean absolute error of pitch, yaw and
+roll), age error and gender agreement (InsightFace), and re-detection. Each is
+read against its noise floor, the same metric between consecutive real frames
+of a track (Table~\ref{tab:noise}).
+
+\textbf{Statistics.} Confidence intervals (95\%) are percentile bootstraps that
+resample whole tracks; arms that share faces are compared on the same faces,
+with a track-level sign-flip test. Results are pooled over the three videos and
+stratified by face size, absolute yaw and detection confidence.
+
+\textbf{Criteria, fixed before running.} An arm improves privacy when FaceNet
+rank-1 drops and the paired interval against its reference excludes zero; it
+preserves utility when its utility metrics stay within the reference arm's
+interval, read against the noise floor.
+
+\subsection{Experiments}
+
+\textbf{E0, instruments.} Recognizer validity per video (true-accept rate at the
+calibrated threshold) and the utility noise floors.
+\textbf{E1, detection.} SCRFD-10GF, SCRFD-34GF and YOLO-FaceV2-s on WIDER FACE
+(AP, recall-first operating points, latency) and on the three videos (faces per
+frame, tracks).
+\textbf{E2, generators.} Each generator and baseline in its published form, on
+the same Stage~1 detections, scored in the three views.
+
+\textbf{E3, contribution.} Every arm runs BLANKET (CIAGAN for P3) on the same
+detections and is compared with its reference on the same faces.
+\begin{itemize}
+\item \emph{E3a (C2).} Each aggregation mode (first frame, best-quality frame,
+mean, quality-weighted mean, exponential moving average) is fitted on half of a
+track's frames and scored by its cosine to the other half.
+\item \emph{E3b (coverage).} BLANKET as published, with several seed frames per
+identity, and with Stage~1's detection in the swap.
+\item \emph{E3c (P2 strength).} $\beta \in \{0.2, 0.35, 0.5, 0.8, 1.2, 1.6\}$
+against BLANKET's own mix (\emph{native}) and no mix at all (\emph{none}), with
+the quality-weighted mean as target.
+\item \emph{E3d (P2 target).} $\beta = 1.2$ with each C2 mode as the push target,
+against the first frame.
+\item \emph{E3e (policies).} Hide-low and the privacy gate on top of P2 at
+$\beta = 1.2$.
+\item \emph{E3f (P3).} CIAGAN with the code optimization (10 Adam steps, step
+0.5 on the logits, $\lambda = 1$) at $\tau \in \{0, -0.2\}$, against plain CIAGAN.
+The planned $\tau = 0.2$ was dropped after a pilot on 20 frames: CIAGAN's
+outputs already sit below it.
+\item \emph{E3g (P1).} Guidance on the last 3 of the base pass's 7 UNet steps
+(step 0.1 on the unit-RMS gradient, $\tau = 0.2$), on top of P2 at
+$\beta = 1.2$, against P2 alone. It ran after a pilot showed a guided step costs
+0.2--0.5\,s and 2--5\,GB extra. % DIAG: bridge tools/p1_spike.py, 2026-10-05
+\end{itemize}
+
+\section{Results}
+
+\subsection{Instruments}
+
+\begin{table}[ht]\centering
+\caption{Recognizers on real faces of each video: in-domain threshold and true-accept rate at FAR 1\%.}
+\label{tab:recognizers}
+\input{generated/e0_instruments/tab-e0-recognizers}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{Noise floor of the utility metrics: the same metric between consecutive real frames.}
+\label{tab:noise}
+\input{generated/e0_instruments/tab-e0-noise-floor}
+\end{table}
+
+FaceNet accepts \result{e0/demo2/facenet.tar} and \result{e0/demo3/facenet.tar}
+of genuine pairs on demo2 and demo3 at FAR 1\%, but only
+\result{e0/demo1/facenet.tar} on demo1, whose faces are smaller and more often
+turned away; re-identification on demo1 is therefore a weaker test, and results
+are reported pooled and per video. The noise floors set what ``preserved'' can
+mean: even two consecutive real frames differ by \result{e0/noise/pose_err}\textdegree{}
+of head pose and agree on emotion with $\kappa = \result{e0/noise/emotion_kappa}$.
+The gender probe flips on consecutive frames of the same person in
+$1 - \result{e0/noise/gender_agree}$ of the cases, which bounds any gender
+reading below.
+
+\subsection{Detection}
+
+\begin{table}[ht]\centering
+\caption{WIDER FACE validation: official AP and inference cost.}
+\label{tab:wider}
+\input{generated/e1_detection/tab-e1-widerface-ap}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{Recall-first operating points on WIDER FACE (hard set).}
+\label{tab:wider-recall}
+\input{generated/e1_detection/tab-e1-widerface-recall}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{The three classroom videos under each detector: faces per frame, tracks,
+median track length (frames), share of tracks shorter than 10 frames, and speed.}
+\label{tab:e1-videos}
+\input{generated/e1_detection/tab-e1-videos}
+\end{table}
+
+SCRFD-10GF reaches an AP of \result{e1/widerface/scrfd-10gf/ap-hard} on the hard
+set, against 0.828 published for the keypoint variant that \texttt{buffalo\_l}
+ships (SCRFD\_10G\_KPS, single scale, 640\,px), which validates our port of the
+official evaluation. YOLO-FaceV2-s is the most sensitive detector: hard AP
+\result{e1/widerface/yolo-facev2-s/ap-hard} and a recall of
+\result{e1/widerface/yolo-facev2-s/recall-at-fppi-0.1} at 0.1 false positives
+per image, against \result{e1/widerface/scrfd-10gf/recall-at-fppi-0.1} for
+SCRFD-10GF, and it finds more faces per frame in the two crowded videos
+(\result{e1/demo2/yolo-facev2-s/faces-per-frame} against
+\result{e1/demo2/scrfd-10gf/faces-per-frame} on demo2). Whether the extra boxes
+are faces is not yet known, and its license is unverified (it derives from
+YOLOv5), so E2 and E3 use SCRFD-10GF; since all arms share the detections, the
+comparison between generators does not depend on this choice.
+% TODO: exposure ground truth (annotated frames) to settle the detector.
+
+\subsection{Generators in their original form}
+
+\begin{table}[ht]\centering
+\caption{Privacy, pooled over videos: coverage and FaceNet rank-1 in three views
+(generated faces, all faces with passthrough as a leak, final video), relative rank-1 reduction
+and verification on the final video. Mean $\pm$ half-width of the 95\% track bootstrap.}
+\label{tab:e2-main}
+\input{generated/e2_generation/tab-e2-main}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{Utility on generated faces, with the noise floor (real, next frame).}
+\label{tab:e2-utility}
+\input{generated/e2_generation/tab-e2-utility}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{FaceNet rank-1 on generated faces by face size.}
+\label{tab:e2-size}
+\input{generated/e2_generation/tab-e2-strata-face-px}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{Throughput of each method on the shared GPU.}
+\label{tab:e2-cost}
+\input{generated/e2_generation/tab-e2-cost}
+\end{table}
+
+\begin{figure}[ht]\centering
+\includegraphics[width=\linewidth]{generated/e2_generation/fig-e2-tradeoff}
+\caption{Privacy--utility trade-off of each method: FaceNet rank-1 on the final
+video against emotion agreement; the dashed line is the noise floor.}
+\label{fig:tradeoff}
+\end{figure}
+
+\textbf{The published view and the viewer's view disagree.} In its released code,
+which passes through the faces it cannot generate (the paper hides the whole
+frame instead), BLANKET is the least private method: FaceNet ranks the right student first for
+\result{e2/pooled/blanket/facenet.rank1} of all faces, because BLANKET generates
+only \result{e2/pooled/blanket/anonymized} of them and passes the rest through.
+With the fail-safe, those faces are hidden instead, and the final video's rank-1
+drops to \result{e2/pooled/blanket/facenet_final.rank1}; GANonymization, which
+generates \result{e2/pooled/ganonymization/anonymized} of its faces, drops from
+\result{e2/pooled/ganonymization/facenet.rank1} to
+\result{e2/pooled/ganonymization/facenet_final.rank1}. Measuring only the faces a
+method chooses to replace, or only the faces it publishes, misstates its privacy.
+
+\textbf{Censorship and the GANs are private but erase behavior.} Blur, CIAGAN and
+mosaic reach final-video rank-1 of \result{e2/pooled/blur/facenet_final.rank1},
+\result{e2/pooled/ciagan/facenet_final.rank1} and
+\result{e2/pooled/mosaic/facenet_final.rank1}, close to chance, but their emotion
+agreement is at chance as well ($\kappa \le \result{e2/pooled/ciagan/generated/emotion_kappa}$)
+and their head-pose error is 14--17\textdegree.
+
+\textbf{BLANKET keeps behavior best on every probe,} with expression error
+\result{e2/pooled/blanket/generated/expression}, pose error
+\result{e2/pooled/blanket/generated/pose_err}\textdegree{}, emotion
+$\kappa = \result{e2/pooled/blanket/generated/emotion_kappa}$ and gender agreement
+\result{e2/pooled/blanket/generated/gender_agree}, but its generated faces are
+the most re-identifiable (rank-1 \result{e2/pooled/blanket/generated/facenet.rank1}),
+and large faces almost always (Table~\ref{tab:e2-size}): a swap keeps the
+target's face shape, and a large face shows more of it. No method approaches
+the emotion noise floor ($\kappa = \result{e2/pooled/_noise_floor/generated/emotion_kappa}$);
+BLANKET's synthetic identities tend to smile, which a neutral classroom does not.
+
+\textbf{Cost.} BLANKET is ten times slower than CIAGAN and two to three orders of
+magnitude slower than blur and mosaic (Table~\ref{tab:e2-cost}):
+\result{e2/pooled/blanket/fps} frames per second against
+\result{e2/pooled/ciagan/fps} for CIAGAN. The diffusion model runs once per
+track (2--3.5\,min per identity with the published sequential CPU offload); the
+per-face work dominates a long recording. Section~\ref{sec:cost} shows that most
+of this figure comes from where BLANKET's main process ran, and what each
+speed-up costs.
+% DIAG: per-identity time from the run logs
+
+\subsection{Contribution}
+
+\begin{table}[ht]\centering
+\caption{C2: estimate of the real identity per aggregation mode, scored by its
+cosine to the track's unseen frames.}
+\label{tab:e3-identity}
+\input{generated/e3_contribution/tab-e3-identity}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{Coverage: BLANKET as published, with several seed frames, and with
+Stage~1's detection in the swap. Reasons a face is not generated, and FaceNet
+rank-1 on the final video.}
+\label{tab:e3-coverage}
+\input{generated/e3_contribution/tab-e3-coverage}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{P2: push strength on BLANKET (generated faces), with the paired difference
+against BLANKET's own mix.}
+\label{tab:e3-p2}
+\input{generated/e3_contribution/tab-e3-p2-strength}
+\end{table}
+
+\begin{figure}[ht]\centering
+\includegraphics[width=\linewidth]{generated/e3_contribution/fig-e3-p2-curve}
+\caption{P2: rank-1 of the held-out (FaceNet) and guidance (ArcFace) recognizers,
+and expression error, against the push strength $\beta$; dashed lines: BLANKET's own mix.}
+\label{fig:p2}
+\end{figure}
+
+\begin{table}[ht]\centering
+\caption{P2 target: each C2 mode as the push target at $\beta = 1.2$, against the first frame.}
+\label{tab:e3-p2-target}
+\input{generated/e3_contribution/tab-e3-p2-target}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{Release policies on top of P2 ($\beta = 1.2$): final-video FaceNet rank-1,
+verification rate, share of faces hidden, and paired difference against P2 alone.}
+\label{tab:e3-policies}
+\input{generated/e3_contribution/tab-e3-policies}
+\end{table}
+
+\textbf{C2: a track is a better witness than a frame.} Fitted on the first half
+of a track and scored on its second half (at least five frames later), the
+mean of its embeddings reaches cosine \result{e3a/pooled/mean.heldout-cos},
+against \result{e3a/pooled/first.heldout-cos} for the first frame and
+\result{e3a/pooled/best.heldout-cos} for the single best-quality frame
+(Table~\ref{tab:e3-identity}). Our hand-set quality weights do not help
+(\result{e3a/pooled/quality_mean.heldout-cos} for the weighted mean), even when
+the held-out frames are themselves weighted by quality. As a push target, however, no mode is significantly better
+than the first frame (Table~\ref{tab:e3-p2-target}): at the strengths that
+matter, the push moves the embedding far enough that the remaining error of
+the target does not change the ranking.
+
+\textbf{Coverage: generating every face costs privacy, and buys behavior.} With
+Stage~1's detection, BLANKET generates \result{e3b/pooled/phase1/anonymized} of
+the faces instead of \result{e3b/pooled/original/anonymized}, and the final
+video's rank-1 rises from \result{e3b/pooled/original/facenet_final.rank1} to
+\result{e3b/pooled/phase1/facenet_final.rank1}: a hidden face is never
+re-identified, a swapped one sometimes is. The swapped faces are what keep the
+behavioral signal (emotion $\kappa$ \result{e3b/pooled/phase1/emotion_kappa}
+against \result{e3b/pooled/original/emotion_kappa}), so the rest of E3 starts
+from full coverage and asks how much of that privacy can be won back.
+
+\textbf{P2: a monotonic, significant reduction.} Pushing the swap's identity away
+from the track's real identity lowers FaceNet rank-1 on generated faces from
+\result{e3c/pooled/native/facenet.rank1} with BLANKET's own mix to
+\result{e3c/pooled/b-1.2/facenet.rank1} at $\beta = 1.2$
+(\result{e3c/pooled/b-1.2/delta-facenet.rank1}~$\pm$~\result{e3c/pooled/b-1.2/delta-facenet.rank1.ci})
+and \result{e3c/pooled/b-1.6/facenet.rank1} at $\beta = 1.6$
+(\result{e3c/pooled/b-1.6/delta-facenet.rank1}~$\pm$~\result{e3c/pooled/b-1.6/delta-facenet.rank1.ci});
+every strength from $\beta = 0.35$ on excludes zero (Table~\ref{tab:e3-p2},
+Fig.~\ref{fig:p2}). BLANKET's own mix is indistinguishable from no mix at all
+(\result{e3c/pooled/none/delta-facenet.rank1}). Expression
+(\result{e3c/pooled/b-1.6/expression} against \result{e3c/pooled/native/expression})
+and head pose (\result{e3c/pooled/b-1.6/pose_err}\textdegree{} against
+\result{e3c/pooled/native/pose_err}\textdegree) do not move; emotion agreement
+falls from $\kappa = \result{e3c/pooled/native/emotion_kappa}$ to
+\result{e3c/pooled/b-1.6/emotion_kappa}, within overlapping intervals.
+
+\textbf{The guidance recognizer overstates the gain.} In ArcFace, the space in
+which P2 pushes, rank-1 falls from \result{e3c/pooled/native/arcface.rank1} to
+\result{e3c/pooled/b-1.2/arcface.rank1} and saturates there
+(\result{e3c/pooled/b-1.6/arcface.rank1} at $\beta = 1.6$); the held-out FaceNet
+sees about a third of that reduction. A method evaluated only with the
+recognizer it optimizes against would report a large privacy gain that does
+not transfer.
+
+\textbf{Release policies add a further, smaller gain.} On top of P2 at
+$\beta = 1.2$, final-video rank-1 falls from \result{e3e/pooled/p2/facenet_final.rank1}
+to \result{e3e/pooled/hide-low/facenet_final.rank1} with hide-low and to
+\result{e3e/pooled/gate/facenet_final.rank1} with the privacy gate, both excluding
+zero (Table~\ref{tab:e3-policies}). The gate reaches the same rank-1 while
+generating \result{e3e/pooled/gate/anonymized} of the faces, against
+\result{e3e/pooled/hide-low/anonymized} for hide-low, and has the lowest
+verification rate (\result{e3e/pooled/gate/facenet_final.verified}); the
+utility of the faces it shows does not change.
+
+\subsection{Negative results: P1 and P3}
+
+\begin{table}[ht]\centering
+\caption{P1: diffusion guidance on top of P2 ($\beta = 1.2$), against P2 alone.}
+\label{tab:e3-p1}
+\input{generated/e3_contribution/tab-e3-p1}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{P3: CIAGAN identity-code optimization at two hinge thresholds, against plain CIAGAN.}
+\label{tab:e3-p3}
+\input{generated/e3_contribution/tab-e3-p3}
+\end{table}
+
+\textbf{P1 pushes inside the sampler, and the push does not survive it.} With
+guidance, FaceNet rank-1 is \result{e3g/pooled/P1-c-0.1-+-P2/facenet.rank1}
+against \result{e3g/pooled/P2/facenet.rank1} for P2 alone
+(\result{e3g/pooled/P1-c-0.1-+-P2/delta-facenet.rank1}~$\pm$~\result{e3g/pooled/P1-c-0.1-+-P2/delta-facenet.rank1.ci}),
+an interval that includes zero, and ArcFace rank-1 is unchanged
+(\result{e3g/pooled/P1-c-0.1-+-P2/arcface.rank1} against
+\result{e3g/pooled/P2/arcface.rank1}). The logs locate the loss. During the three
+guided steps, the ArcFace cosine between the predicted clean image and the real
+identity falls from \result{e3g/pooled/guided-cos.p1-c0.1.first} to
+\result{e3g/pooled/guided-cos.p1-c0.1.last} on average over the
+\result{e3g/pooled/guided-cos.p1-c0.1.identities} generated identities, and ends
+below $\tau$ for a share of \result{e3g/pooled/guided-cos.p1-c0.1.last-below-tau}.
+In the identity image that leaves the identity model, after the unguided
+refiner, it is \result{e3g/pooled/identity-cos.p1-c0.1} with guidance against
+\result{e3g/pooled/identity-cos.plain} without (median paired difference
+\result{e3g/pooled/identity-cos.p1-c0.1.paired-median}; lower with guidance for
+a share of \result{e3g/pooled/identity-cos.p1-c0.1.lower-share} of
+\result{e3g/pooled/identity-cos.p1-c0.1.tracks} tracks).
+Most of the push is lost between the last guided step and the image that
+leaves the model: the final update and decoding of the base pass, and the SDXL
+refiner, an unguided image-to-image pass that re-noises the face and denoises
+it again from the text prompt alone. (The two measurements differ in the
+alignment that precedes ArcFace, so the size of the loss is approximate.) What
+is left then reaches the swap only through the identity embedding, which P2
+already moves away from the real one. Guiding where the identity is decided
+last (the refiner, or the swap itself) rather than inside the base pass is the
+open variant; on this pipeline P1 adds 0.2--0.5\,s and several GB per guided
+step for no measurable gain, and the final pipeline does not use it.
+
+\textbf{P3 has little to push and does not move.} Plain CIAGAN's faces are already
+re-identified near chance (rank-1 \result{e3f/pooled/ciagan/facenet.rank1}), so
+a successful push could gain at most a few hundredths. It did not gain those:
+the change is \result{e3f/pooled/P3-tau-0.0/delta-facenet.rank1} at $\tau = 0$ and
+\result{e3f/pooled/P3-tau--0.2/delta-facenet.rank1} at $\tau = -0.2$. The cause is
+the optimization, not an inactive objective. The hinge was active for a share
+of \result{e3f/pooled/P3-tau-0.0/push.active} of the faces at $\tau = 0$ and
+\result{e3f/pooled/P3-tau--0.2/push.active} at $\tau = -0.2$, and the optimizer
+ran \result{e3f/pooled/P3-tau--0.2/push.steps} steps on average, yet the ArcFace
+cosine to the real identity fell only from \result{e3f/pooled/P3-tau-0.0/push.cos-start}
+to \result{e3f/pooled/P3-tau-0.0/push.cos-end}, and the code kept
+\result{e3f/pooled/P3-tau-0.0/push.p-seed} of its mass on the seed identity.
+The pseudonym penalty and the softmax's flat gradient near its start hold the
+code in place, and within the convex hull of CIAGAN's training identities the
+output's identity barely changes. A stronger optimizer would trade the
+pseudonym's stability for a gain bounded by chance level; we do not pursue it.
+
+\subsection{Cost}
+\label{sec:cost}
+
+\begin{table}[ht]\centering
+\caption{E5, cost of the final pipeline: share of detector faces generated, ms
+per detector face (steady state), its main stages per generated face
+(head segmentation, GFPGAN, swap, landmarking), speed-up against \emph{ref} on the
+videos both ran, and GPU hours per hour of class (30\,fps, 20 faces per frame).
+\emph{ref-cpu} ran on demo1 and demo2 only.}
+\label{tab:e5-cost}
+\input{generated/e5_cost/tab-e5-cost}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{E5, what the viewer sees: privacy, utility and motion scored on the
+composed video itself (reused faces as shown). Hidden: share of faces shown as
+the neutral fill. \emph{ref-cpu}'s pooled values cover two videos; compare it in
+Table~\ref{tab:e5-paired}.}
+\label{tab:e5-video}
+\input{generated/e5_cost/tab-e5-video}
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{E5, each arm minus \emph{ref} on the same faces; * marks a 95\% track
+bootstrap interval that excludes zero.}
+\label{tab:e5-paired}
+\input{generated/e5_cost/tab-e5-paired}
+\end{table}
+
+\begin{figure}[ht]\centering
+\includegraphics[width=\linewidth]{generated/e5_cost/fig-e5-tradeoff}
+\caption{E5, one row per arm (most expensive at the top): GPU hours per hour of
+class, and FaceNet rank-1, emotion $\kappa$ and motion error on the composed
+video, with 95\% track bootstrap intervals. Colors group the factor changed:
+reference, enhancer, fixed sampling, adaptive sampling, combined. \emph{ref-cpu}
+(two videos) is in Table~\ref{tab:e5-cost} only.}
+\label{fig:e5}
+\end{figure}
+
+Every E5 arm is the final pipeline (Section~\ref{sec:final}) with one cost
+factor changed, on E3's frozen identities, and is scored on the composed video.
+
+\textbf{The largest per-face cost was a deployment choice.} With BLANKET's main
+process on the CPU, as in E2 and E3, a face costs \result{e5/pooled/ref-cpu/ms-per-face}\,ms,
+\result{e5/pooled/ref-cpu/stage-seg-ms}\,ms of it in the head segmentation of
+the composite; on the GPU the segmentation takes
+\result{e5/pooled/ref/stage-seg-ms}\,ms and a face
+\result{e5/pooled/ref/ms-per-face}\,ms, a speed-up of
+$1/\result{e5/pooled/ref-cpu/speedup}$ with no change in privacy or utility
+(Table~\ref{tab:e5-paired}).
+
+\textbf{GFPGAN is part of the privacy, and the main cost to behavior.} Without
+the enhancer, a face costs \result{e5/pooled/enh-off/ms-per-face}\,ms, and on
+the faces both arms show, emotion agreement rises by
+$\kappa$~\result{e5/pooled/enh-off/delta-kappa}~$\pm$~\result{e5/pooled/enh-off/delta-kappa.ci}
+(from \result{e5/pooled/ref/emotion_kappa_video} to
+\result{e5/pooled/enh-off/emotion_kappa_video}) and expression error falls by
+\result{e5/pooled/enh-off/delta-expr}. The swapped face then keeps more of the
+real one: the privacy gate rejects \result{e5/pooled/enh-off/gated-share} of
+the generations instead of \result{e5/pooled/ref/gated-share}, and the final
+video hides \result{e5/pooled/enh-off/hidden-share} of the faces instead of
+\result{e5/pooled/ref/hidden-share}. Rank-1 barely moves
+(\result{e5/pooled/enh-off/delta-fn-r1}, interval includes zero) because the
+gate absorbs the leak by hiding faces. The enhancer re-renders the face toward
+its own prior, which removes residual identity and expression alike. Skipping
+it only below 96\,px behaves like turning it off, since few classroom faces are
+that large.
+
+\textbf{Generating fewer frames is nearly free.} Generating a track's face on one
+frame in three, and reusing it in between, costs
+\result{e5/pooled/every3/ms-per-face}\,ms per face with no paired difference
+that excludes zero. Adaptive sampling, which regenerates only when the real
+face's 106 landmarks have moved by 0.08 of the inter-ocular distance since its
+last generated frame (the per-frame noise floor is \result{e0/noise/expression})
+or after six frames, generates
+\result{e5/pooled/adapt-0.08/generated-share} of the faces, is
+\result{e5/pooled/adapt-0.08/speedup} times faster than \emph{ref}, and slightly
+\emph{improves} motion (\result{e5/pooled/adapt-0.08/delta-motion}) and emotion
+($\kappa$ \result{e5/pooled/adapt-0.08/delta-kappa}): holding a face steady while
+the real one is still removes the swap's frame-to-frame jitter. Its rank-1
+changes by \result{e5/pooled/adapt-0.08/delta-fn-r1}.
+
+\textbf{One hour of class.} At 30\,fps and 20 faces per frame, the pipeline as
+run in E3 needs \result{e5/pooled/ref-cpu/class-hours} GPU hours per hour of
+class, \result{e5/pooled/ref/class-hours} with its main process on the GPU, and
+\result{e5/pooled/adapt-0.08/class-hours} with adaptive sampling: about two days
+on one GPU, one on serra1's two. Identity generation, once per track, is
+negligible next to it.
+
+\section{Final pipeline}
+\label{sec:final}
+
+The configuration we propose, and whose numbers are measured end to end, is:
+\begin{enumerate}
+\item Stage~1 as described: SCRFD-10GF at 0.1, the ByteTrack-style tracker and
+the recall post-pass.
+\item BLANKET with Stage~1's detection in the swap (full coverage), the track
+identity (C2) as the push target, and the swap-stage push (P2) at $\beta = 1.2$,
+with its main process on the GPU.
+\item The privacy gate at the video's 1\% false-accept threshold.
+\item Adaptive sampling: a track's face is regenerated when the real face has
+changed (0.08 of the inter-ocular distance) or after six frames, and reused in
+between.
+\item Fail-closed composition.
+\end{enumerate}
+On the three videos, without sampling, it re-identifies
+\result{e3e/pooled/gate/facenet_final.rank1} of the faces at rank~1 in the final
+video and verifies \result{e3e/pooled/gate/facenet_final.verified}, with
+expression error \result{e3e/pooled/gate/expression}, head-pose error
+\result{e3e/pooled/gate/pose_err}\textdegree{} and emotion
+$\kappa = \result{e3e/pooled/gate/emotion_kappa}$ on the generated faces. Scored
+on the composed video itself (E5), the same pipeline reaches rank-1
+\result{e5/pooled/ref/facenet_video.rank1}; the difference is the compressed
+composite and the reused faces as actually shown, which the final-video view of
+E3 scores by the generated crop they came from. With adaptive sampling it reaches
+\result{e5/pooled/adapt-0.08/facenet_video.rank1}, at
+\result{e5/pooled/adapt-0.08/class-hours} GPU hours per hour of class.
+
+Against BLANKET's released code (\result{e2/pooled/blanket/facenet.rank1}) this
+divides re-identification by more than two while every face carries a synthetic
+identity or is hidden. It remains well above chance and above blur
+(\result{e2/pooled/blur/facenet_final.rank1}), whose faces carry no behavior: the
+pipeline occupies a different point of the trade-off, not a dominant one.
+$\beta = 1.2$ is chosen over $1.6$ because the guidance recognizer saturates
+there, emotion agreement is higher, and it is the strength the policies were
+measured on. P1 and P3 are not part of it.
+
+\textbf{A behavior-first variant.} Turning GFPGAN off moves the pipeline along the
+trade-off rather than off it: emotion agreement on the shown faces rises to
+$\kappa = \result{e5/pooled/enh-off/emotion_kappa_video}$, the best of any
+method we measured, at the price of hiding
+\result{e5/pooled/enh-off/hidden-share} of the faces (the gate rejects the
+swaps that stay too close to the real face) and a higher verification rate
+(\result{e5/pooled/enh-off/facenet_video.verified} against
+\result{e5/pooled/ref/facenet_video.verified}). Which of the two to use depends
+on whether a study needs every student's face visible or their expressions
+faithful.
+
+% TODO: hide-low and the gate are complementary (the gate acts on what was
+% generated, hide-low on what is detected weakly); their combination is not measured.
+
+\section{Limitations}
+
+The three videos are not a consented dataset of children, so the study measures
+the method on classroom-like footage, not on its target population. Gaze is not
+measured: no permissively licensed estimator was validated on faces this small.
+Human-rated pedagogical analyzability, a re-trained (parrot) attacker and a
+demographic fairness analysis are not performed; the attacker is naive, which
+overestimates privacy~\cite{hanisch}. Several components are licensed for
+non-commercial research only: InsightFace's models (including \texttt{inswapper}
+and the ArcFace recognizer), GFPGAN's StyleGAN2 and DFDNet parts and its FFHQ
+training data, and the AffectNet benchmark the emotion classifier is reported on.
+Privacy is measured against two recognizers and does not constitute a formal
+guarantee.
+The diffusion-based pipeline is slow: even with adaptive sampling, one hour of
+class takes about two GPU-days, which restricts it to offline processing of
+selected recordings. Faces the detector never finds
+are not hidden; their rate is estimated from annotated frames.
+% TODO: \result for the residual miss rate once the frames are annotated.

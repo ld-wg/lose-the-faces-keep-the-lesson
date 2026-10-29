@@ -1,0 +1,57 @@
+\chapter{Introdução}
+\label{cap:intro}
+
+% Rascunho em tópicos (2026-10-22): fatos e decisões, para desenvolver em parágrafos.
+
+\section{Problema}
+\begin{itemize}
+\item Gravações de aula são evidência para pesquisa educacional: interação, afeto, turnos de fala.
+\item As mesmas gravações identificam alunos (muitos menores) e professores.
+\item Rosto é dado biométrico; origem racial ou étnica é dado sensível \citep[art.~5, II; art.~11]{lgpd}.
+\item Dados de crianças e adolescentes exigem consentimento específico de um dos pais \citep[art.~14, §1º]{lgpd}.
+\item Dado anonimizado deixa de ser pessoal, salvo se a anonimização puder ser revertida com esforços razoáveis \citep[art.~12]{lgpd}.
+\item Blur e mosaico removem a identidade e também o comportamento (expressão, pose, emoção).
+\end{itemize}
+
+\section{Pergunta}
+\begin{itemize}
+\item Substituir cada rosto por um rosto sintético reduz a reidentificação e mantém o sinal comportamental?
+\item Medido no vídeo que o espectador vê, não só nos rostos que o método escolhe substituir.
+\end{itemize}
+
+\section{Hipótese original e o que os dados mostraram}
+\begin{itemize}
+\item Hipótese da proposta: substituição por difusão, demograficamente similar, (a) reduz a similaridade de identidade abaixo de um limiar estrito e (b) preserva emoção e expressão dentro de uma margem aceitável.
+\item (a) Parcial: a reidentificação cai, mas não chega ao acaso nem abaixo do blur (Cap.~\ref{cap:resultados}).
+\item (b) Parcial: expressão e pose preservadas melhor que em censura e GANs; emoção não chega perto do piso de ruído.
+\item Meta pré-definida ``rank-1 $\le 2\times$ o acaso'': não atingida.
+\item Resultado: outro ponto do compromisso privacidade--utilidade, não dominância.
+\end{itemize}
+
+\section{Contribuições}
+\begin{enumerate}
+\item Avaliação que mede o vídeo final: três visões de privacidade (rostos gerados; todos os rostos com passthrough como vazamento; vídeo final) mais a visão do vídeo composto (E5). A ordem dos métodos muda conforme a visão.
+\item P2: empurrão do embedding de identidade da troca para longe da identidade real do track; redução monotônica e significativa no FaceNet (avaliador não usado na otimização); medição do quanto o ganho no ArcFace não se transfere para o FaceNet.
+\item Pipeline \emph{fail-closed} para vídeo de sala de aula: pós-passe de recall, detecção do Estágio~1 dentro da troca, \emph{privacy gate}, composição que nunca mostra rosto conhecido real.
+\item Resultados negativos com diagnóstico: orientação no amostrador SDXL (P1) e no código de identidade do CIAGAN (P3).
+\item Estudo de custo (E5): onde o tempo vai, o que cada aceleração custa em privacidade e utilidade.
+\end{enumerate}
+
+\section{Escopo}
+\begin{itemize}
+\item Gravações de aula, câmera fixa, processamento \emph{offline}.
+\item Só rosto (não corpo inteiro); áudio fora do escopo.
+\item Sem garantia formal de privacidade; atacante ingênuo (sem retreino) \citep{hanisch}.
+\item Três vídeos de demonstração; não é um conjunto consentido de crianças.
+\end{itemize}
+
+\section{Organização}
+\begin{itemize}
+\item Cap.~\ref{cap:fundam}: fundamentação e trabalhos relacionados.
+\item Cap.~\ref{cap:metodo}: pipeline e componentes.
+\item Cap.~\ref{cap:experimentos}: configuração experimental (E0--E5).
+\item Cap.~\ref{cap:resultados}: resultados.
+\item Cap.~\ref{cap:discussao}: pipeline final e discussão.
+\item Cap.~\ref{cap:conclusao}: limitações, ética, trabalhos futuros.
+\item Apêndices: licenças, registro de decisões, reprodução.
+\end{itemize}

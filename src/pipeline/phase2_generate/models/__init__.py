@@ -16,6 +16,7 @@ _MODULES = {
     "ciagan": "ciagan",
     "ganonymization": "ganonymization",
     "blanket": "blanket",
+    "censor": "censor",  # blur / mosaic baseline (E2), no weights
 }
 
 #: model name -> expected weights filename under CONFIG.weights_dir.
@@ -105,6 +106,9 @@ DEFAULT_CONTEXT_RATIO = {
     # NOT itself calibrated against real blanket output yet. Re-sweep once
     # a real run exists, see models/blanket/NOTICE.md's calibration log.
     "blanket": 0.8,
+    # censor: the crop only needs to contain the box it blurs; a small margin
+    # keeps the paste-back rectangle tight.
+    "censor": 0.1,
 }
 
 MODEL_NAMES = tuple(_MODULES)
