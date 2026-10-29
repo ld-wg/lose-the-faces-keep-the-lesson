@@ -226,3 +226,10 @@ requires-dist = [
     "albumentations; extra == 'face3d'",
     "matplotlib; extra == 'face3d'",
 ]
+
+# Unit tests (tests/): synthetic arrays only, no models, no videos. They need only numpy,
+# opencv and pytest; run them anywhere with
+#   python -m pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "experiments"]
