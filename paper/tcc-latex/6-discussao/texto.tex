@@ -2,26 +2,29 @@
 \label{cap:discussao}
 
 % Rascunho em tópicos (2026-10-22).
+% 2026-10-29 (parecer de orientação): ameaças à validade; alegações recalibradas
+% (desidentificação; "sem diferença significativa" em vez de "sem perda"); β escolhido
+% nos mesmos vídeos, com LOVO ao lado.
 
 \section{Pipeline final}
 \begin{enumerate}
 \item Estágio~1: SCRFD-10GF a 0,1, rastreador estilo ByteTrack, pós-passe de recall.
 \item BLANKET com a detecção do Estágio~1 na troca, identidade do track (C2) como alvo, P2 $\beta = 1{,}2$, processo principal na GPU.
 \item \emph{Privacy gate} no limiar do vídeo a FAR 1\%.
-\item Amostragem adaptativa: $\tau = 0{,}08$ IOD, máximo de 6 quadros.
-\item Composição \emph{fail-closed}.
+\item Amostragem adaptativa: $\tau_a = 0{,}08$ IOD, máximo de 6 quadros.
+\item Composição \emph{fail-closed}, com rejeição de saídas que não alteram o rosto (2026-10-29).
 \end{enumerate}
 
 \section{Números do pipeline final}
 \begin{itemize}
-\item Sem amostragem (E3e): vídeo final rank-1 \result{e3e/pooled/gate/facenet_final.rank1}; verificação \result{e3e/pooled/gate/facenet_final.verified}; gerados \result{e3e/pooled/gate/anonymized}.
+\item Sem amostragem (E3e): vídeo final rank-1 \result{e3e/pooled/gate/facenet_final.rank1} (macro \result{derived/gate-final/macro}; \result{derived/gate-final/x-chance-min}$\times$--\result{derived/gate-final/x-chance-max}$\times$ o acaso); verificação \result{e3e/pooled/gate/facenet_final.verified}; gerados \result{e3e/pooled/gate/anonymized}.
 \item Utilidade (rostos gerados): expressão \result{e3e/pooled/gate/expression}; pose \result{e3e/pooled/gate/pose_err}\textdegree; $\kappa$ \result{e3e/pooled/gate/emotion_kappa}.
-\item No vídeo composto, com amostragem adaptativa (E5): rank-1 \result{e5/pooled/adapt-0.08/facenet_video.rank1}; \result{e5/pooled/adapt-0.08/class-hours} GPU-horas por hora de aula.
+\item No vídeo composto, com amostragem adaptativa (E5): rank-1 \result{e5/pooled/adapt-0.08/facenet_video.rank1}; \result{e5/pooled/adapt-0.08/class-hours} GPU-horas projetadas por hora de aula (laço por rosto).
 \end{itemize}
 
 \section{Escolhas}
 \begin{itemize}
-\item $\beta = 1{,}2$, não 1,6: ArcFace satura em 1,2; $\kappa$ maior; políticas medidas em 1,2.
+\item $\beta = 1{,}2$, não 1,6: ArcFace satura em 1,2; $\kappa$ maior; políticas medidas em 1,2. Escolhido nos mesmos três vídeos; LOVO escolhe 1,6, 1,6 e 1,2 (Tabela~\ref{tab:derived-lovo}).
 \item \emph{Gate}, não \emph{hide-low}: mesmo rank-1 com metade dos rostos ocultos e menor verificação.
 \item Alvo: a média simples estima tão bem quanto a ponderada (E3a); como alvo não há diferença (E3d).
 \item GFPGAN ligado: parte da privacidade.
@@ -33,22 +36,53 @@
 \begin{itemize}
 \item GFPGAN desligado: $\kappa$ \result{e5/pooled/enh-off/emotion_kappa_video} (o maior de qualquer método medido).
 \item Custo: \result{e5/pooled/enh-off/hidden-share} dos rostos ocultos; verificação \result{e5/pooled/enh-off/facenet_video.verified} contra \result{e5/pooled/ref/facenet_video.verified}.
+\item Ocultar conta como privacidade: comparar pelo par (rank-1 entre os rostos mostrados, parcela mostrada).
 \item Escolha depende do estudo: todos os rostos visíveis ou expressões fiéis.
 \end{itemize}
 
 \section{Leitura}
 \begin{itemize}
-\item Contra o BLANKET do código liberado (\result{e2/pooled/blanket/facenet.rank1}): reidentificação dividida por mais de dois; todo rosto tem identidade sintética ou é ocultado.
+\item Contra o BLANKET do código liberado (\result{e2/pooled/blanket/facenet.rank1}): reidentificação dividida por mais de dois; todo rosto conhecido tem identidade sintética ou é ocultado.
 \item Acima do acaso e do blur (\result{e2/pooled/blur/facenet_final.rank1}); blur não carrega comportamento. Outro ponto do compromisso, não dominância.
 \item Medir só os rostos que o método escolhe substituir, ou só o que ele publica, distorce a privacidade.
 \item Avaliar só com o reconhecedor usado na otimização superestima o ganho (ArcFace contra FaceNet).
-\item Rostos grandes vazam: a troca preserva o formato do rosto alvo \citep{bondalakunta}.
+\item Rostos grandes vazam: a troca preserva o formato do rosto alvo \citep{bondalakunta}. Rosto do professor: maior risco; política por tamanho (trabalho futuro).
 \item O enhancer re-renderiza o rosto: apaga identidade residual e expressão juntas.
 \item Gerar menos quadros quase não custa nada: segurar o rosto quando o real está parado tira o tremor da troca.
 \end{itemize}
 
+\section{Ameaças à validade}
+\label{sec:ameacas-validade}
+\begin{itemize}
+\item Interna:
+  \begin{itemize}
+  \item $\beta$, política do \emph{gate}, $\tau_a$ e parâmetros do pós-passe escolhidos nos mesmos vídeos avaliados; sem conjunto de teste;
+  \item mitigação: LOVO para $\beta$ (direção mantida, magnitude não); pipeline congelado para avaliação em vídeos novos;
+  \item saída sem troca registrada como gerada (\emph{fail-open}) nos braços sem \emph{gate}; corrigida, frequência não medida.
+  \end{itemize}
+\item Externa:
+  \begin{itemize}
+  \item três clipes, 29,1\,s, 59 tracks; demo3 = 54\% dos rostos;
+  \item vídeos públicos, não consentidos, sem crianças identificadas como tal; validade em crianças não demonstrada;
+  \item custo projetado de 29\,s para 1\,h.
+  \end{itemize}
+\item De construto:
+  \begin{itemize}
+  \item privacidade = reidentificação automática do miolo do rosto, galeria fechada, atacante ingênuo (Seção~\ref{sec:ameaca});
+  \item probes de utilidade não validados em rostos de 30--80\,px; $\kappa \le 0{,}2$ na maioria dos braços;
+  \item analisabilidade pedagógica (O3) não medida; proxy de orientação pendente;
+  \item rosto oculto conta como não reidentificado.
+  \end{itemize}
+\item De conclusão:
+  \begin{itemize}
+  \item ``sem custo de utilidade'' = sem diferença significativa com 59 tracks (baixo poder), não equivalência; TOST não feito;
+  \item comparações múltiplas: Holm por família implementado; valores ajustados pendentes da próxima exportação;
+  \item agregado ponderado por rosto; macro-média e valores por vídeo ao lado.
+  \end{itemize}
+\end{itemize}
+
 \section{O que o trabalho pode afirmar (e o que não)}
 \begin{itemize}
-\item Pode: a ordem dos métodos depende da visão medida; P2 reduz a reidentificação de forma monotônica e significativa num avaliador não usado na otimização; o mix nativo não faz nada mensurável; P1 e P3 não funcionam neste pipeline, com diagnóstico; o GFPGAN faz trabalho de privacidade; amostragem adaptativa reduz o custo 2,5$\times$ sem perda.
-\item Não pode: ``primeiro'' empurrão contra a identidade real (NullFace, FAMS, Reverse Personalization, mix do FaceFusion); C2 como mecanismo novo (NAN, QAN, Zhu et al.); privacidade formal; validade em crianças.
+\item Pode: a ordem dos métodos depende da visão medida; P2 reduz a reidentificação de forma significativa num avaliador não usado na otimização, monotônica no agregado, com direção mantida no LOVO; o mix nativo não faz nada mensurável; P1 e P3 não funcionam neste pipeline, com diagnóstico; o GFPGAN faz trabalho de privacidade; amostragem adaptativa reduz o custo do laço 2,5$\times$ sem diferença pareada significativa.
+\item Não pode: anonimização no sentido da LGPD (identificadores fora do rosto permanecem); ``primeiro'' empurrão contra a identidade real (NullFace, FAMS, Reverse Personalization, mix do FaceFusion); C2 como mecanismo novo (NAN, QAN, Zhu et al.); privacidade formal; validade em crianças; generalização para além dos três vídeos.
 \end{itemize}

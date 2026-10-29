@@ -1,22 +1,31 @@
 \begin{abstract}
 
-% Factual draft (2026-10-22), to be rewritten.
-Classroom recordings expose students' and teachers' identities. We replace every
-detected face with a synthetic one and measure, on the video a viewer sees, how
-much identity is removed and how much behavior (expression, pose, emotion)
-remains. The pipeline has three stages: SCRFD-10GF detection with tracking and a
-recall post-pass; replacement with BLANKET (one SDXL synthetic identity per track
-and an \texttt{inswapper} face swap per frame); and fail-closed composition,
-which never shows a known face as real. Our main change pushes the swap's
-identity embedding away from the track's estimated real identity (P2). On three
-videos, held-out FaceNet rank-1 drops from \resulten{e3c/pooled/native/facenet.rank1}
-to \resulten{e3c/pooled/b-1.6/facenet.rank1} with no expression or pose cost; with
-a privacy gate the final video reaches \resulten{e3e/pooled/gate/facenet_final.rank1},
+% Factual draft (2026-10-22), revised 2026-10-29: translation of the resumo,
+% third person, no internal labels, de-identification rather than anonymization.
+Classroom recordings expose students' and teachers' identities. This work
+investigates whether replacing every detected face with a synthetic one reduces
+automatic face re-identification while keeping behavioral signal (expression,
+pose, emotion), measured on the video a viewer sees. The pipeline has three
+stages: SCRFD-10GF detection with tracking and a recall post-pass; replacement
+with BLANKET (one Stable Diffusion XL synthetic identity per track and an
+\texttt{inswapper} face swap per frame); and fail-closed composition, which hides
+every known face that has no valid replacement. The main contribution pushes the
+swap's identity embedding away from the track's estimated real identity. On three
+short videos (29\,s in total), held-out FaceNet rank-1 drops from
+\resulten{e3c/pooled/native/facenet.rank1} to
+\resulten{e3c/pooled/b-1.6/facenet.rank1} with no measurable expression or pose
+cost; the direction of the effect holds when the push strength is chosen without
+the evaluated video. With a privacy filter the final video reaches
+\resulten{e3e/pooled/gate/facenet_final.rank1}, between
+\resulten{derived/gate-final/x-chance-min} and
+\resulten{derived/gate-final/x-chance-max} times chance depending on the video,
 against \resulten{e2/pooled/blur/facenet_final.rank1} for blur, which erases
-behavior. Guidance inside the diffusion sampler (P1) and CIAGAN identity-code
-optimization (P3) have no measurable effect. Running the main process on the GPU
-and adaptive frame sampling bring the cost to
-\resulten{e5/pooled/adapt-0.08/class-hours} GPU hours per hour of class. No method
-keeps emotion near its noise floor.
+behavior. Gradient guidance inside the diffusion sampler and identity-code
+optimization in a generative adversarial network have no measurable effect.
+Running the main process on the GPU and adaptive frame sampling bring the
+projected per-face loop cost to \resulten{e5/pooled/adapt-0.08/class-hours} GPU
+hours per hour of class. No method keeps emotion near its noise floor. The
+result is partial face de-identification, another point on the privacy--utility
+trade-off, not anonymization: hair, head outline, clothing and voice remain.
 
 \end{abstract}

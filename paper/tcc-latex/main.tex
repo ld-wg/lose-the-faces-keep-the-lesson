@@ -71,15 +71,19 @@
 % Campos não utilizados podem ser removidos ou comentados.
 
 % título
+% Pendente (orientador): idioma do documento. Título em inglês com texto em português;
+% ou tudo em português, ou tudo em inglês com resumo e folha de rosto em português.
+% Pendente (orientador): "Expression-Preserving" promete mais que os resultados (\kappa \le 0,2).
 \title{Lose the Faces, Keep the Lesson: Expression-Preserving Face De-Identification for Educational Research}
 
 % palavras-chave e keywords (p/ resumo, abstract e metadados do PDF)
-\pchave{Anonimização facial. Modelos de difusão. Privacidade. Vídeo educacional. LGPD.}
-\keyword{Face anonymization. Diffusion models. Privacy. Classroom video. LGPD.}
+% 2026-10-29: separadas por ";" e em minúsculas (NBR 6028); "desidentificação", não "anonimização" (LGPD art. 12)
+\pchave{desidentificação facial; modelos de difusão; privacidade; vídeo educacional; LGPD}
+\keyword{face de-identification; diffusion models; privacy; classroom video; LGPD}
 
 % autoria
 \author{Ludwig Aumann}
-\advisor{Eduardo Todt}
+\advisor{Prof. Dr. Eduardo Todt}
 
 % instituição
 \IfLanguageName{brazilian}
@@ -115,7 +119,8 @@
 % Por exigência da biblioteca da UFPR, a descrição do documento deve ser
 % em português, mesmo em documentos em outras línguas. Vá entender...
 
-\descr{Trabalho apresentado como requisito parcial à conclusão do Curso de Bacharelado em Ciência da Computação, Setor de Ciências Exatas, da Universidade Federal do Paraná}
+% 2026-10-29: texto do modelo SiBi/UFPR para TCC
+\descr{Trabalho de Conclusão de Curso apresentado ao curso de Graduação em Ciência da Computação, Setor de Ciências Exatas, Universidade Federal do Paraná, como requisito parcial à obtenção do título de Bacharel em Ciência da Computação}
 
 % exame de qualificação de doutorado
 %\descr{Documento apresentado como requisito parcial ao exame de qualificação de Doutorado no Programa de Pós-Graduação em Informática, Setor de Ciências Exatas, da Universidade Federal do Paraná}
@@ -154,7 +159,7 @@
 \titlepage
 
 % páginas que só aparecem na versão final (a inclusão é automática)
-\include{0-iniciais/catalografica}	% ficha catalográfica
+% \include{0-iniciais/catalografica}	% ficha catalográfica: não exigida para TCC (2026-10-29)
 \include{0-iniciais/aprovacao}		% folha de aprovação
 \include{0-iniciais/dedica}		% dedicatória
 \include{0-iniciais/agradece}		% agradecimentos
@@ -164,9 +169,11 @@
 \include{0-iniciais/abstract}
 
 % listas  de figuras, tabelas, abreviações/siglas, símbolos
-% \listoffigures				% figuras
+\listoffigures				% figuras
 \clearpage
-% \listoftables				% tabelas
+\listoftables				% tabelas
+\clearpage
+\listofquadros				% quadros (2026-10-29)
 \include{0-iniciais/acronimos}		% acrônimos, deve ser preenchida à mão
 \include{0-iniciais/simbolos}		% símbolos, idem
 \tableofcontents			% sumário
@@ -203,6 +210,7 @@
 \include{a1-licencas/texto}		% componentes e licenças
 \include{a2-decisoes/texto}		% registro de decisões
 \include{a3-reproducao/texto}		% infraestrutura e reprodução
+\include{a4-parecer/texto}		% correções do parecer de 2026-10-29
 
 %=====================================================
 

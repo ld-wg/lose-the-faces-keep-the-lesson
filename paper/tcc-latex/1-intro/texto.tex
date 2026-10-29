@@ -2,6 +2,8 @@
 \label{cap:intro}
 
 % Rascunho em tópicos (2026-10-22): fatos e decisões, para desenvolver em parágrafos.
+% 2026-10-29 (parecer de orientação): objetivos, classificação da pesquisa, desvios,
+% alegação recalibrada (desidentificação), metas da hipótese com os números de cada visão.
 
 \section{Problema}
 \begin{itemize}
@@ -15,43 +17,76 @@
 
 \section{Pergunta}
 \begin{itemize}
-\item Substituir cada rosto por um rosto sintético reduz a reidentificação e mantém o sinal comportamental?
+\item Substituir cada rosto por um rosto sintético reduz a reidentificação facial automática e mantém o sinal comportamental?
 \item Medido no vídeo que o espectador vê, não só nos rostos que o método escolhe substituir.
+\end{itemize}
+
+\section{Objetivos}
+\label{sec:objetivos}
+\begin{itemize}
+\item Geral: desidentificar rostos em vídeo de sala de aula por substituição sintética, preservando expressão, pose e emoção, e medir o compromisso no vídeo final.
+\item Específicos (proposta do TCC1), com experimento e situação:
+  \begin{itemize}
+  \item O1, detecção com recall alto em sala de aula (E1; pós-passe de recall): parcial; taxa de rostos nunca detectados não medida (anotação pendente).
+  \item O2, supressão da identidade (E2, E3): cumprido com cortes; reidentificação cai, acima do acaso; sem atacante ciente.
+  \item O3, preservação de expressão, olhar e afeto (E0, E2, E3, E5): parcial; expressão e pose preservadas; emoção não; olhar e avaliação humana não medidos.
+  \item O4, custo computacional baixo (E1, E2, E5): refutado; pipeline exige GPU (\result{e5/pooled/adapt-0.08/class-hours} GPU-horas projetadas por hora de aula).
+  \end{itemize}
 \end{itemize}
 
 \section{Hipótese original e o que os dados mostraram}
 \begin{itemize}
 \item Hipótese da proposta: substituição por difusão, demograficamente similar, (a) reduz a similaridade de identidade abaixo de um limiar estrito e (b) preserva emoção e expressão dentro de uma margem aceitável.
-\item (a) Parcial: a reidentificação cai, mas não chega ao acaso nem abaixo do blur (Cap.~\ref{cap:resultados}).
+\item (a) Parcial: a reidentificação cai, mas não chega ao acaso nem abaixo do blur (Seção~\ref{cap:resultados}).
+  \begin{itemize}
+  \item Meta ``rank-1 $\le 2\times$ o acaso'': não atingida; pipeline final entre \result{derived/gate-final/x-chance-min}$\times$ e \result{derived/gate-final/x-chance-max}$\times$ o acaso por vídeo; só o blur atinge (\result{derived/blur-final/x-chance-min}$\times$--\result{derived/blur-final/x-chance-max}$\times$).
+  \item Meta ``verificação $\le 5\%$ a FAR 1\%'': atingida na visão de vídeo final do E3 (\result{e3e/pooled/gate/facenet_final.verified}); não atingida no vídeo composto do E5 (\result{e5/pooled/ref/facenet_video.verified}).
+  \item Metas fixadas pelo autor; não acordadas com o orientador (pendente).
+  \end{itemize}
 \item (b) Parcial: expressão e pose preservadas melhor que em censura e GANs; emoção não chega perto do piso de ruído.
-\item Meta pré-definida ``rank-1 $\le 2\times$ o acaso'': não atingida.
 \item Resultado: outro ponto do compromisso privacidade--utilidade, não dominância.
 \end{itemize}
 
 \section{Contribuições}
 \begin{enumerate}
 \item Avaliação que mede o vídeo final: três visões de privacidade (rostos gerados; todos os rostos com passthrough como vazamento; vídeo final) mais a visão do vídeo composto (E5). A ordem dos métodos muda conforme a visão.
-\item P2: empurrão do embedding de identidade da troca para longe da identidade real do track; redução monotônica e significativa no FaceNet (avaliador não usado na otimização); medição do quanto o ganho no ArcFace não se transfere para o FaceNet.
-\item Pipeline \emph{fail-closed} para vídeo de sala de aula: pós-passe de recall, detecção do Estágio~1 dentro da troca, \emph{privacy gate}, composição que nunca mostra rosto conhecido real.
+\item P2: empurrão do embedding de identidade da troca para longe da identidade real do track; redução significativa no FaceNet (avaliador não usado na otimização), monotônica no agregado, não em todo vídeo; direção mantida na escolha de $\beta$ sem o vídeo avaliado (LOVO); medição do quanto o ganho no ArcFace não se transfere para o FaceNet.
+\item Pipeline \emph{fail-closed} para vídeo de sala de aula: pós-passe de recall, detecção do Estágio~1 dentro da troca, \emph{privacy gate}, composição que oculta todo rosto conhecido sem substituição válida.
 \item Resultados negativos com diagnóstico: orientação no amostrador SDXL (P1) e no código de identidade do CIAGAN (P3).
 \item Estudo de custo (E5): onde o tempo vai, o que cada aceleração custa em privacidade e utilidade.
+\item Natureza das contribuições: empíricas e de sistema; C2 e P2 têm precedentes (Seção~\ref{cap:fundam}).
 \end{enumerate}
 
 \section{Escopo}
 \begin{itemize}
 \item Gravações de aula, câmera fixa, processamento \emph{offline}.
 \item Só rosto (não corpo inteiro); áudio fora do escopo.
+\item Alegação: desidentificação facial (redução da identificabilidade biométrica do rosto), não anonimização no sentido da LGPD art.~12; modelo de ameaça na Seção~\ref{sec:ameaca}.
 \item Sem garantia formal de privacidade; atacante ingênuo (sem retreino) \citep{hanisch}.
-\item Três vídeos de demonstração; não é um conjunto consentido de crianças.
+\item Três vídeos de demonstração públicos na internet (29\,s no total); não é um conjunto consentido de crianças.
+\end{itemize}
+
+\section{Classificação da pesquisa}
+\begin{itemize}
+\item Natureza: aplicada.
+\item Abordagem: quantitativa.
+\item Procedimento: experimental (braços comparados nos mesmos rostos, critérios fixados antes de rodar).
+\item Objetivo: explicativa (efeito de cada componente sobre privacidade, utilidade e custo).
+\end{itemize}
+
+\section{Desvios em relação à proposta}
+\begin{itemize}
+\item Pareamento demográfico, equidade, coleta consentida na UFPR, estágio temporal dedicado, APIs comerciais de reconhecimento, avaliação humana: não realizados.
+\item Planejado $\times$ realizado $\times$ motivo: Quadro~\ref{qua:desvios} (Seção~\ref{cap:metodo}).
 \end{itemize}
 
 \section{Organização}
 \begin{itemize}
-\item Cap.~\ref{cap:fundam}: fundamentação e trabalhos relacionados.
-\item Cap.~\ref{cap:metodo}: pipeline e componentes.
-\item Cap.~\ref{cap:experimentos}: configuração experimental (E0--E5).
-\item Cap.~\ref{cap:resultados}: resultados.
-\item Cap.~\ref{cap:discussao}: pipeline final e discussão.
-\item Cap.~\ref{cap:conclusao}: limitações, ética, trabalhos futuros.
-\item Apêndices: licenças, registro de decisões, reprodução.
+\item Seção~\ref{cap:fundam}: fundamentação e trabalhos relacionados.
+\item Seção~\ref{cap:metodo}: pipeline, componentes, modelo de ameaça, desvios.
+\item Seção~\ref{cap:experimentos}: configuração experimental (E0--E5).
+\item Seção~\ref{cap:resultados}: resultados.
+\item Seção~\ref{cap:discussao}: pipeline final, discussão, ameaças à validade.
+\item Seção~\ref{cap:conclusao}: limitações, ética, trabalhos futuros.
+\item Apêndices: licenças, registro de decisões, reprodução, correções do parecer de orientação.
 \end{itemize}
