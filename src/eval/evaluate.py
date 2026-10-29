@@ -29,7 +29,9 @@ Metrics, per run and per recognizer:
     utility       — (--utility, comma list), real vs anonymized:
                     expression  106-point landmark error after similarity
                                 alignment, in inter-ocular units
-                    pose        head-pose MAE (pitch, yaw, roll), degrees
+                    pose        head-pose MAE (pitch, yaw, roll), degrees; and a task
+                                proxy, "facing the front" (|yaw|, |pitch| < 30°) real
+                                vs shown, as Cohen's kappa (orient_kappa)
                     attributes  apparent-age error (years), gender agreement
                     emotion     agreement of the 8-class expression label (HSEmotion)
 Privacy metrics come in two versions: over anonymized observations only,
@@ -196,7 +198,9 @@ class Redetector:
             from insightface.app import FaceAnalysis
 
             self._app = FaceAnalysis(name="buffalo_l", allowed_modules=["detection"])
-            self._app.prepare(ctx_id=self.ctx_id, det_size=(self.det_size, self.det_size))
+            # det_thresh made explicit: insightface's own default, the value every run so far used
+            # (Phase 1 runs at 0.1, DECISIONS.md 35; re-detection asks whether a clear face is there)
+            self._app.prepare(ctx_id=self.ctx_id, det_size=(self.det_size, self.det_size), det_thresh=0.5)
         best, best_iou = None, self.min_iou
         for face in self._app.get(image_bgr):
             iou = _iou(face.bbox, expected_box)
@@ -206,9 +210,18 @@ class Redetector:
 
 
 def _expression_error(real_106: np.ndarray, anon_106: np.ndarray, iod: float) -> float:
-    m = align.fit_similarity(anon_106, real_106)
-    mapped = anon_106 @ m[:, :2].T + m[:, 2]
-    return float(np.linalg.norm(mapped - real_106, axis=1).mean() / max(iod, 1e-6))
+    return align.landmark_error(real_106, anon_106, iod)   # shared with run.py's adaptive sampling
+
+
+# Task-level utility proxy: is the face turned towards the front of the room? A binary label
+# per face from the head-pose probe, compared real vs shown with Cohen's kappa
+# (`orient_kappa`), like emotion. 30 degrees on both yaw and pitch.
+FACING_DEG = 30.0
+
+
+def facing(pose: tuple[float, float, float]) -> int:
+    pitch, yaw, _ = pose
+    return int(abs(yaw) < FACING_DEG and abs(pitch) < FACING_DEG)
 
 
 class Probes:
@@ -242,6 +255,7 @@ def compare(real: dict, anon: dict, iod: float, offset=(0.0, 0.0)) -> dict:
         out["expression"] = _expression_error(real["lmk106"], anon["lmk106"] + np.asarray(offset, np.float32), iod)
     if "pose" in real and "pose" in anon:
         out["pose_err"] = pose_error(real["pose"], anon["pose"])
+        out["orient_real"], out["orient_anon"] = facing(real["pose"]), facing(anon["pose"])
     if "age" in real and "age" in anon:
         out["age_err"] = float(abs(real["age"] - anon["age"]))
         out["gender_agree"] = float(real["gender"] == anon["gender"])
@@ -480,6 +494,8 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
                 row["emotion_video"] = v["utility"].get("emotion_anon", "")
                 # the real label of the same face: every shown face, not only the generated ones
                 row["emotion_real_video"] = v["utility"].get("emotion_real", "")
+                row["orient_video"] = v["utility"].get("orient_anon", "")
+                row["orient_real_video"] = v["utility"].get("orient_real", "")
             prev_v = video.get((o.frame_id - 1, o.track_id), {})
             real, real_prev = real_by_key[key], real_by_key.get((o.frame_id - 1, o.track_id))
             if (v.get("lmk106") is not None and prev_v.get("lmk106") is not None and real_prev is not None
@@ -506,7 +522,9 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
                          **obs_rows[(o.frame_id, o.track_id)],
                          **{m: _r((o.utility or {}).get(m)) for m in UTILITY_METRICS},
                          "emotion_real": (o.utility or {}).get("emotion_real", ""),
-                         "emotion_anon": (o.utility or {}).get("emotion_anon", "")})
+                         "emotion_anon": (o.utility or {}).get("emotion_anon", ""),
+                         "orient_real": (o.utility or {}).get("orient_real", ""),
+                         "orient_anon": (o.utility or {}).get("orient_anon", "")})
     return out
 
 

@@ -48,7 +48,7 @@ import tomllib
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Sequence
+from typing import Any, Iterable, Optional, Sequence
 
 import numpy as np
 
@@ -194,43 +194,26 @@ def _numeric(value: Any) -> Optional[float]:
 # Statistics
 
 
-def bootstrap_ci(values: Sequence[float], groups: Optional[Sequence[Any]] = None, *, n: int = 2000,
-                 seed: int = 0, level: float = 0.95, stat: Callable = np.mean) -> tuple[float, float, float]:
-    """(estimate, low, high). Resamples whole groups (tracks) when given, so
-    frames of one track are never treated as independent."""
-    v = np.asarray(values, dtype=np.float64)
-    if v.size == 0:
-        return (float("nan"),) * 3
-    rng = np.random.default_rng(seed)
-    if groups is None:
-        idx = [np.array([i]) for i in range(v.size)]
-    else:
-        g = np.asarray(groups)
-        idx = [np.flatnonzero(g == k) for k in np.unique(g)]
-    boots = []
-    for _ in range(n):
-        pick = rng.integers(0, len(idx), len(idx))
-        boots.append(stat(np.concatenate([v[idx[i]] for i in pick])))
-    lo, hi = np.percentile(boots, [(1 - level) / 2 * 100, (1 + level) / 2 * 100])
-    return float(stat(v)), float(lo), float(hi)
+def holm(pvalues: dict[str, Optional[float]]) -> dict[str, Optional[float]]:
+    """Holm–Bonferroni adjusted p-values within one family of comparisons (e.g. every arm
+    against the same reference on one metric). Missing p-values stay None."""
+    ranked = sorted((p, k) for k, p in pvalues.items() if p is not None)
+    adjusted: dict[str, float] = {}
+    running = 0.0
+    for i, (p, k) in enumerate(ranked):
+        running = max(running, min(1.0, (len(ranked) - i) * p))
+        adjusted[k] = running
+    return {k: adjusted.get(k) for k in pvalues}
 
 
-def paired_bootstrap(a: Sequence[float], b: Sequence[float], groups: Optional[Sequence[Any]] = None,
-                     **kwargs) -> tuple[float, float, float]:
-    """Interval for mean(a − b) over paired observations (same faces in two arms)."""
-    return bootstrap_ci(np.asarray(a, float) - np.asarray(b, float), groups, **kwargs)
-
-
-def mcnemar_p(a: Sequence[bool], b: Sequence[bool]) -> float:
-    """Exact two-sided McNemar test for paired binary outcomes (e.g. per-face rank-1 hits)."""
-    a, b = np.asarray(a, bool), np.asarray(b, bool)
-    n01, n10 = int((~a & b).sum()), int((a & ~b).sum())
-    n = n01 + n10
-    if n == 0:
-        return 1.0
-    k = min(n01, n10)
-    p = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
-    return min(1.0, 2 * p)
+def register_metric(store: dict[str, Any], sources: dict[str, str], key: str, value: Any) -> None:
+    """Add `key` to `store` under its ASCII result_key; two different keys that map to the
+    same result_key (e.g. "β 1.2" and "b 1.2") would silently overwrite each other, so fail."""
+    rk = result_key(key)
+    if rk in sources and sources[rk] != key:
+        raise ValueError(f"result key collision: {key!r} and {sources[rk]!r} both map to {rk!r}")
+    sources[rk] = key
+    store[rk] = value
 
 
 # ---------------------------------------------------------------------------
@@ -443,6 +426,7 @@ class Experiment:
         self.args = p.parse_args(argv)
 
         self._metrics: dict[str, Any] = {}
+        self._metric_sources: dict[str, str] = {}   # result_key -> the key it came from
         self._steps: list[dict] = []
         self._videos: dict[str, dict] = {}
         self._notes: dict[str, Any] = {}
@@ -535,8 +519,8 @@ class Experiment:
 
     def metric(self, key: str, value: Any) -> None:
         """A number the paper may cite: metrics.json, and \\result{key} in results.tex
-        (key made ASCII: β 1.2 -> b-1.2)."""
-        self._metrics[result_key(key)] = value
+        (key made ASCII: β 1.2 -> b-1.2; two keys mapping to one ASCII key fail)."""
+        register_metric(self._metrics, self._metric_sources, key, value)
 
     def table(self, name: str, columns: Sequence[str], rows: Iterable[Sequence[Any]], *,
               decimals: int = 3, best: Optional[dict[str, str]] = None, align: Optional[str] = None) -> None:
@@ -639,7 +623,10 @@ class Experiment:
             "notes": self._notes,
             "git": {"sha": _git("rev-parse", "HEAD"), "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
                     "dirty": dirty},
-            "bridge": {"path": str(bridge), "sha": _git("rev-parse", "HEAD", cwd=bridge) if bridge.is_dir() else None},
+            "bridge": {"path": str(bridge), "sha": _git("rev-parse", "HEAD", cwd=bridge) if bridge.is_dir() else None,
+                       "dirty": bool(_git("status", "--porcelain", "--untracked-files=no", cwd=bridge))
+                       if bridge.is_dir() else None},
+            "lock_sha256": _sha256(REPO / "uv.lock") if (REPO / "uv.lock").is_file() else None,
             "host": platform.node(),
             "gpus": _gpus(),
             "env": {k: os.environ[k] for k in ("CUDA_VISIBLE_DEVICES", "IDENTITY_GPU", "SWAP_GPU", "CTX_ID",

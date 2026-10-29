@@ -29,7 +29,6 @@ from pathlib import Path
 from typing import Optional
 
 import cv2
-import numpy as np
 
 from ..pipeline.identity.aggregate import normalize
 from ..pipeline.identity.embedder import ArcFaceEmbedder, PoseEstimator
