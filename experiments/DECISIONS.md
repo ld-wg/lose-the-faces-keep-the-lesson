@@ -294,6 +294,58 @@ The literature review is in `research/stages/identification-occlusion.md`.
     - The E5 re-run used the audited code: steady-state timing, κ over every
       shown face, the speed-up on common videos.
 
+## Wrap-up after the advisor-style review (2026-10-29)
+
+Review: `research/next-steps/parecer-orientador-2026-10-29.md`. Branch
+`feature/wrap-up-review`. Every item is also listed in the thesis
+(`paper/tcc-latex`, appendix "Correções do parecer").
+
+53. **Fail-open path closed.** With an empty paste mask, `poisson_composite`
+    returns the real crop, and the backends reported it as `ok`; composition then
+    logged it as `generated`. Now a face whose output changes less than 1% of the
+    detection box (`MIN_CHANGED_FRACTION`, `contracts.py`) is `failsafe` with
+    reason `unchanged` in Phase 2, and is hidden in composition as well. Privacy
+    metrics were not affected (they score the crop, so these faces already counted
+    as leaks). Coverage and `generated` counts of arms without the gate were. The
+    frequency in existing runs is not measured yet: serra1 is locked.
+54. **No crop of a non-replaced face is written.** Passthrough, gated, hide-low and
+    `unchanged` faces have no PNG and `output_path` is null; the scratch directory
+    is also removed on SIGTERM and SIGHUP. `experiments/purge.sh` lists and, with
+    `--yes`, deletes what still shows real people after export (generated crops,
+    composed videos, SDXL identity images, orphan scratch; `--obs` adds obs.csv).
+55. **One definition per shared rule.** `align.landmark_error` serves both the
+    expression metric and adaptive sampling. `policies.should_generate` holds the
+    sampling decision. `REUSE_FRAMES` (10) is declared once, and Phase 2's forced
+    regeneration (11) is derived from it.
+56. **Statistics.** Holm–Bonferroni adjusted p per family (E3c arms against
+    native; E5 arms against ref, per metric) are exported next to the raw p.
+    `result_key` collisions abort the export. The unused `bootstrap_ci`,
+    `paired_bootstrap` and `mcnemar_p` are removed.
+57. **Derived analyses need no data.** `experiments/derived.py` reads the exported
+    keys. It gives per-video rank-1, the multiple of chance (R × N), macro means
+    and a leave-one-video-out choice of β (direction holds; magnitude and best β
+    depend on the video). `experiments/tables_pt.py` writes Portuguese copies of
+    every table for the thesis.
+58. **New measures, pending a serra1 run.** A task proxy: a face counts as
+    "facing" when |yaw| < 30° and |pitch| < 30°, compared real against shown with
+    κ (`orient_kappa`). Face-size strata for E3e and E5. E3 exports track counts
+    per video. E5 aborts without E3's identity cache.
+59. **Provenance.** `SOURCES.md` records the bridge commit (and whether it is
+    dirty), Python and torch versions and the `uv.lock` hash. Phase 1's
+    `tracks.json` now stores the real fps; before, it read the property after
+    releasing the capture and got −1. Nothing consumed it.
+60. **Structure.** The empty `phase3_temporal` package is removed. Composition
+    stays in `phase2_generate/compose_video.py` and is called Stage 3 in docs.
+    Repackaging to `src/lftl/` is deferred until after the defense. Unit tests
+    live in `tests/` and use only synthetic arrays: fail-closed composition,
+    policies, tracker, recall post-pass, statistics and keys (45 tests, run on
+    macalan).
+    - Known and documented, not changed: E3a's EMA mode uses α_f 0.95 (the
+      function default), while the pipeline uses 0.8 (CLI). The re-detector runs at
+      det_size 320 with threshold 0.5. E1 runs at conf 0.3. The BLANKET context
+      margin of 0.8 is not calibrated. The seed and the identity cache depend on
+      the video path.
+
 ## Paper text to revise (not done here; `paper/main.tex` has uncommitted edits)
 
 - **Methodology, Stage 3.** Replace gradient injection on a canonical latent
