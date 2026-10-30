@@ -9,11 +9,47 @@
 
 \section{Visão geral}
 \begin{itemize}
-\item Pipeline \emph{offline} em três estágios: (1) detecção, rastreamento e recall; (2) substituição do rosto; (3) composição \emph{fail-closed}.
+\item Pipeline \emph{offline} em três estágios (Figura~\ref{fig:pipeline}): (1) detecção, rastreamento e recall; (2) substituição do rosto; (3) composição \emph{fail-closed}.
+\item Substituição híbrida: a difusão (SDXL) gera uma vez por track a identidade-fonte; o rosto mostrado em cada quadro é produzido pela troca (\texttt{inswapper\_128}) e pelo GFPGAN (Seção~\ref{sec:formulacao}).
 \item Uma identidade sintética fixa por track (seed determinística): o mesmo aluno mantém o mesmo pseudônimo no vídeo.
 \item Consistência temporal pela identidade fixa por track, sem rede de estabilização separada.
 \item Código: Estágio~1 em \texttt{phase1\_detect}; Estágios~2 e 3 em \texttt{phase2\_generate} (composição em \texttt{compose\_video.py}). Pacote vazio \texttt{phase3\_temporal} removido (2026-10-29).
 \end{itemize}
+
+\begin{figure}[ht]\centering
+\caption{Pipeline: estágios, onde atuam C1 (P1, P2, P3) e C2, e onde cada visão de privacidade mede.}
+\label{fig:pipeline}
+\begin{tikzpicture}[font=\footnotesize, node distance=4mm and 7mm,
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=9mm, text width=2.35cm, fill=black!3},
+  ctr/.style={draw=black!60, dashed, rounded corners=2pt, align=center, text width=2.35cm, font=\scriptsize},
+  view/.style={align=center, font=\scriptsize\itshape, text=black!70},
+  arr/.style={-{Latex[length=2mm]}}]
+\node[box] (in) {vídeo de aula};
+\node[box, right=of in] (s1) {Estágio 1\\SCRFD-10GF, tracks,\\pós-passe de recall};
+\node[box, right=of s1] (id) {identidade SDXL\\por track (1$\times$)};
+\node[box, right=of id] (sw) {troca por quadro\\\texttt{inswapper} + GFPGAN};
+\node[box, below=9mm of sw] (s3) {Estágio 3\\composição\\\emph{fail-closed}};
+\node[box, left=of s3] (out) {vídeo final};
+\node[ctr, above=of s1] (c2) {C2: identidade real\\agregada no track};
+\node[ctr, above=of id] (p1) {P1: orientação\\no amostrador};
+\node[ctr, above=of sw] (p2) {P2: empurrão\\$e_{\mathrm{synth}} - \beta\,e_{\mathrm{real}}$};
+\node[ctr, below=9mm of s1] (gate) {\emph{privacy gate},\\\emph{hide-low}, amostragem};
+\draw[arr] (in) -- (s1);
+\draw[arr] (s1) -- (id);
+\draw[arr] (id) -- node[above, font=\scriptsize] {$e_{\mathrm{synth}}$} (sw);
+\draw[arr] (sw) -- (s3);
+\draw[arr] (s3) -- (out);
+\draw[arr, dashed] (c2) -- (p1);
+\draw[arr, dashed] (c2.north) -- ++(0,3mm) -| (p2.north);
+\draw[arr, dashed] (p1) -- (id);
+\draw[arr, dashed] (p2) -- (sw);
+\draw[arr, dashed] (gate.south) -- ++(0,-3mm) -| (s3.south);
+\draw[arr, dashed] (s1) -- (gate);
+\node[view, below=1mm of sw.south east, anchor=north west, xshift=-3mm] {rostos gerados};
+\node[view, above=1mm of out] {vídeo final; vídeo composto (E5)};
+\end{tikzpicture}
+\fonte{o autor (2026). P3 atua no CIAGAN (baseline), não neste fluxo.}
+\end{figure}
 
 \section{Modelo de ameaça e alegação}
 \label{sec:ameaca}
@@ -29,6 +65,12 @@
   \item pessoa que conhece o aluno e assiste ao vídeo.
   \end{itemize}
 \item Identidade sintética nasce do crop real (SDEdit 0,6 + ControlNets): cosseno ArcFace com a pessoa real \result{e3g/pooled/identity-cos.plain}, contra \result{e3a/pooled/cross-track-cos-mean} entre pessoas diferentes.
+\item Atacantes adicionais (2026-10-30; implementados no avaliador, resultados pendentes do servidor):
+  \begin{itemize}
+  \item ciente do empurrão: o P2 leva o alvo da troca para longe da identidade real e, acima de $\beta \approx$ \result{derived/p2geom/orthogonal-beta}, para a antípoda dela (Tabela~\ref{tab:derived-p2geom}); um atacante que conhece o método ordena a galeria pelo cosseno \emph{mais baixo} (rank inverso). Se o rank-1 inverso ficar alto, o P2 é reversível, e o ponto de operação seguro é $\beta \approx$ \result{derived/p2geom/orthogonal-beta};
+  \item por pessoa: o pseudônimo é estável por desenho; o atacante segue o track e decide uma vez por aluno (média dos embeddings mostrados contra a galeria). Rank-1 por track ao lado do rank-1 por quadro.
+  \end{itemize}
+\item Identidade de referência da avaliação: o track do rastreador, não uma pessoa anotada. Um aluno dividido em dois tracks vira duas identidades na galeria, e acertar o outro track conta como privacidade. Auditoria: pares de tracks nunca visíveis juntos com centroides reais acima do limiar a FAR 1\% (candidatos a uma pessoa) exportados por vídeo; conferência visual no servidor (pendente).
 \item Alegação: desidentificação facial, redução da identificabilidade biométrica do rosto; próxima de pseudonimização (pseudônimo estável por track). Não é anonimização no sentido da LGPD art.~12 \citep{lgpd}.
 \end{itemize}
 
@@ -125,6 +167,36 @@
 \item $\hat{e} = \mathrm{normalize}(e_{\mathrm{synth}} - \beta\, e_{\mathrm{real}})$, no espaço ArcFace, antes da projeção do \texttt{inswapper}.
 \item Generaliza o mix do FaceFusion, que o BLANKET satura: $1{,}35\,e_{\mathrm{synth}} - 0{,}35\,e_{\mathrm{quadro}}$.
 \item Equivalência: após normalizar, o mix nativo corresponde a $\beta \approx 0{,}35/1{,}35 \approx 0{,}26$; o braço $\beta = 0{,}35$ não reproduz o nativo (alvo C2, não o quadro; sem o fator 1,35).
+\item Geometria (2026-10-30), com $c = \cos(e_{\mathrm{synth}}, e_{\mathrm{real}})$ = \result{derived/p2geom/c} e $n = \sqrt{1 + \beta^2 - 2\beta c}$:
+  \begin{equation}
+  \cos(\hat e, e_{\mathrm{synth}}) = \frac{1 - \beta c}{n},\qquad \cos(\hat e, e_{\mathrm{real}}) = \frac{c - \beta}{n};
+  \end{equation}
+  \begin{itemize}
+  \item $\beta = c$: remove só a componente real herdada da identidade SDXL (alvo ortogonal à identidade real);
+  \item $\beta > c$: o alvo passa a apontar para a antípoda da identidade real; em $\beta = 1{,}2$, cosseno \result{derived/p2geom/b-1.2/cos-synth} com a identidade sintética e \result{derived/p2geom/b-1.2/cos-real} com a real (Tabela~\ref{tab:derived-p2geom}, Figura~\ref{fig:p2geom});
+  \item consequência: no ponto de operação, o pseudônimo é mais ``anti-aluno'' que identidade sintética; a difusão por track pesa menos que o empurrão; risco de reversibilidade (Seção~\ref{sec:ameaca}).
+  \end{itemize}
+\item Valor aproximado: $c$ é o cosseno médio entre a imagem de identidade SDXL e a pessoa real (E3g); o $e_{\mathrm{real}}$ do P2 é a média do track (C2).
+
+\begin{figure}[ht]\centering
+\caption{Geometria do P2 no plano de $e_{\mathrm{synth}}$ e $e_{\mathrm{real}}$: alvo da troca $\hat e$ para $\beta$ crescente.}
+\label{fig:p2geom}
+\begin{tikzpicture}[scale=2.1, font=\footnotesize, arr/.style={-{Latex[length=2mm]}}]
+\pgfmathsetmacro{\pgc}{\csname result@derived/p2geom/c\endcsname}
+\draw[black!25] (0,0) circle (1);
+\draw[arr, thick] (0,0) -- (1,0) node[right] {$e_{\mathrm{synth}}$};
+\pgfmathsetmacro{\pgs}{sqrt(1-\pgc*\pgc)}
+\draw[arr, thick, black!60] (0,0) -- (\pgc,\pgs) node[above right] {$e_{\mathrm{real}}$};
+\draw[dashed, black!40] (0,0) -- (-\pgc,-\pgs) node[below left] {$-e_{\mathrm{real}}$};
+\foreach \b/\lab in {0.33/{$\beta{=}c$}, 1.2/{$1{,}2$}, 1.6/{$1{,}6$}} {
+  \pgfmathsetmacro{\pgx}{1-\b*\pgc}
+  \pgfmathsetmacro{\pgy}{-\b*\pgs}
+  \pgfmathsetmacro{\pgn}{sqrt(\pgx*\pgx+\pgy*\pgy)}
+  \draw[arr, color=blue!70!black] (0,0) -- ({\pgx/\pgn},{\pgy/\pgn}) node[right, font=\scriptsize] {\lab};
+}
+\end{tikzpicture}
+\fonte{o autor (2026). $c$ = \result{derived/p2geom/c} (cosseno médio medido no E3g).}
+\end{figure}
 \item Custo: uma operação vetorial por track.
 \item Precedentes de condicionamento negativo: NullFace \citep{nullface}, FAMS \citep{kung}, Reverse Personalization \citep{revpers}.
 \end{itemize}

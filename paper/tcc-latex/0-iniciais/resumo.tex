@@ -1,36 +1,41 @@
 \begin{resumo}
 
-% Rascunho factual (2026-10-22), revisado em 2026-10-29 (parecer de orientação):
+% Rascunho factual (2026-10-22), revisado em 2026-10-29 (parecer de orientação) e em
+% 2026-10-30 (análise crítica):
 % - parágrafo único, 3ª pessoa, objetivo → método → resultados → conclusão (NBR 6028);
-% - sem rótulos internos (P1--P3, C2); alegação: desidentificação facial, não
-%   anonimização no sentido da LGPD art. 12 (Seção~\ref{sec:ameaca});
-% - números por vídeo e normalizados pelo acaso ao lado do agregado.
+% - alegação: desidentificação facial, não anonimização (LGPD art. 12; Seção~\ref{sec:ameaca});
+% - substituição híbrida: difusão só na identidade-fonte; pixels da troca de rosto (F2);
+% - ponto de operação β 1,2 (não o braço mais forte); custo em emoção explícito (G6);
+% - comparação pelo par (rank-1 entre rostos com face sintética, parcela coberta): o
+%   rank-1 do vídeo final premia ocultar (F1).
 Vídeos de sala de aula expõem a identidade de alunos e professores. Este
-trabalho investiga se substituir cada rosto detectado por um rosto sintético
+trabalho investiga se trocar cada rosto detectado por uma identidade sintética
 reduz a reidentificação facial automática e mantém o sinal comportamental
-(expressão, pose, emoção), medido no vídeo que o espectador vê. O pipeline tem
-três estágios: detecção SCRFD-10GF com rastreamento e um pós-passe de recall;
-substituição com BLANKET (uma identidade sintética Stable Diffusion XL por track
-e troca de rosto \texttt{inswapper} por quadro); e composição \emph{fail-closed},
-que oculta todo rosto conhecido sem substituição válida. A contribuição
-principal empurra o embedding de identidade usado pela troca para longe da
-identidade real estimada no track. Em três vídeos curtos (29\,s no total), o
-rank-1 do FaceNet, reconhecedor não usado na otimização, cai de
-\result{e3c/pooled/native/facenet.rank1} para
-\result{e3c/pooled/b-1.6/facenet.rank1}, sem diferença mensurável em expressão
-e pose; a direção do efeito se mantém quando a força do empurrão é escolhida
-sem o vídeo avaliado. Com um filtro de privacidade, o vídeo final fica em
-\result{e3e/pooled/gate/facenet_final.rank1}, entre
-\result{derived/gate-final/x-chance-min} e
-\result{derived/gate-final/x-chance-max} vezes o acaso conforme o vídeo, contra
-\result{e2/pooled/blur/facenet_final.rank1} do borramento, que apaga o
-comportamento. Orientação por gradiente no amostrador de difusão e otimização
-do código de identidade de uma rede adversarial generativa não têm efeito
-mensurável. Processo principal na unidade de processamento gráfico (GPU) e
-amostragem adaptativa de quadros levam o custo projetado do laço por rosto a
-\result{e5/pooled/adapt-0.08/class-hours} GPU-horas por hora de aula. Nenhum
-método preserva a emoção perto do piso de ruído. O resultado é desidentificação
-facial parcial, outro ponto do compromisso entre privacidade e utilidade, e não
-anonimização: cabelo, contorno da cabeça, roupa e voz permanecem.
+(expressão, pose, emoção), medido no vídeo que o espectador vê. O pipeline é
+híbrido e tem três estágios: detecção SCRFD-10GF com rastreamento e um pós-passe
+de recall; uma identidade sintética Stable Diffusion XL por track, trocada no
+rosto de cada quadro por \texttt{inswapper} com restauração GFPGAN; e composição
+\emph{fail-closed}, que oculta todo rosto detectado sem substituição válida. A
+contribuição principal empurra o embedding de identidade usado pela troca para
+longe da identidade real estimada no track. Em três vídeos curtos (29\,s no
+total), no ponto de operação escolhido, o rank-1 do FaceNet, reconhecedor não
+usado na otimização, cai de \result{e3c/pooled/native/facenet.rank1} para
+\result{e3c/pooled/b-1.2/facenet.rank1}, sem diferença mensurável em expressão e
+pose e com queda não significativa da concordância de emoção
+(\result{e3c/pooled/native/emotion_kappa} para \result{e3c/pooled/b-1.2/emotion_kappa}).
+Entre os rostos que recebem face sintética, o pipeline final é reidentificado em
+\result{derived/frontier/e5-ref/rank1} cobrindo \result{derived/frontier/e5-ref/share}
+dos rostos, contra \result{derived/frontier/e2-blanket/rank1} do BLANKET liberado,
+que cobre \result{derived/frontier/e2-blanket/share}; no vídeo final, porém,
+métodos que ocultam mais rostos têm rank-1 menor, e borramento, mosaico e GANs
+têm rank-1 menor que o do pipeline. Orientação por gradiente no amostrador de difusão e
+otimização do código de identidade de uma rede adversarial generativa não têm
+efeito mensurável. O erro de expressão fica em
+\result{e3e/pooled/gate/expression} unidades de distância interocular, cerca de
+quatro vezes o piso de ruído, e nenhum método preserva a emoção. O custo projetado
+do laço por rosto é de \result{e5/pooled/adapt-0.08/class-hours} horas de unidade
+de processamento gráfico (GPU) por hora de aula. O resultado é desidentificação
+facial parcial, outro ponto do compromisso entre privacidade, cobertura e
+utilidade, e não anonimização: cabelo, contorno da cabeça, roupa e voz permanecem.
 
 \end{resumo}

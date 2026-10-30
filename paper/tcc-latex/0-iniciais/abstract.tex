@@ -1,31 +1,34 @@
 \begin{abstract}
 
-% Factual draft (2026-10-22), revised 2026-10-29: translation of the resumo,
-% third person, no internal labels, de-identification rather than anonymization.
+% Factual draft (2026-10-22), revised 2026-10-29 and 2026-10-30: translation of the resumo.
 Classroom recordings expose students' and teachers' identities. This work
-investigates whether replacing every detected face with a synthetic one reduces
-automatic face re-identification while keeping behavioral signal (expression,
-pose, emotion), measured on the video a viewer sees. The pipeline has three
-stages: SCRFD-10GF detection with tracking and a recall post-pass; replacement
-with BLANKET (one Stable Diffusion XL synthetic identity per track and an
-\texttt{inswapper} face swap per frame); and fail-closed composition, which hides
-every known face that has no valid replacement. The main contribution pushes the
-swap's identity embedding away from the track's estimated real identity. On three
-short videos (29\,s in total), held-out FaceNet rank-1 drops from
-\resulten{e3c/pooled/native/facenet.rank1} to
-\resulten{e3c/pooled/b-1.6/facenet.rank1} with no measurable expression or pose
-cost; the direction of the effect holds when the push strength is chosen without
-the evaluated video. With a privacy filter the final video reaches
-\resulten{e3e/pooled/gate/facenet_final.rank1}, between
-\resulten{derived/gate-final/x-chance-min} and
-\resulten{derived/gate-final/x-chance-max} times chance depending on the video,
-against \resulten{e2/pooled/blur/facenet_final.rank1} for blur, which erases
-behavior. Gradient guidance inside the diffusion sampler and identity-code
+investigates whether swapping every detected face for a synthetic identity
+reduces automatic face re-identification while keeping behavioral signal
+(expression, pose, emotion), measured on the video a viewer sees. The pipeline is
+hybrid and has three stages: SCRFD-10GF detection with tracking and a recall
+post-pass; one Stable Diffusion XL synthetic identity per track, swapped onto the
+face in every frame by \texttt{inswapper} with GFPGAN restoration; and fail-closed
+composition, which hides every detected face that has no valid replacement. The
+main contribution pushes the swap's identity embedding away from the track's
+estimated real identity. On three short videos (29\,s in total), at the chosen
+operating point, held-out FaceNet rank-1 drops from
+\resulten{e3c/pooled/native/facenet.rank1} to \resulten{e3c/pooled/b-1.2/facenet.rank1},
+with no measurable expression or pose cost and a non-significant drop in emotion
+agreement (\resulten{e3c/pooled/native/emotion_kappa} to
+\resulten{e3c/pooled/b-1.2/emotion_kappa}). Among the faces that receive a
+synthetic face, the final pipeline is re-identified at
+\resulten{derived/frontier/e5-ref/rank1} while covering
+\resulten{derived/frontier/e5-ref/share} of the faces, against
+\resulten{derived/frontier/e2-blanket/rank1} for the released BLANKET, which covers
+\resulten{derived/frontier/e2-blanket/share}; on the final video, however, methods
+that hide more faces score a lower rank-1, and blur, mosaic and GANs score below the
+pipeline. Gradient guidance inside the diffusion sampler and identity-code
 optimization in a generative adversarial network have no measurable effect.
-Running the main process on the GPU and adaptive frame sampling bring the
-projected per-face loop cost to \resulten{e5/pooled/adapt-0.08/class-hours} GPU
-hours per hour of class. No method keeps emotion near its noise floor. The
-result is partial face de-identification, another point on the privacy--utility
-trade-off, not anonymization: hair, head outline, clothing and voice remain.
+Expression error stays at \resulten{e3e/pooled/gate/expression} inter-ocular
+units, about four times its noise floor, and no method keeps emotion. The projected
+per-face loop cost is \resulten{e5/pooled/adapt-0.08/class-hours} GPU hours per
+hour of class. The result is partial face de-identification, another point on the
+privacy--coverage--utility trade-off, not anonymization: hair, head outline,
+clothing and voice remain.
 
 \end{abstract}

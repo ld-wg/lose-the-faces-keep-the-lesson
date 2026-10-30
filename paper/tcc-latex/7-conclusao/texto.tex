@@ -31,11 +31,14 @@
 \item Imagens de identidade do SDXL não contam como sintéticas para publicação (cosseno \result{e3g/pooled/identity-cos.plain} com a pessoa real).
 \item Vídeos: públicos na internet; fonte, licença e termos por vídeo pendentes de registro.
 \item Pendente: consulta ao CEP da UFPR (via orientador e coordenação). Plano B: gravações próprias com adultos voluntários e termo de uso de imagem.
+\item Base legal a validar com o orientador e o CEP (não afirmada): LGPD art.~7º, IV e art.~11, II, c, tratamento por órgão de pesquisa para estudos, garantida a anonimização sempre que possível \citep{lgpd}. Esta tese processou biometria de pessoas que não consentiram; o registro da fonte de cada vídeo e a consulta ao CEP são condição para a defesa.
 \item Cópias locais dos vídeos e resultados fora do servidor: apagadas (2026-10-29).
 \end{itemize}
 
 \section{Trabalhos futuros}
 \begin{itemize}
+\item Rodar no servidor o que já está implementado: rank inverso, rank-1 por track, rank-1 entre rostos mostrados, auditoria de identidades, $\kappa$ de orientação, estratos por tamanho, Holm; conferir à mão os pares de tracks candidatos e as caixas extras do YOLO-FaceV2-s.
+\item Braço $\beta \approx c$ (ortogonal): remove a componente real sem ir para a antípoda.
 \item E4-lite, banco de identidades: identidades geradas por prompt genérico, sem condicionar na imagem real e sem inferir atributos; remove a rota de vazamento da imagem de identidade e o custo de difusão por track (1 a 2 dias).
 \item E4, identidade só por texto:
   \begin{itemize}
@@ -59,9 +62,9 @@
 \section{Conclusão}
 \begin{itemize}
 \item Substituir rostos com identidade sintética fixa por track, empurrada para longe da identidade real, reduz a reidentificação facial automática e mantém expressão e pose melhor que censura e GANs.
-\item É desidentificação facial parcial (3--9$\times$ o acaso por vídeo), não anonimização.
+\item É desidentificação facial parcial (3--9$\times$ o acaso por vídeo), não anonimização; o ganho sobre o BLANKET liberado é cobertura com menos reidentificação por rosto mostrado, não privacidade maior que censura no vídeo final.
 \item Não é mais privado que blur; é outro ponto do compromisso.
 \item Emoção não é preservada por nenhum método.
 \item A privacidade de um método depende de quais rostos são medidos; medir o vídeo final.
-\item O laço por rosto é viável \emph{offline}: cerca de dois dias de GPU por hora de aula, sem contar identidades e detecção.
+\item Custo: \result{e5/pooled/adapt-0.08/class-hours} GPU-horas por hora de aula só no laço por rosto (O4 refutado); viável para estudos de poucas horas de vídeo, não para acervos de um semestre.
 \end{itemize}
