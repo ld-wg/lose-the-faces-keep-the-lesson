@@ -21,9 +21,11 @@ UTILITY = ["expression", "pose_err", "emotion_kappa", "age_err", "gender_agree",
 # Over all detector faces: `facenet.rank1` is the "passthrough as a leak" view (a failed
 # face is scored with its real embedding), `facenet_final.*` what the composed video shows.
 KEYS = ["anonymized", "facenet.rank1", "facenet.rank5", "facenet_final.rank1", "facenet_final.rank5",
-        "facenet_final.verified", "arcface.rank1", "arcface_final.rank1"]
+        "facenet_final.verified", "arcface.rank1", "arcface_final.rank1",
+        # 2026-10-30: shown faces only, least-similar-first attacker, one decision per track
+        "shown", "facenet_shown.rank1", "facenet_final_inv.rank1", "facenet_track.rank1", "facenet_track_inv.rank1"]
 # orient_kappa (facing the front, real vs generated): a task-level utility proxy, keys only
-GENERATED_KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet.cos", "emotion_agree", "orient_kappa",
+GENERATED_KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet_inv.rank1", "arcface_inv.rank1", "facenet.cos", "emotion_agree", "orient_kappa",
                   *UTILITY]
 
 

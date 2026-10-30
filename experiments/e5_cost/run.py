@@ -24,7 +24,9 @@ PIPELINE_KEYS = ("identity_cache_from", "reference", "arms")   # [pipeline] entr
 # what the viewer sees (--video-view), FaceNet = held-out
 VIDEO = ["facenet_video.rank1", "facenet_video.verified", "arcface_video.rank1", "expression_video",
          "pose_err_video", "emotion_kappa_video", "gender_agree_video", "motion_err_video",
-         "orient_kappa_video"]
+         "orient_kappa_video",
+         # 2026-10-30: shown faces only, one decision per track
+         "video_shown", "facenet_video_shown.rank1", "facenet_video_track.rank1", "facenet_video_track_inv.rank1"]
 SIZE_EDGES = [0, 48, 96, 1e9]   # face size strata in px, as E2 and E3e
 STAGES = {"client.head_segmentation": "Seg.", "server.enhance_face": "GFPGAN", "server.swap_face": "Swap",
           "server.create_faces": "Landm."}

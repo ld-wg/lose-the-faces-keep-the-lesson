@@ -27,7 +27,12 @@ PARTS = [p for p in os.environ.get("E3_PARTS", "e3a,e3b,e3c,e3d,e3e,e3f,e3g").sp
 GEN = lambda rows: [r for r in rows if r["anonymized"]]  # noqa: E731
 KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet_final.rank1", "facenet_final.verified",
         "anonymized", "expression", "pose_err", "emotion_agree", "emotion_kappa", "age_err", "gender_agree",
-        "orient_kappa"]
+        "orient_kappa",
+        # 2026-10-30 critical review: rank-1 among shown faces and share shown (hiding cannot
+        # lower it); attacker who ranks least-similar first (the push goes to the antipode);
+        # one decision per track (the pseudonym is stable)
+        "shown", "facenet_shown.rank1", "facenet_inv.rank1", "arcface_inv.rank1", "facenet_track.rank1",
+        "facenet_track_inv.rank1", "arcface_track.rank1", "arcface_track_inv.rank1"]
 SIZE_EDGES = [0, 48, 96, 1e9]   # face size strata in px (sqrt of the box area), as E2
 
 
@@ -64,8 +69,12 @@ with Experiment(__file__) as exp:
 
         def part_eval(part: str, arms: dict[str, str]) -> None:
             dirs = sorted({out / d for d in arms.values()})
-            _, rows = evaluate(exp, video, det_dir, dirs, ev, out / f"eval-{part}", noise_floor=False)
+            report, rows = evaluate(exp, video, det_dir, dirs, ev, out / f"eval-{part}", noise_floor=False)
             parts[part] = arms
+            audit = report.get("identity_audit")   # tracks that may be one person (evaluate.identity_audit)
+            if audit is not None:
+                exp.metric(f"e3/{video.name}/merge-candidates", len(audit["candidates"]["arcface"]))
+                exp.metric(f"e3/{video.name}/never-covisible-pairs", audit["never_covisible_pairs"])
             for name, run_rows in by_run(rows).items():
                 pooled.setdefault(part, {}).setdefault(name, []).extend(run_rows)
                 for label, d in arms.items():
