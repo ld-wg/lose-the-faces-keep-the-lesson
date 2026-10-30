@@ -103,3 +103,16 @@ def test_matches_the_evaluator_formula():
 def test_in_inter_ocular_units():
     real, anon = points(1), points(2)
     assert landmark_error(real, anon, 10.0) == pytest.approx(2 * landmark_error(real, anon, 20.0))
+
+
+def test_tolerance_ignores_jpeg_noise_but_not_an_inpainted_face():
+    from src.pipeline.phase2_generate.policies import IDENTITY_TOL, MIN_IDENTITY_CHANGE
+    rng = np.random.default_rng(5)
+    real = rng.integers(40, 200, (60, 60, 3), dtype=np.uint8)
+    noisy = np.clip(real.astype(int) + rng.integers(-6, 7, real.shape), 0, 255).astype(np.uint8)
+    box = (10, 10, 50, 50)
+    assert changed_fraction(real, noisy, box) > 0.5                       # strict: everything "changed"
+    assert changed_fraction(real, noisy, box, tol=IDENTITY_TOL) < MIN_IDENTITY_CHANGE
+    painted = noisy.copy()
+    painted[18:44, 16:44] = rng.integers(0, 256, (26, 28, 3), dtype=np.uint8)
+    assert changed_fraction(real, painted, box, tol=IDENTITY_TOL) > MIN_IDENTITY_CHANGE

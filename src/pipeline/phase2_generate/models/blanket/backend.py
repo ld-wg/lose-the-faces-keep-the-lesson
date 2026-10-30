@@ -94,6 +94,7 @@ import cv2
 import numpy as np
 
 from .._compositing import poisson_composite
+from ...policies import IDENTITY_TOL, MIN_IDENTITY_CHANGE, changed_fraction
 from .._segmentation import load_or_random_head_segmentation, predict_head_mask, resolve_torch_device
 
 logger = logging.getLogger(__name__)
@@ -584,6 +585,17 @@ class Backend:
                 shutil.copyfile(generated, path)
                 Path(generated).unlink(missing_ok=True)   # one copy only (real background, LGPD)
             box = [float(v) for v in cand.box_in_crop]
+            # the diffusion must have generated a face: a near-copy of the real crop is no identity
+            identity_img = cv2.imread(path)
+            change = (changed_fraction(cand.crop, identity_img, box, tol=IDENTITY_TOL)
+                      if identity_img is not None else 0.0)
+            if change < MIN_IDENTITY_CHANGE:
+                logger.warning(f"blanket: seed {seed} candidate {attempt}: identity image changed only "
+                               f"{change:.3f} of the face box; rejected")
+                reasons.append("identity_unchanged")
+                if self._cache is not None:
+                    Path(path).unlink(missing_ok=True)
+                continue
             check = self._swap_client.call("check_identity", identity_path=path, identity_box=box)
             usable = check["usable"] if isinstance(check, dict) else bool(check)
             if not usable:
@@ -598,12 +610,13 @@ class Backend:
             self._identity_box[seed] = box
             if self._cache is not None:
                 self._cache.put(seed, {"status": "ok", "path": path, "box": box,
+                                       "identity_change": round(change, 3),
                                        "source_index": check.get("source_index") if isinstance(check, dict) else None,
                                        "candidate_frame": cand.frame_id, "attempt": attempt,
                                        **({"p1_guided_cos": guided_cos} if guided_cos is not None else {})})
             return path
 
-        status = "identity_unusable" if "identity_unusable" in reasons else "identity_no_face"
+        status = next((r for r in ("identity_unusable", "identity_unchanged") if r in reasons), "identity_no_face")
         logger.info(f"blanket: seed {seed} has no usable identity after {len(reasons)} attempt(s): {reasons}")
         self._failed[seed] = status
         if self._cache is not None:
