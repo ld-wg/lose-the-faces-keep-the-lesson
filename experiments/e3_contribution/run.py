@@ -260,11 +260,14 @@ with Experiment(__file__) as exp:
         rows = rows_of("e3e")
         ref = cfg["e3e"]["reference"]
         delta = {r[0]: r[1] for r in paired_rows(rows, ref, "facenet_final.rank1", ev)}
-        hidden = lambda rs: round(sum(r.get("outcome") in ("reused", "filled") for r in rs) / len(rs), 3) if rs else None  # noqa: E731
-        exp.table("policies", ["Policy", "R1 final", "Verified", "Hidden", f"Δ R1 vs {ref}", "Expr.", "Emotion κ"], [
-            [label, cell(r, "facenet_final.rank1", ev), cell(r, "facenet_final.verified", ev), hidden(r),
-             delta.get(label), cell(GEN(r), "expression", ev), cell(GEN(r), "emotion_kappa", ev)]
-            for label, r in rows.items()], best={"R1 final": "min", "Verified": "min"}, align="lrrrrrr")
+        # 2026-10-30: "Hidden" = a gray fill (no face shown), as E5's hidden-share; reused boxes show
+        # the track's last synthetic face and are counted apart (before, both were "Hidden")
+        share = lambda rs, o: round(sum(r.get("outcome") == o for r in rs) / len(rs), 3) if rs else None  # noqa: E731
+        exp.table("policies", ["Policy", "R1 final", "Verified", "Hidden", "Reused", f"Δ R1 vs {ref}", "Expr.",
+                               "Emotion κ"], [
+            [label, cell(r, "facenet_final.rank1", ev), cell(r, "facenet_final.verified", ev), share(r, "filled"),
+             share(r, "reused"), delta.get(label), cell(GEN(r), "expression", ev), cell(GEN(r), "emotion_kappa", ev)]
+            for label, r in rows.items()], best={"R1 final": "min", "Verified": "min"}, align="lrrrrrrr")
         # large faces (the teacher, front rows) leak most in E2: the same strata for the policies
         bins, size_rows = strata_rows(rows, "face_px", SIZE_EDGES, "facenet_final.rank1", ev, {})
         exp.table("policies-size", ["Face size (px)", *bins], size_rows, align="l" + "r" * len(bins))

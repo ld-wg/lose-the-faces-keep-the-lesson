@@ -29,7 +29,7 @@ HEADERS = {
     "Emotion $\\kappa$": "$\\kappa$ emoção", "FPS": "Quadros/s", "Face size (px)": "Tamanho do rosto (px)",
     "Faces/frame": "Rostos/quadro", "Frames / s": "Quadros/s", "Gen.": "Ger.", "Gender": "Gênero",
     "Genuine": "Genuínos", "Held-out cos": "Cos. held-out", "Hidden": "Ocultos",
-    "Identity unusable": "Ident. inutilizável", "Impostor": "Impostores", "Latency (ms)": "Latência (ms)",
+    "Reused": "Reutilizados", "Identity unusable": "Ident. inutilizável", "Impostor": "Impostores", "Latency (ms)": "Latência (ms)",
     "Median": "Mediana", "Metric (consecutive real frames)": "Métrica (quadros reais consecutivos)",
     "Mode": "Modo", "Motion": "Movim.", "PG final": "Red. rel. R1", "Rel. red.": "Red. rel. R1", "Pairs": "Pares",
     "Params (M)": "Parâm. (M)", "Policy": "Política", "Quality-weighted cos": "Cos. ponderado",

@@ -500,7 +500,9 @@ class Backend:
 
     def _write_png(self, image: np.ndarray, name: str) -> Path:
         path = self._scratch_dir / name
-        cv2.imwrite(str(path), image)
+        # scratch files between processes: lossless either way; level 1 instead of OpenCV's
+        # default 3 spends less time compressing a file read once (2026-10-30)
+        cv2.imwrite(str(path), image, [cv2.IMWRITE_PNG_COMPRESSION, 1])
         return path
 
     def _seed_identity_path(self, crop: np.ndarray, seed: int) -> Optional[str]:
