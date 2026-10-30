@@ -16,9 +16,10 @@
   \item \texttt{check\_latex.sh}: tudo compila e cabe em 160\,mm;
   \item \texttt{purge.sh}: remove resíduos com pessoas reais após a exportação.
   \end{itemize}
-\item Testes unitários: \texttt{tests/} (pytest), só com arrays sintéticos: composição \emph{fail-closed}, políticas de geração, erro de landmarks, rastreador, pós-passe de recall, estatística e chaves; 45 testes, executados no servidor macalan (UFPR) em 2026-10-29.
+\item Testes unitários: \texttt{tests/} (pytest), só com arrays sintéticos: composição \emph{fail-closed}, políticas de geração, erro de landmarks, rastreador, pós-passe de recall, estatística, chaves, atacantes do avaliador (rank inverso, por track), análises derivadas e escolha da fonte da troca; 62 testes, executados no servidor macalan (UFPR) em 2026-10-30.
 \item Tempos: E0 61\,min; E1 19\,min; E2 $\sim$1 dia; E3 $\sim$50\,h; E5 8,2\,h.
 \item Identidades SDXL congeladas em cache por vídeo; seeds determinísticas por track (dependem do caminho do vídeo).
+\item Ponte: requer o branch \texttt{fix/source-face-selection} (\texttt{eabfbf3}) integrado aos três commits só do servidor; \texttt{src.eval.identity\_sources} conta as identidades em cache cuja fonte não era o rosto inpaintado.
 \item Execuções exportadas em 5 commits diferentes; E1 com árvore suja (\texttt{SOURCES.md}).
 \item Pendente (servidor): push dos commits da ponte \texttt{f376d0b}, \texttt{3004a3a}, \texttt{16cf02d} e fixação no \texttt{NOTICE}; E0 e E1 de novo no commit final ($\approx$80\,min); \texttt{smoke.sh} após a limpeza; tag \texttt{tcc-defesa}.
 \item Código: \texttt{github.com/ld-wg/lose-the-faces-keep-the-lesson}, PR \#12 (campanha de resultados) e PR de fechamento do parecer (\texttt{feature/wrap-up-review}).
