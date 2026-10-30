@@ -38,6 +38,16 @@ Landmarks = list[tuple[float, float]]    # 5-point: eyes, nose, mouth corners
 # too short to get a synthetic identity).
 SOURCES = ("detector", "interpolated", "dilated", "unconfirmed")
 
+# Phase 2 -> composition contract (generation.jsonl `status`, compose.jsonl `outcome`).
+# The composed video reuses a track's last generated face for at most REUSE_FRAMES
+# frames (compose_video.py --reuse-frames); frame sampling in run.py must stay within it.
+REUSE_FRAMES = 10
+# A generated crop that changes less than this share of the detection box's pixels is
+# not a replacement: the backend fell back to the real crop (e.g. an empty paste mask
+# makes poisson_composite return the input). run.py marks it failsafe ("unchanged") and
+# compose_video.py never shows it as generated.
+MIN_CHANGED_FRACTION = 0.01
+
 
 def derive_seed(video_source: str, track_id: int) -> int:
     """Deterministic per-track seed. Same (video, track_id) -> same seed, always."""

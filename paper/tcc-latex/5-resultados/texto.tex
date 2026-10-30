@@ -3,10 +3,15 @@
 
 % Rascunho em tópicos (2026-10-22). Números: \result{} de ../generated (agrupado nos
 % três vídeos, média ± meia-largura do IC de 95% bootstrap por track, quando houver).
-% As tabelas vêm prontas de ../generated (cabeçalhos em inglês).
+% As tabelas vêm prontas de ../generated/<experimento>/pt (cabeçalhos e rótulos em
+% português, vírgula decimal: experiments/tables_pt.py, 2026-10-29). Figuras: pgfplots em
+% português gerados dos CSVs exportados (experiments/derived.py, 2026-10-30).
+% 2026-10-29: todo float com \label, fonte e menção no texto; seção por vídeo, acaso e
+% LOVO (experiments/derived.py, sobre as chaves já exportadas).
 
 \section{E0: instrumentos}
 \begin{itemize}
+\item Limiares e TAR por vídeo: Tabela~\ref{tab:e0-recognizers}.
 \item TAR a FAR 1\%, FaceNet: demo1 \result{e0/demo1/facenet.tar}; demo2 \result{e0/demo2/facenet.tar}; demo3 \result{e0/demo3/facenet.tar}.
 \item TAR a FAR 1\%, ArcFace: \result{e0/demo1/arcface.tar}; \result{e0/demo2/arcface.tar}; \result{e0/demo3/arcface.tar}.
 \item demo1 é um teste fraco (rostos menores e mais virados).
@@ -17,11 +22,14 @@
 
 \begin{table}[ht]\centering
 \caption{E0: limiar in-domain e TAR a FAR 1\% por vídeo e reconhecedor.}
-\input{generated/e0_instruments/tab-e0-recognizers}
+\label{tab:e0-recognizers}
+\input{generated/e0_instruments/pt/tab-e0-recognizers}
+\fonteautor
 \end{table}
 
 \section{E1: detecção}
 \begin{itemize}
+\item AP oficial e custo: Tabela~\ref{tab:e1-widerface-ap}. Detector a 0,3 no E1 (0,1 no pipeline).
 \item SCRFD-10GF, AP hard \result{e1/widerface/scrfd-10gf/ap-hard} (publicado para a variante com keypoints: 0,828). Valida o porte do protocolo.
 \item SCRFD-34GF: AP hard \result{e1/widerface/scrfd-34gf/ap-hard}; latência \result{e1/widerface/scrfd-34gf/latency-ms}\,ms contra \result{e1/widerface/scrfd-10gf/latency-ms}\,ms.
 \item YOLO-FaceV2-s: AP hard \result{e1/widerface/yolo-facev2-s/ap-hard}; recall a 0,1 FPPI \result{e1/widerface/yolo-facev2-s/recall-at-fppi-0.1} contra \result{e1/widerface/scrfd-10gf/recall-at-fppi-0.1}; latência \result{e1/widerface/yolo-facev2-s/latency-ms}\,ms.
@@ -31,11 +39,14 @@
 
 \begin{table}[ht]\centering
 \caption{E1: WIDER FACE val, AP oficial e custo.}
-\input{generated/e1_detection/tab-e1-widerface-ap}
+\label{tab:e1-widerface-ap}
+\input{generated/e1_detection/pt/tab-e1-widerface-ap}
+\fonteautor
 \end{table}
 
 \section{E2: geradores na forma publicada}
 \begin{itemize}
+\item Cobertura e privacidade nas três visões: Tabela~\ref{tab:e2-main}; utilidade: Tabela~\ref{tab:e2-utility}.
 \item FaceNet rank-1, BLANKET (código liberado):
   \begin{itemize}
   \item rostos gerados \result{e2/pooled/blanket/generated/facenet.rank1};
@@ -44,36 +55,43 @@
   \end{itemize}
 \item GANonymization: gera \result{e2/pooled/ganonymization/anonymized}; todos \result{e2/pooled/ganonymization/facenet.rank1}; final \result{e2/pooled/ganonymization/facenet_final.rank1}.
 \item Vídeo final: blur \result{e2/pooled/blur/facenet_final.rank1}; CIAGAN \result{e2/pooled/ciagan/facenet_final.rank1}; mosaico \result{e2/pooled/mosaic/facenet_final.rank1}.
-\item A ordem dos métodos muda com a visão: como publicado, BLANKET é o menos privado; no vídeo final, não.
+\item A ordem dos métodos muda com a visão: como publicado, BLANKET é o menos privado; no vídeo final, com 72\% dos rostos ocultos pelo \emph{fail-safe}, tem rank-1 (\result{e2/pooled/blanket/facenet_final.rank1}) menor que o do pipeline final (\result{e3e/pooled/gate/facenet_final.rank1}). Leitura pelo par privacidade $\times$ cobertura: Seção~\ref{sec:r-fronteira}.
 \item Utilidade nos rostos gerados, BLANKET: expressão \result{e2/pooled/blanket/generated/expression}; pose \result{e2/pooled/blanket/generated/pose_err}\textdegree; $\kappa$ \result{e2/pooled/blanket/generated/emotion_kappa}; gênero \result{e2/pooled/blanket/generated/gender_agree}; re-detecção \result{e2/pooled/blanket/generated/redetected}.
 \item Censura e GANs: $\kappa$ perto de zero (CIAGAN \result{e2/pooled/ciagan/generated/emotion_kappa}; blur \result{e2/pooled/blur/generated/emotion_kappa}); pose 13--17\textdegree.
 \item GANonymization: erro de idade \result{e2/pooled/ganonymization/generated/age_err} anos (desvio para mais velho).
+\item GANonymization nos rostos que gera: erro de expressão \result{e2/pooled/ganonymization/generated/expression} (igual ao do P2 $\beta$ 1,2, \result{e3c/pooled/b-1.2/expression}) e rank-1 \result{e2/pooled/ganonymization/generated/facenet.rank1}; cobre \result{e2/pooled/ganonymization/anonymized} dos rostos, pose \result{e2/pooled/ganonymization/generated/pose_err}\textdegree.
 \item Nenhum método chega perto do piso de emoção ($\kappa$ \result{e2/pooled/_noise_floor/generated/emotion_kappa}); identidades sintéticas do BLANKET tendem a sorrir.
-\item Rostos $\ge 96$\,px: BLANKET os reidentifica quase sempre (Tab.~\ref{tab:r-e2-size}).
-\item Custo (quadros/s): blur \result{e2/pooled/blur/fps}; mosaico \result{e2/pooled/mosaic/fps}; CIAGAN \result{e2/pooled/ciagan/fps}; GANonymization \result{e2/pooled/ganonymization/fps}; BLANKET \result{e2/pooled/blanket/fps} (processo principal em CPU; ver E5).
+\item Rostos $\ge 96$\,px: BLANKET os reidentifica quase sempre (Tabela~\ref{tab:r-e2-size}). Na sala de aula, o rosto maior costuma ser o do professor.
+\item Custo (quadros/s; tempo total do Estágio~2, inclusive carga e identidades): blur \result{e2/pooled/blur/fps}; mosaico \result{e2/pooled/mosaic/fps}; CIAGAN \result{e2/pooled/ciagan/fps}; GANonymization \result{e2/pooled/ganonymization/fps}; BLANKET \result{e2/pooled/blanket/fps} (processo principal em CPU; ver E5). Não comparável aos ms por rosto do E5.
+\item Coberturas e contagens \texttt{generated} dos braços sem \emph{gate}: podem incluir crops devolvidos sem troca (\emph{fail-open}, Seção~\ref{cap:metodo}); frequência pendente.
 \end{itemize}
 
 \begin{table}[ht]\centering
 \caption{E2: cobertura e FaceNet rank-1 nas três visões, redução relativa e verificação no vídeo final.}
-\input{generated/e2_generation/tab-e2-main}
+\label{tab:e2-main}
+\input{generated/e2_generation/pt/tab-e2-main}
+\fonteautor
 \end{table}
 
 \begin{table}[ht]\centering
 \caption{E2: utilidade nos rostos gerados e piso de ruído.}
-\input{generated/e2_generation/tab-e2-utility}
+\label{tab:e2-utility}
+\input{generated/e2_generation/pt/tab-e2-utility}
+\fonteautor
 \end{table}
 
 \begin{table}[ht]\centering
 \caption{E2: FaceNet rank-1 nos rostos gerados por tamanho do rosto.}
 \label{tab:r-e2-size}
-\input{generated/e2_generation/tab-e2-strata-face-px}
+\input{generated/e2_generation/pt/tab-e2-strata-face-px}
+\fonteautor
 \end{table}
 
 \section{E3: contribuição}
 
 \subsection{C2 (E3a)}
 \begin{itemize}
-\item Cosseno com a segunda metade do track: média \result{e3a/pooled/mean.heldout-cos}; média ponderada \result{e3a/pooled/quality_mean.heldout-cos}; melhor quadro \result{e3a/pooled/best.heldout-cos}; primeiro quadro \result{e3a/pooled/first.heldout-cos}; EMA \result{e3a/pooled/ema_adaptive.heldout-cos}.
+\item Cosseno com a segunda metade do track: média \result{e3a/pooled/mean.heldout-cos}; média ponderada \result{e3a/pooled/quality_mean.heldout-cos}; melhor quadro \result{e3a/pooled/best.heldout-cos}; primeiro quadro \result{e3a/pooled/first.heldout-cos}; EMA \result{e3a/pooled/ema_adaptive.heldout-cos} ($\alpha_f = 0{,}95$; o pipeline usa 0,8).
 \item Referência entre pessoas diferentes (tracks no mesmo quadro): \result{e3a/pooled/cross-track-cos-mean}.
 \item O track estima melhor que um quadro; os pesos de qualidade definidos à mão não ajudam.
 \item Como alvo do P2 (E3d), nenhum modo supera o primeiro quadro (média ponderada: \result{e3d/pooled/quality_mean/delta-facenet.rank1}, intervalo inclui zero).
@@ -89,16 +107,21 @@
 \subsection{P2 (E3c)}
 \begin{itemize}
 \item FaceNet rank-1 (rostos gerados): mix nativo \result{e3c/pooled/native/facenet.rank1}; sem mix \result{e3c/pooled/none/facenet.rank1}; $\beta$ 1,2 \result{e3c/pooled/b-1.2/facenet.rank1}; $\beta$ 1,6 \result{e3c/pooled/b-1.6/facenet.rank1}.
-\item $\Delta$ contra o nativo: $\beta$ 1,2 \result{e3c/pooled/b-1.2/delta-facenet.rank1}~$\pm$~\result{e3c/pooled/b-1.2/delta-facenet.rank1.ci}; $\beta$ 1,6 \result{e3c/pooled/b-1.6/delta-facenet.rank1}~$\pm$~\result{e3c/pooled/b-1.6/delta-facenet.rank1.ci}; todo $\beta \ge 0{,}35$ exclui zero.
+\item Curva contra $\beta$: Figura~\ref{fig:e3-p2-curve}.
+\item $\Delta$ contra o nativo: $\beta$ 1,2 \result{e3c/pooled/b-1.2/delta-facenet.rank1}~$\pm$~\result{e3c/pooled/b-1.2/delta-facenet.rank1.ci}; $\beta$ 1,6 \result{e3c/pooled/b-1.6/delta-facenet.rank1}~$\pm$~\result{e3c/pooled/b-1.6/delta-facenet.rank1.ci}. Intervalos sem correção: $\beta \ge 0{,}5$ exclui zero com folga; $\beta$ 0,35 no limite (\result{e3c/pooled/b-0.35/delta-facenet.rank1}~$\pm$~\result{e3c/pooled/b-0.35/delta-facenet.rank1.ci}), provavelmente não sobrevive à correção de Holm (valores ajustados pendentes da próxima exportação).
+\item Monotônico no agregado, não por vídeo: demo1 $\beta$ 1,2 \result{e3c/demo1/b-1.2/facenet.rank1}, $\beta$ 1,6 \result{e3c/demo1/b-1.6/facenet.rank1} (Seção~\ref{sec:r-por-video}).
 \item Mix nativo indistinguível de nenhum mix (\result{e3c/pooled/none/delta-facenet.rank1}).
+\item Leitura geométrica (Tabela~\ref{tab:derived-p2geom}): $\beta$ 0,35 $\approx$ o ponto ortogonal ($c$ = \result{derived/p2geom/c}), que só remove a componente real herdada da identidade SDXL, dá \result{e3c/pooled/b-0.35/facenet.rank1}; o resto da queda até \result{e3c/pooled/b-1.6/facenet.rank1} vem de levar o alvo para a antípoda da identidade real (risco de reversibilidade, Seção~\ref{sec:ameaca}; rank inverso pendente).
 \item ArcFace rank-1: \result{e3c/pooled/native/arcface.rank1} $\to$ \result{e3c/pooled/b-1.2/arcface.rank1} (satura em $\beta$ 1,2; \result{e3c/pooled/b-1.6/arcface.rank1} em 1,6). O FaceNet vê cerca de um terço da queda.
 \item Expressão (\result{e3c/pooled/native/expression} $\to$ \result{e3c/pooled/b-1.6/expression}) e pose (\result{e3c/pooled/native/pose_err} $\to$ \result{e3c/pooled/b-1.6/pose_err}\textdegree) estáveis.
-\item $\kappa$: \result{e3c/pooled/native/emotion_kappa} $\to$ \result{e3c/pooled/b-1.6/emotion_kappa} (intervalos se sobrepõem).
+\item $\kappa$ de emoção: \result{e3c/pooled/native/emotion_kappa} $\to$ \result{e3c/pooled/b-1.2/emotion_kappa} ($\beta$ 1,2) $\to$ \result{e3c/pooled/b-1.6/emotion_kappa} ($\beta$ 1,6): queda de um terço a quase metade na estimativa pontual; intervalos de $\pm$\result{e3c/pooled/b-1.2/emotion_kappa.ci} se sobrepõem (baixo poder, não ausência de efeito).
 \end{itemize}
 
 \begin{figure}[ht]\centering
-\includegraphics[width=\linewidth]{generated/e3_contribution/fig-e3-p2-curve}
 \caption{E3c: rank-1 (FaceNet, ArcFace) e erro de expressão contra $\beta$; tracejado: mix nativo.}
+\label{fig:e3-p2-curve}
+\input{generated/derived/pt/fig-e3-p2-curve}
+\fonteautor
 \end{figure}
 
 \subsection{Políticas (E3e)}
@@ -107,6 +130,8 @@
 \item Gerados: \emph{gate} \result{e3e/pooled/gate/anonymized}; \emph{hide-low} \result{e3e/pooled/hide-low/anonymized}.
 \item Verificação: \emph{gate} \result{e3e/pooled/gate/facenet_final.verified} (a menor); \emph{hide-low} \result{e3e/pooled/hide-low/facenet_final.verified}.
 \item Utilidade dos rostos mostrados: inalterada.
+\item Por vídeo (\emph{gate}, vídeo final): demo1 \result{derived/gate-final/demo1/rank1} (\result{derived/gate-final/demo1/x-chance}$\times$ o acaso); demo2 \result{derived/gate-final/demo2/rank1} (\result{derived/gate-final/demo2/x-chance}$\times$); demo3 \result{derived/gate-final/demo3/rank1} (\result{derived/gate-final/demo3/x-chance}$\times$).
+\item Estratos por tamanho do rosto e $\kappa$ de orientação: implementados (2026-10-29); pendentes (servidor).
 \end{itemize}
 
 \subsection{P1 (E3g), negativo}
@@ -119,15 +144,17 @@
 
 \subsection{P3 (E3f), negativo}
 \begin{itemize}
-\item $\Delta$ FaceNet rank-1: \result{e3f/pooled/P3-tau-0.0/delta-facenet.rank1} ($\tau = 0$), \result{e3f/pooled/P3-tau--0.2/delta-facenet.rank1} ($\tau = -0{,}2$).
+\item $\Delta$ FaceNet rank-1: \result{e3f/pooled/P3-tau-0.0/delta-facenet.rank1} ($\tau_h = 0$), \result{e3f/pooled/P3-tau--0.2/delta-facenet.rank1} ($\tau_h = -0{,}2$).
 \item CIAGAN puro já perto do acaso: \result{e3f/pooled/ciagan/facenet.rank1}.
-\item \emph{Hinge} ativa em \result{e3f/pooled/P3-tau-0.0/push.active} ($\tau = 0$) e \result{e3f/pooled/P3-tau--0.2/push.active} ($\tau = -0{,}2$) dos rostos.
+\item \emph{Hinge} ativa em \result{e3f/pooled/P3-tau-0.0/push.active} ($\tau_h = 0$) e \result{e3f/pooled/P3-tau--0.2/push.active} ($\tau_h = -0{,}2$) dos rostos.
 \item Cosseno: \result{e3f/pooled/P3-tau-0.0/push.cos-start} $\to$ \result{e3f/pooled/P3-tau-0.0/push.cos-end}; massa no código da seed \result{e3f/pooled/P3-tau-0.0/push.p-seed}.
 \item O otimizador não move o código: penalidade do pseudônimo, gradiente plano do softmax, pouca variação de identidade dentro do casco.
 \end{itemize}
 
 \section{E5: custo}
 \begin{itemize}
+\item Custo por braço: Tabela~\ref{tab:e5-cost}; diferenças pareadas: Tabela~\ref{tab:e5-paired}; compromisso: Figura~\ref{fig:e5-tradeoff}.
+\item Diferenças pareadas: intervalos sem correção (8 braços $\times$ 5 métricas); $p$ de Holm por métrica na próxima exportação (pendente).
 \item ms por rosto: \emph{ref-cpu} \result{e5/pooled/ref-cpu/ms-per-face}; \emph{ref} \result{e5/pooled/ref/ms-per-face}.
 \item Segmentação de cabeça: \result{e5/pooled/ref-cpu/stage-seg-ms}\,ms na CPU contra \result{e5/pooled/ref/stage-seg-ms}\,ms na GPU. Sem diferença pareada em privacidade ou utilidade.
 \item Estágios por rosto gerado (\emph{ref}): GFPGAN \result{e5/pooled/ref/stage-gfpgan-ms}\,ms; landmarks \result{e5/pooled/ref/stage-landm-ms}\,ms; troca \result{e5/pooled/ref/stage-swap-ms}\,ms. PNG e RPC $\sim$10\,ms (medido no profiling).
@@ -141,27 +168,106 @@
   \end{itemize}
 \item GFPGAN só $\ge 96$\,px: igual a desligado (poucos rostos grandes).
 \item Amostragem fixa a cada 3: \result{e5/pooled/every3/speedup}$\times$, nenhuma diferença pareada exclui zero.
-\item Adaptativa $\tau = 0{,}08$:
+\item Adaptativa $\tau_a = 0{,}08$:
   \begin{itemize}
   \item gera \result{e5/pooled/adapt-0.08/generated-share} dos rostos; \result{e5/pooled/adapt-0.08/speedup}$\times$;
   \item movimento $\Delta$ \result{e5/pooled/adapt-0.08/delta-motion}; $\Delta\kappa$ \result{e5/pooled/adapt-0.08/delta-kappa} (ambos melhoram);
   \item rank-1 $\Delta$ \result{e5/pooled/adapt-0.08/delta-fn-r1}.
   \end{itemize}
-\item GPU-horas por hora de aula (30\,fps, 20 rostos por quadro): \emph{ref-cpu} \result{e5/pooled/ref-cpu/class-hours}; \emph{ref} \result{e5/pooled/ref/class-hours}; adaptativa 0,08 \result{e5/pooled/adapt-0.08/class-hours}.
+\item GPU-horas por hora de aula (projeção do laço por rosto em regime; 30\,fps, 20 rostos por quadro; sem detecção, pré-passe, identidades e composição): \emph{ref-cpu} \result{e5/pooled/ref-cpu/class-hours}; \emph{ref} \result{e5/pooled/ref/class-hours}; adaptativa 0,08 \result{e5/pooled/adapt-0.08/class-hours}.
 \item O mesmo pipeline no vídeo composto (\emph{ref}): FaceNet rank-1 \result{e5/pooled/ref/facenet_video.rank1}, contra \result{e3e/pooled/gate/facenet_final.rank1} na visão de vídeo final do E3 (compressão e reaproveitamento como mostrados).
 \end{itemize}
 
 \begin{table}[ht]\centering
 \caption{E5: custo por braço (gerados, ms por rosto, estágios, aceleração, GPU-horas por hora de aula).}
-\input{generated/e5_cost/tab-e5-cost}
+\label{tab:e5-cost}
+\input{generated/e5_cost/pt/tab-e5-cost}
+\fonteautor
 \end{table}
 
 \begin{table}[ht]\centering
 \caption{E5: cada braço menos \emph{ref}, nos mesmos rostos; * = intervalo exclui zero.}
-\input{generated/e5_cost/tab-e5-paired}
+\label{tab:e5-paired}
+\input{generated/e5_cost/pt/tab-e5-paired}
+\fonteautor
 \end{table}
 
 \begin{figure}[ht]\centering
-\includegraphics[width=\linewidth]{generated/e5_cost/fig-e5-tradeoff}
 \caption{E5: GPU-horas por hora de aula, FaceNet rank-1, $\kappa$ e movimento no vídeo composto, por braço.}
+\label{fig:e5-tradeoff}
+\input{generated/derived/pt/fig-e5-tradeoff}
+\fonteautor
 \end{figure}
+
+\section{Por vídeo, acaso e escolha de \texorpdfstring{$\beta$}{beta} fora do vídeo}
+\label{sec:r-por-video}
+% 2026-10-29: experiments/derived.py, sobre as chaves exportadas (sem novos dados).
+\begin{itemize}
+\item Rank-1 por vídeo e múltiplo do acaso ($R \times N$): Tabela~\ref{tab:derived-chance}.
+  \begin{itemize}
+  \item pipeline final (\emph{gate}, vídeo final): \result{derived/gate-final/x-chance-min}$\times$--\result{derived/gate-final/x-chance-max}$\times$; macro-média \result{derived/gate-final/macro} contra \result{e3e/pooled/gate/facenet_final.rank1} ponderado por rosto;
+  \item mix nativo: \result{derived/native-generated/x-chance-min}$\times$--\result{derived/native-generated/x-chance-max}$\times$;
+  \item P2 $\beta$ 1,2: \result{derived/p2-1.2-generated/x-chance-min}$\times$--\result{derived/p2-1.2-generated/x-chance-max}$\times$;
+  \item blur: \result{derived/blur-final/x-chance-min}$\times$--\result{derived/blur-final/x-chance-max}$\times$.
+  \end{itemize}
+\item Heterogeneidade: demo2 mais fácil de proteger; demo3 (54\% dos rostos) puxa o agregado para cima; demo1 com reconhecedor fraco (TAR FaceNet \result{e0/demo1/facenet.tar}).
+\item LOVO para $\beta$ (Tabela~\ref{tab:derived-lovo}):
+  \begin{itemize}
+  \item demo1: $\beta$ \result{derived/lovo/demo1/beta}; $\Delta$ contra o nativo \result{derived/lovo/demo1/delta}; melhor no próprio vídeo: $\beta$ \result{derived/lovo/demo1/oracle-beta};
+  \item demo2: $\beta$ \result{derived/lovo/demo2/beta}; $\Delta$ \result{derived/lovo/demo2/delta}; melhor: $\beta$ \result{derived/lovo/demo2/oracle-beta};
+  \item demo3: $\beta$ \result{derived/lovo/demo3/beta}; $\Delta$ \result{derived/lovo/demo3/delta}; melhor: $\beta$ \result{derived/lovo/demo3/oracle-beta}.
+  \end{itemize}
+\item Leitura: a direção do P2 se mantém fora do vídeo de escolha; magnitude e $\beta$ ótimo dependem do vídeo (curva em U no demo1).
+\end{itemize}
+
+\begin{table}[ht]\centering
+\caption{FaceNet rank-1 por vídeo, múltiplo do acaso ($N$ = tracks da galeria) e macro-média.}
+\label{tab:derived-chance}
+\footnotesize
+\input{generated/derived/pt/tab-derived-chance}
+\fonteautor
+\end{table}
+
+\begin{table}[ht]\centering
+\caption{Escolha de $\beta$ sem o vídeo avaliado (LOVO): FaceNet rank-1 nos rostos gerados.}
+\label{tab:derived-lovo}
+\input{generated/derived/pt/tab-derived-lovo}
+\fonteautor
+\end{table}
+
+\section{Privacidade \texorpdfstring{$\times$}{x} cobertura}
+\label{sec:r-fronteira}
+% 2026-10-30 (análise crítica, F1): o rank-1 do vídeo final premia ocultar; cada método
+% como o par (parcela com face sintética, rank-1 entre esses rostos).
+\begin{itemize}
+\item Pares por método: Tabela~\ref{tab:derived-frontier} e Figura~\ref{fig:derived-frontier}.
+\item BLANKET liberado: face sintética em \result{derived/frontier/e2-blanket/share} dos rostos, rank-1 \result{derived/frontier/e2-blanket/rank1} entre eles.
+\item Pipeline final no vídeo composto: \result{derived/frontier/e5-ref/share}, rank-1 \result{derived/frontier/e5-ref/rank1}; com amostragem adaptativa: \result{derived/frontier/e5-adapt-0.08/share}, \result{derived/frontier/e5-adapt-0.08/rank1}.
+\item GANonymization: \result{derived/frontier/e2-ganonymization/share}, \result{derived/frontier/e2-ganonymization/rank1} (erro de idade de \result{e2/pooled/ganonymization/generated/age_err} anos).
+\item Censura e CIAGAN: cobertura total, rank-1 perto do acaso, comportamento apagado ($\kappa \le$ \result{e2/pooled/ciagan/generated/emotion_kappa}).
+\item Leitura: a contribuição é cobertura com menos reidentificação por rosto mostrado; não é privacidade maior que a de quem oculta ou censura.
+\item Ressalva: na visão ``gerados'', cada método é medido nos rostos que conseguiu gerar (o GANonymization e o BLANKET liberado, nos mais fáceis: maiores e mais frontais); as populações diferem. A comparação no mesmo conjunto de rostos é o rank-1 entre rostos mostrados no vídeo final (implementado, pendente do servidor).
+\item Geometria do empurrão por $\beta$, com o rank-1 medido: Tabela~\ref{tab:derived-p2geom}.
+\end{itemize}
+
+\begin{table}[ht]\centering
+\caption{Parcela de rostos com face sintética e FaceNet rank-1 entre eles, por método.}
+\label{tab:derived-frontier}
+\small
+\input{generated/derived/pt/tab-derived-frontier}
+\fonte{o autor (2026). Visão ``gerados'' (E2/E3): rostos que o método substituiu; ``vídeo composto'' (E5): rostos mostrados (rank-1 / parcela não preenchida).}
+\end{table}
+
+\begin{figure}[ht]\centering
+\caption{Privacidade $\times$ cobertura: parcela de rostos com face sintética e FaceNet rank-1 entre eles.}
+\label{fig:derived-frontier}
+\input{generated/derived/pt/fig-derived-frontier}
+\fonteautor
+\end{figure}
+
+\begin{table}[ht]\centering
+\caption{Geometria do P2: cosseno do alvo da troca com a identidade sintética e com a real, e rank-1 medido.}
+\label{tab:derived-p2geom}
+\input{generated/derived/pt/tab-derived-p2geom}
+\fonte{o autor (2026). Cossenos calculados com $c$ = \result{derived/p2geom/c} (E3g); $\perp$: ponto ortogonal ($\beta = c$).}
+\end{table}

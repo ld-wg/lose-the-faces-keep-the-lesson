@@ -3,13 +3,22 @@
 
 % Rascunho em tópicos (2026-10-22). Desenho completo: experiments/README.md e
 % experiments/*/README.md; decisões: experiments/DECISIONS.md.
+% 2026-10-29 (parecer de orientação): dados e ética, re-detecção, proxy de orientação,
+% Holm, macro-média, acaso, LOVO, escopo das métricas de custo.
 
 \section{Dados}
 \begin{itemize}
 \item WIDER FACE val, protocolo oficial (E1) \citep{widerface}.
-\item Três vídeos de sala de aula: 239, 244 e 355 quadros; 16, 21 e 22 tracks com o Estágio~1 do pipeline.
-\item Acaso do rank-1 $= 1/N$: 0,045--0,063.
-\item Origem e termos dos vídeos: pendente (não é conjunto consentido de crianças).
+\item Três vídeos de sala de aula (demo1, demo2, demo3):
+  \begin{itemize}
+  \item 239, 244 e 355 quadros; 9,3, 8,0 e 11,8\,s (29,1\,s no total);
+  \item \result{derived/demo1/tracks}, \result{derived/demo2/tracks} e \result{derived/demo3/tracks} tracks com o Estágio~1 do pipeline; o E1 conta 15, 21 e 23, porque roda o detector a 0,3 (pipeline: 0,1);
+  \item 1337, 4432 e 6864 rostos-quadro detectados (12.633); demo3 tem 54\% dos rostos e domina o agregado.
+  \end{itemize}
+\item Acaso do rank-1 $= 1/N$: \result{derived/demo1/chance-rank1}, \result{derived/demo2/chance-rank1} e \result{derived/demo3/chance-rank1}.
+\item Origem: vídeos públicos na internet. Fonte, licença e termos de cada vídeo: pendente de registro. Não é conjunto consentido de crianças.
+\item Ética: consulta ao CEP da UFPR pendente (regulamento do TCC: aprovação, se necessária, na matrícula). Plano B: 2 ou 3 gravações próprias com adultos voluntários e termo de uso de imagem, repetindo E3e e E5.
+\item Conjunto de teste separado: não existe; hiperparâmetros escolhidos nos mesmos vídeos (Seção~\ref{sec:ameacas-validade}).
 \end{itemize}
 
 \section{Privacidade}
@@ -23,7 +32,7 @@
   \end{itemize}
 \item Reidentificação em conjunto fechado: cada rosto contra o embedding médio de cada track (o próprio quadro fora); rank-1 e rank-5.
 \item Verificação: cosseno $\ge$ limiar.
-\item Redução relativa de rank-1: $1 - R_{\mathrm{anon}}/R_{\mathrm{real}}$ (o \emph{Privacy Gain} de \citealp{meden} é a diferença absoluta).
+\item Redução relativa de rank-1: $1 - R_{\mathrm{anon}}/R_{\mathrm{real}}$ (o \emph{Privacy Gain} de \citealp{meden} é a diferença absoluta). Coluna renomeada de ``PG final'' para ``Red. rel. R1'' (2026-10-29).
 \item Visões:
   \begin{itemize}
   \item rostos gerados;
@@ -31,7 +40,12 @@
   \item vídeo final, após o \emph{fail-safe} (\texttt{compose.jsonl}): oculto nunca reidentificado; reaproveitado com o embedding do rosto de origem;
   \item vídeo composto (E5): probes nos pixels do \texttt{output.mp4}, reaproveitados como aparecem.
   \end{itemize}
-\item Medida primária: FaceNet rank-1 no vídeo final.
+\item Visão de vídeo final e vídeo composto divergem para o mesmo pipeline (\result{e3e/pooled/gate/facenet_final.rank1} contra \result{e5/pooled/ref/facenet_video.rank1}). Reavaliar E2/E3 na visão do vídeo composto: pendente (servidor).
+\item Rosto oculto conta como não reidentificado: ocultar baixa o rank-1 do vídeo final sem proteger ninguém que apareça. O BLANKET liberado, com 72\% dos rostos ocultos pelo nosso \emph{fail-safe}, tem rank-1 menor que o do pipeline nessa visão.
+\item Medida primária (revista em 2026-10-30): o par (FaceNet rank-1 entre os rostos com face sintética, parcela de rostos com face sintética), lido como fronteira (Figura~\ref{fig:derived-frontier}); o rank-1 do vídeo final fica como visão secundária. E2/E3: rostos gerados; E5: rostos mostrados no vídeo composto (exato: caixa preenchida nunca é rank-1). Rank-1 entre rostos mostrados no vídeo final (\texttt{facenet\_shown}): implementado, pendente do servidor.
+\item Rank inverso e rank-1 por track (Seção~\ref{sec:ameaca}): implementados, pendentes do servidor.
+\item Galeria: quadros reais do mesmo clipe de 8 a 12\,s (alunos parados: track mediano de 232 dos 244 quadros no demo2); rank-1 dos rostos reais $\approx 0{,}9$. Atacante com foto de outra sessão: não medido.
+\item Avaliador fraco no demo1: TAR FaceNet a FAR 1\% de \result{e0/demo1/facenet.tar} nos próprios rostos reais; queda de rank-1 no demo1 mede em parte o avaliador. demo1 reportado à parte (Tabela~\ref{tab:derived-chance}).
 \end{itemize}
 
 \section{Utilidade}
@@ -40,10 +54,13 @@
 \item Pose: erro absoluto médio de pitch, yaw, roll (\texttt{1k3d68}).
 \item Idade e gênero: \texttt{genderage} \citep{insightface}.
 \item Emoção: HSEmotion, 8 classes, $\kappa$ de Cohen \citep{hsemotion,cohen}. Concordância bruta descartada: 73\% dos rostos reais são neutros.
-\item Re-detecção: SCRFD no rosto gerado.
+\item Orientação (proxy de tarefa, 2026-10-29): rosto ``voltado para a frente'' se $|\mathrm{yaw}| < 30^\circ$ e $|\mathrm{pitch}| < 30^\circ$; $\kappa$ entre real e mostrado. Implementado; resultados pendentes (servidor).
+\item Re-detecção: SCRFD no rosto gerado, entrada 320\,px, corte 0,5 (não os 640\,px e 0,1 do Estágio~1).
+\item Viés da métrica de expressão: a troca mantém por construção a geometria do rosto alvo; o erro dos 106 landmarks (detector da mesma família InsightFace) favorece métodos de troca contra geradores (CIAGAN, GANonymization), sem medir expressão percebida.
 \item Movimento (E5): $|\Delta_{\mathrm{mostrado}} - \Delta_{\mathrm{real}}|$ dos 106 landmarks entre quadros consecutivos; pega rosto congelado e rosto tremido.
 \item Piso de ruído: a mesma métrica entre quadros reais consecutivos.
 \item Olhar (\emph{gaze}): não medido (sem estimador validado em rostos tão pequenos).
+\item Probes não validados neste material (rostos de 30--80\,px); ``sem custo de utilidade'' = sem diferença significativa, não equivalência.
 \end{itemize}
 
 \section{Estatística}
@@ -51,14 +68,27 @@
 \item Intervalos de 95\%: bootstrap percentil reamostrando tracks inteiros (2000 reamostras) \citep{efron}.
 \item Braços comparados nos mesmos rostos: diferença pareada (vídeo, quadro, track) com intervalo; ``exclui zero'' como critério.
 \item Teste de inversão de sinal por track (10000), ponderado por rosto.
-\item Estratos: tamanho do rosto (0--48, 48--96, $\ge 96$\,px), $|$yaw$|$, confiança de detecção.
-\item Critérios fixados antes de rodar: melhora de privacidade = rank-1 cai e o intervalo pareado exclui zero; utilidade preservada = dentro do intervalo do braço de referência, lido contra o piso de ruído.
+\item Comparações múltiplas (2026-10-29): $p$ ajustado por Holm--Bonferroni dentro de cada família (E3c: braços contra o nativo; E5: braços contra \emph{ref}, por métrica). Chaves exportadas ao lado do $p$ bruto.
+\item Agregado ponderado por rosto (demo3 = 54\%); ao lado: valores por vídeo, macro-média (vídeos com peso igual) e múltiplo do acaso ($R \times N$).
+\item LOVO para $\beta$: escolhido pela média ponderada de rank-1 nos outros dois vídeos, avaliado no vídeo de fora.
+\item Estratos: tamanho do rosto (0--48, 48--96, $\ge 96$\,px), $|$yaw$|$, confiança de detecção. Estratos por tamanho no E3e e no E5 (2026-10-29): implementados; resultados pendentes (servidor).
+\item Testes de equivalência (TOST) com margem no piso de ruído: não feitos (trabalho futuro).
+\item Critérios fixados em 2026-09-29, antes da campanha E0--E5 e depois de um piloto exploratório nos mesmos vídeos (P2 visto em 2026-09-26): melhora de privacidade = rank-1 cai e o intervalo pareado exclui zero; utilidade preservada = dentro do intervalo do braço de referência, lido contra o piso de ruído.
+\item Integridade: chaves \texttt{\textbackslash result} que colidem após a conversão para ASCII abortam a exportação; estatística, composição, pós-passe e rastreador com testes unitários (\texttt{tests/}, 45 testes).
+\end{itemize}
+
+\section{Custo}
+\begin{itemize}
+\item E2, quadros/s: quadros do vídeo / tempo total do Estágio~2 (carga dos modelos, pré-passe de identidade e geração das identidades incluídos).
+\item E5, ms por rosto: laço por rosto em regime (após o primeiro rosto gerado).
+\item GPU-horas por hora de aula: projeção do laço por rosto em regime para 30\,fps e 20 rostos por quadro, a partir de 29\,s de vídeo. Fora da conta: detecção, pré-passe de identidade, geração das identidades (2--3,5\,min por track) e composição.
 \end{itemize}
 
 \section{Experimentos}
 \begin{itemize}
 \item E0, instrumentos: TAR dos reconhecedores, mecanismo do mix nativo, pisos de ruído.
-\item E1, detecção: SCRFD-10GF, SCRFD-34GF, YOLO-FaceV2-s; AP, recall a FPPI, latência; estatísticas de tracks nos vídeos.
+\item E1, detecção: SCRFD-10GF, SCRFD-34GF, YOLO-FaceV2-s; AP, recall a FPPI, latência; estatísticas de tracks nos vídeos (limiar 0,3).
+\item Recall nos vídeos sem anotação: o YOLO-FaceV2-s acha mais caixas por quadro que o SCRFD-10GF (demo2 \result{e1/demo2/yolo-facev2-s/faces-per-frame} contra \result{e1/demo2/scrfd-10gf/faces-per-frame}; demo3 \result{e1/demo3/yolo-facev2-s/faces-per-frame} contra \result{e1/demo3/scrfd-10gf/faces-per-frame}); as caixas extras que forem rostos saem reais no vídeo final. Conferência visual das caixas extras: pendente (servidor).
 \item E2, geradores na forma publicada: blur, mosaico, CIAGAN, GANonymization, BLANKET; mesmas detecções.
 \item E3, contribuição (BLANKET; CIAGAN em P3):
   \begin{itemize}
@@ -67,7 +97,7 @@
   \item E3c, força do P2: $\beta \in \{0{,}2;\, 0{,}35;\, 0{,}5;\, 0{,}8;\, 1{,}2;\, 1{,}6\}$, contra o mix nativo e sem mix;
   \item E3d, alvo do P2: cada modo do C2 em $\beta = 1{,}2$, contra o primeiro quadro;
   \item E3e, políticas: \emph{hide-low} e \emph{gate} sobre P2 $\beta = 1{,}2$;
-  \item E3f, P3: $\tau \in \{0, -0{,}2\}$, contra CIAGAN puro;
+  \item E3f, P3: $\tau_h \in \{0, -0{,}2\}$, contra CIAGAN puro;
   \item E3g, P1: escala 0,1 sobre P2 $\beta = 1{,}2$, contra P2.
   \end{itemize}
 \item E5, custo: pipeline final com um fator de custo por braço:
@@ -76,8 +106,9 @@
   \item \emph{ref-cpu}: processo principal na CPU, como em E2/E3 (demo1 e demo2);
   \item GFPGAN desligado; GFPGAN só em rostos $\ge 96$\,px;
   \item amostragem fixa a cada 2 e 3 quadros;
-  \item adaptativa com $\tau = 0{,}05$ e $0{,}08$ (máximo de 6 quadros);
+  \item adaptativa com $\tau_a = 0{,}05$ e $0{,}08$ (máximo de 6 quadros);
   \item \emph{fast}: GFPGAN $\ge 96$\,px mais adaptativa 0,05.
   \end{itemize}
-\item E4 (identidade só por texto): proposto, não executado (Cap.~\ref{cap:conclusao}).
+\item E5 reutiliza o cache de identidades do E3 e aborta se ele não existir (2026-10-29).
+\item E4 (identidade só por texto): proposto, não executado (Seção~\ref{cap:conclusao}).
 \end{itemize}

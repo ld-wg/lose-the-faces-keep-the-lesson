@@ -2,6 +2,32 @@
 \label{cap:fundam}
 
 % Rascunho em tópicos (2026-10-22). Cada item: o que é, o que usamos, o que importa aqui.
+% 2026-10-30 (análise crítica, F6): formulação dos componentes usados (equações).
+
+\section{Formulação dos componentes usados}
+\label{sec:formulacao}
+\begin{itemize}
+\item Difusão (DDPM) \citep{ldm}: processo direto com ruído gaussiano,
+  \begin{equation}
+  q(x_t \mid x_0) = \mathcal{N}\!\left(\sqrt{\bar\alpha_t}\,x_0,\ (1-\bar\alpha_t)\,I\right),\qquad \bar\alpha_t = \textstyle\prod_{i\le t}\alpha_i;
+  \end{equation}
+  rede $\epsilon_\theta$ treinada para prever o ruído, $\mathcal{L} = \mathbb{E}\,\lVert \epsilon - \epsilon_\theta(x_t, t, y)\rVert^2$.
+  \begin{itemize}
+  \item difusão latente (SDXL): o processo roda em $z = \mathcal{E}(x)$ do VAE; imagem final $\mathcal{D}(z_0)$ \citep{sdxl};
+  \item previsão do latente limpo (usada pelo P1/MPGD): $\hat z_0 = (z_t - \sqrt{1-\bar\alpha_t}\,\epsilon_\theta)/\sqrt{\bar\alpha_t}$ \citep{mpgd};
+  \item \emph{classifier-free guidance}: $\tilde\epsilon = \epsilon_\theta(z_t,\varnothing) + w\,(\epsilon_\theta(z_t,y) - \epsilon_\theta(z_t,\varnothing))$;
+  \item SDEdit com \emph{strength} $\rho$: parte do crop real com ruído no passo $t_0 = \rho T$ e só remove ruído a partir dali; com $\rho = 0{,}6$ a estrutura do rosto real sobrevive \citep{sdedit}.
+  \end{itemize}
+\item ArcFace \citep{arcface}: margem angular aditiva sobre embeddings normalizados,
+  \begin{equation}
+  \mathcal{L} = -\log \frac{e^{s\cos(\theta_y + m)}}{e^{s\cos(\theta_y + m)} + \sum_{j\ne y} e^{s\cos\theta_j}};
+  \end{equation}
+  identidade comparada por cosseno, $\cos(e_a, e_b) = e_a^\top e_b$ com $\lVert e\rVert = 1$.
+\item Troca de rosto (\texttt{inswapper\_128}) \citep{facefusion,insightface}: gerador de passo único a 128\,px; recebe o rosto alvo alinhado e o embedding ArcFace da fonte projetado por uma matriz fixa $W_{\mathrm{emap}}$, $z = W_{\mathrm{emap}}^\top e / \lVert W_{\mathrm{emap}}^\top e \rVert$; mantém a geometria (pose, landmarks) do alvo e troca a identidade. Não é difusão.
+\item GFPGAN \citep{gfpgan}: restauração facial por GAN com \emph{prior} generativo; re-renderiza o rosto trocado.
+\item Reidentificação em conjunto fechado: rank do track verdadeiro na ordem decrescente de cosseno com as médias dos tracks; rank-1 ao acaso $= 1/N$.
+\item Concordância corrigida pelo acaso \citep{cohen}: $\kappa = (p_o - p_e)/(1 - p_e)$.
+\end{itemize}
 
 \section{Detecção de faces}
 \begin{itemize}

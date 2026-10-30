@@ -43,6 +43,16 @@ METRICS = {
 }
 
 
+# Chance-corrected agreement metrics: metric name -> (real label column, shown label column)
+# of src.eval.evaluate's --obs-out CSV. emotion: 8 HSEmotion classes; orient: facing the front.
+KAPPA_COLUMNS = {
+    "emotion_kappa": ("emotion_real", "emotion_anon"),
+    "emotion_kappa_video": ("emotion_real_video", "emotion_video"),
+    "orient_kappa": ("orient_real", "orient_anon"),
+    "orient_kappa_video": ("orient_real_video", "orient_video"),
+}
+
+
 def ctx_args() -> list[str]:
     """Device of the generation step's own process. On a shared GPU, BLANKET's
     main process runs on CPU (CTX_ID=-1) next to its two GPU servers."""
@@ -138,10 +148,9 @@ def by_run(rows: Sequence[dict]) -> dict[str, list[dict]]:
 
 
 def cell(rows: Sequence[dict], metric: str, ev: dict):
-    if metric in ("emotion_kappa", "emotion_kappa_video"):
-        video = metric.endswith("_video")
-        est, half, _ = kappa_ci(rows, real="emotion_real_video" if video else "emotion_real",
-                                anon="emotion_video" if video else "emotion_anon", n=ev["bootstrap"], seed=ev["seed"])
+    if metric in KAPPA_COLUMNS:
+        real, anon = KAPPA_COLUMNS[metric]
+        est, half, _ = kappa_ci(rows, real=real, anon=anon, n=ev["bootstrap"], seed=ev["seed"])
     else:
         est, half, _ = obs_ci(rows, metric, n=ev["bootstrap"], seed=ev["seed"])
     return None if est is None else (est, half)

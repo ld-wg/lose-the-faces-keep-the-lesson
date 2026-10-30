@@ -81,6 +81,7 @@ import atexit
 import json
 import logging
 import os
+import shlex
 import shutil
 import socket
 import subprocess
@@ -93,6 +94,7 @@ import cv2
 import numpy as np
 
 from .._compositing import poisson_composite
+from ...policies import IDENTITY_TOL, MIN_IDENTITY_CHANGE, changed_fraction
 from .._segmentation import load_or_random_head_segmentation, predict_head_mask, resolve_torch_device
 
 logger = logging.getLogger(__name__)
@@ -104,6 +106,17 @@ _CONNECT_RETRY_INTERVAL = 0.5  # seconds between socket-connect attempts while a
 #: (control), "track" = push away from the track-level real-identity estimate.
 SWAP_MODES = ("native", "none", "track")
 DETECTIONS = ("phase1", "upstream")
+
+
+def candidate_box(candidates: list, entry: dict) -> Optional[list]:
+    """Box of the inpainted face for a cached identity made before the cache stored it: the
+    candidate crop it was generated from (same frame, else the same attempt index)."""
+    by_frame = [c for c in candidates if getattr(c, "frame_id", None) == entry.get("candidate_frame")]
+    attempt = entry.get("attempt")
+    cand = by_frame[0] if by_frame else (
+        candidates[attempt] if isinstance(attempt, int) and 0 <= attempt < len(candidates) else None)
+    box = getattr(cand, "box_in_crop", None) if cand is not None else None
+    return [float(v) for v in box] if box is not None else None
 
 
 class _ExternalServiceError(RuntimeError):
@@ -433,7 +446,10 @@ class Backend:
             self._identity_client = _RpcClient(
                 socket_path=identity_socket, python=identity_python,
                 server_script=self.bridge_repo / "identity_server.py", cwd=self.bridge_repo,
-                extra_args=["--p1"] if self.p1 else [], timeout=self.server_timeout, label="blanket/identity",
+                # BLANKET_IDENTITY_ARGS: identity-server speed flags to benchmark (bridge >= eabfbf3),
+                # e.g. "--offload model --attention-slicing off --keep-landmarker"; empty = BLANKET's placement
+                extra_args=(["--p1"] if self.p1 else []) + shlex.split(os.environ.get("BLANKET_IDENTITY_ARGS", "")),
+                timeout=self.server_timeout, label="blanket/identity",
                 gpu=identity_gpu,
             )
             swap_args = [] if swap_face_detector_score is None else [
@@ -455,6 +471,10 @@ class Backend:
             )
 
         self._identity_cache: dict[int, str] = {}  # seed -> identity image path on serra1's local disk
+        # seed -> box of the inpainted face in the identity image (= the candidate crop's box): the
+        # swap server takes the source face that overlaps it, never a real neighbour in the context
+        # crop (bridge >= eabfbf3, swap_server.py identity_box). None: BLANKET's choice (score order).
+        self._identity_box: dict[int, Optional[list]] = {}
         self._prof = _Profile(os.environ.get("BLANKET_PROFILE"))
         self._prof_seen = False
         self._seg_model = None
@@ -480,7 +500,9 @@ class Backend:
 
     def _write_png(self, image: np.ndarray, name: str) -> Path:
         path = self._scratch_dir / name
-        cv2.imwrite(str(path), image)
+        # scratch files between processes: lossless either way; level 1 instead of OpenCV's
+        # default 3 spends less time compressing a file read once (2026-10-30)
+        cv2.imwrite(str(path), image, [cv2.IMWRITE_PNG_COMPRESSION, 1])
         return path
 
     def _seed_identity_path(self, crop: np.ndarray, seed: int) -> Optional[str]:
@@ -527,6 +549,7 @@ class Backend:
             if entry is not None:
                 if entry["status"] == "ok":
                     self._identity_cache[seed] = entry["path"]
+                    self._identity_box[seed] = entry.get("box") or candidate_box(candidates, entry)
                     return entry["path"]
                 self._failed[seed] = entry["status"]
                 return None
@@ -563,7 +586,22 @@ class Backend:
                 path = str(self._cache.dir / f"seed_{seed}_c{attempt}.jpg")
                 shutil.copyfile(generated, path)
                 Path(generated).unlink(missing_ok=True)   # one copy only (real background, LGPD)
-            if not self._swap_client.call("check_identity", identity_path=path):
+            box = [float(v) for v in cand.box_in_crop]
+            # the diffusion must have generated a face: a near-copy of the real crop is no identity
+            identity_img = cv2.imread(path)
+            change = (changed_fraction(cand.crop, identity_img, box, tol=IDENTITY_TOL)
+                      if identity_img is not None else 0.0)
+            if change < MIN_IDENTITY_CHANGE:
+                logger.warning(f"blanket: seed {seed} candidate {attempt}: identity image changed only "
+                               f"{change:.3f} of the face box; rejected")
+                reasons.append("identity_unchanged")
+                if self._cache is not None:
+                    Path(path).unlink(missing_ok=True)
+                continue
+            check = self._swap_client.call("check_identity", identity_path=path, identity_box=box)
+            usable = check["usable"] if isinstance(check, dict) else bool(check)
+            if not usable:
+                # no face, or only faces that are not the inpainted one (a real neighbour)
                 reasons.append("identity_unusable")
                 if self._cache is not None:
                     Path(path).unlink(missing_ok=True)
@@ -571,13 +609,16 @@ class Backend:
             logger.info(f"blanket: seed {seed} identity from candidate {attempt} "
                         f"(frame {cand.frame_id}, quality {cand.quality:.3f})")
             self._identity_cache[seed] = path
+            self._identity_box[seed] = box
             if self._cache is not None:
-                self._cache.put(seed, {"status": "ok", "path": path,
+                self._cache.put(seed, {"status": "ok", "path": path, "box": box,
+                                       "identity_change": round(change, 3),
+                                       "source_index": check.get("source_index") if isinstance(check, dict) else None,
                                        "candidate_frame": cand.frame_id, "attempt": attempt,
                                        **({"p1_guided_cos": guided_cos} if guided_cos is not None else {})})
             return path
 
-        status = "identity_unusable" if "identity_unusable" in reasons else "identity_no_face"
+        status = next((r for r in ("identity_unusable", "identity_unchanged") if r in reasons), "identity_no_face")
         logger.info(f"blanket: seed {seed} has no usable identity after {len(reasons)} attempt(s): {reasons}")
         self._failed[seed] = status
         if self._cache is not None:
@@ -627,6 +668,8 @@ class Backend:
             if self.detection == "phase1" and context is not None and context.landmarks_in_crop:
                 target = {"box": [float(v) for v in context.box_in_crop],
                           "landmarks5": [[float(x), float(y)] for x, y in context.landmarks_in_crop]}
+            if self._identity_box.get(seed) is not None:
+                target["identity_box"] = self._identity_box[seed]
             if self.enhancer != "on":   # sent only off the published setting (older bridges lack it)
                 enhance = False
                 if self.enhancer.isdigit() and context is not None and context.box_in_crop is not None:

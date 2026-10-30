@@ -1,7 +1,7 @@
 \chapter{Registro de decisões}
 \label{ap:decisoes}
 
-% Resumo de experiments/DECISIONS.md (1--52) e do log do vault (70-decisions).
+% Resumo de experiments/DECISIONS.md (1--69) e do log do vault (70-decisions).
 
 \section{Detecção}
 \begin{itemize}
@@ -43,4 +43,26 @@
 \item 2026-10-15: P1 e P3 negativos; pipeline final = E3e \emph{gate}.
 \item 2026-10-21: correções da auditoria (split do E3a, $p$ ponderado, $\kappa$ no vídeo composto, tempo em regime).
 \item 2026-10-21: E5; processo principal na GPU e amostragem adaptativa entram no pipeline final; GFPGAN mantido.
+\end{itemize}
+
+\section{Fechamento após o parecer de orientação (2026-10-29)}
+\begin{itemize}
+\item Saída sem troca devolvida como sucesso (\emph{fail-open}): rejeitada abaixo de 1\% de pixels alterados na caixa (DECISIONS 53).
+\item Crops de rostos não substituídos não são mais gravados; \texttt{purge.sh}; scratch apagado em SIGTERM e SIGHUP (DECISIONS 54).
+\item Erro de landmarks, decisão de amostragem e janela de reaproveitamento definidos uma vez (DECISIONS 55).
+\item Holm por família; colisão de chaves aborta a exportação; código morto removido (DECISIONS 56).
+\item Análises derivadas (por vídeo, acaso, macro, LOVO) e tabelas em português (DECISIONS 57).
+\item Proxy de orientação, estratos por tamanho, tracks por vídeo: implementados, pendentes do servidor (DECISIONS 58).
+\item Proveniência completa em \texttt{SOURCES.md}; \texttt{fps} do \texttt{tracks.json} corrigido (DECISIONS 59).
+\item \texttt{phase3\_temporal} removido; testes unitários; reempacotamento depois da defesa (DECISIONS 60).
+\end{itemize}
+
+\section{Análise crítica (2026-10-30)}
+\begin{itemize}
+\item Medida primária: par privacidade $\times$ cobertura; rank-1 do vídeo final como visão secundária (DECISIONS 61).
+\item Avaliador: rank inverso, rank-1 por track, rank-1 entre rostos mostrados, auditoria de identidades (DECISIONS 62).
+\item Título e descrição: substituição híbrida por troca de identidade sintética; ``Expression-Preserving'' removido (DECISIONS 63).
+\item Geometria do P2 e ponto ortogonal $\beta \approx c$ como alternativa se o rank inverso mostrar reversibilidade (DECISIONS 64).
+\item Figuras do texto em português com pgfplots a partir dos CSVs exportados (DECISIONS 65).
+\item Piloto exploratório declarado; critérios valem para a campanha E0--E5 (DECISIONS 66).
 \end{itemize}

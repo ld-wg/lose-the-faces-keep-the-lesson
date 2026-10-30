@@ -23,28 +23,32 @@ Usage:
     python -m src.pipeline.phase2_generate.run --phase1-dir runs/phase1 --out runs/phase2-smoke --random-init
 
 Outputs (in --out dir):
-    generated/<track_id>/<frame_id:06d>.png   one PNG per (frame, track) — the
-                                               box-proportional context crop,
-                                               lossless (this is the pixel
-                                               data `compose_video.py`
-                                               consumes to build a full
-                                               output video, not a debug
-                                               artifact).
+    generated/<track_id>/<frame_id:06d>.png   one PNG per generated ("ok") face —
+                                               the box-proportional context
+                                               crop, lossless (the pixel data
+                                               `compose_video.py` consumes to
+                                               build the output video). Faces
+                                               that are not generated are not
+                                               written: their crop would still
+                                               show the real person (LGPD).
     generation.jsonl    one ledger line per processed item: status is "ok",
-                        "skipped_no_landmarks" (dlib found nothing usable —
-                        passthrough of the original crop, unmodified),
+                        "skipped_no_landmarks" (the backend found no usable
+                        face; compose_video.py hides it),
                         "skipped_no_frame" (the source video ended before this
                         frame_id), "skipped_no_identity" (track_id missing
                         from tracks.json — a Phase 1 data-integrity gap) or
                         "failsafe" (not generated, hidden by compose_video.py:
                         a Phase 1 post-pass box, `reason` = its source; a
                         detection below --generate-min-conf, `reason` =
-                        "low_conf"; or a frame --generate-every/--generate-
+                        "low_conf"; a frame --generate-every/--generate-
                         adaptive skips, `reason` = "subsampled", which
                         compose_video.py covers with the track's last
-                        generated face) or "gated" (generated, but --privacy-gate
-                        found it still too close to the real face; the crop
-                        is kept for evaluation, compose_video.py hides it).
+                        generated face; or an output that changed less than
+                        --min-changed of the box, `reason` = "unchanged": the
+                        backend returned the real crop) or "gated" (generated,
+                        but --privacy-gate found it still too close to the
+                        real face; compose_video.py hides it). `changed` is
+                        the share of the box's pixels the generator changed.
     run_manifest.json   run-level summary: config + per-identity frame counts.
 """
 
@@ -68,6 +72,7 @@ from config import CONFIG  # noqa: E402
 
 from .context import FaceContext  # noqa: E402
 from .cropping import context_crop as _context_crop, crop_box  # noqa: E402,F401 — re-exported
+from .policies import changed_fraction, should_generate  # noqa: E402
 from .generator import FaceGenerator  # noqa: E402
 from .models import (  # noqa: E402
     DEFAULT_CONTEXT_RATIO,
@@ -77,8 +82,9 @@ from .models import (  # noqa: E402
     DEFAULT_WEIGHTS_FILENAME,
     MODEL_NAMES,
 )
-from ..contracts import Frame, Manifest  # noqa: E402
+from ..contracts import MIN_CHANGED_FRACTION, REUSE_FRAMES, Frame, Manifest  # noqa: E402
 from ..identity.aggregate import MODES as AGGREGATION_MODES  # noqa: E402
+from ..identity import align  # noqa: E402
 from ..identity.align import shift as shift_landmarks  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -188,8 +194,9 @@ def main() -> None:
                         "no push; track = push away from the pre-pass's track-level real identity "
                         "(needs --identity-prepass)")
     p.add_argument("--blanket-push-beta", type=float, default=0.35,
-                   help="blanket --blanket-swap-mode track: push strength (0.35 = the magnitude of "
-                        "BLANKET's own native push)")
+                   help="blanket --blanket-swap-mode track: push strength. FaceFusion's native mix "
+                        "(which BLANKET saturates) is 1.35*e_synth - 0.35*e_frame; normalized, that is "
+                        "beta ~0.26 against the current frame's embedding, not the track's")
     p.add_argument("--ciagan-push", choices=("none", "track"), default="none",
                    help="ciagan: P3, optimize the identity code per frame away from the pre-pass's "
                         "track identity (needs --identity-prepass)")
@@ -217,7 +224,11 @@ def main() -> None:
                         "--generate-max-gap frames. Off by default")
     p.add_argument("--generate-max-gap", type=int, default=6, metavar="K",
                    help="--generate-adaptive: regenerate after at most K frames regardless (must stay "
-                        "within compose_video.py's --reuse-frames, 10)")
+                        "within compose_video.py's --reuse-frames, contracts.REUSE_FRAMES)")
+    p.add_argument("--min-changed", type=float, default=MIN_CHANGED_FRACTION, metavar="FRAC",
+                   help="a generated crop changing less than this share of the detection box's pixels is "
+                        "not a replacement (the backend returned its input): status failsafe, reason "
+                        "unchanged, hidden by compose_video.py (fail-closed)")
     p.add_argument("--censor-mode", choices=("blur", "mosaic"), default="blur",
                    help="censor: blur or mosaic of the detected box (E2 baseline)")
     p.add_argument("--mosaic-blocks", type=int, default=8,
@@ -242,14 +253,17 @@ def main() -> None:
                    help="Smoke test: random generator weights, output is NOT real anonymization")
     p.add_argument("--limit", type=int, default=None, help="Stop after this many frames (testing)")
     args = p.parse_args()
-    # a killed run still deletes its scratch files (real crops, LGPD): SIGTERM exits through atexit
-    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
+    # a killed or disconnected run still deletes its scratch files (real crops, LGPD): SIGTERM and
+    # SIGHUP (an SSH session dropping) exit through atexit; Ctrl-C already does
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda signum, frame: sys.exit(128 + signum))
     if args.generate_every < 1:
         p.error("--generate-every must be >= 1")
-    # compose_video.py reuses a generated face for at most 10 frames (--reuse-frames); past that
-    # a skipped face would be filled gray, which is not what a sampling arm means to measure
-    if args.generate_every > 11 or (args.generate_adaptive is not None and args.generate_max_gap > 11):
-        p.error("--generate-every / --generate-max-gap above 11 exceed compose_video.py's reuse window")
+    # compose_video.py reuses a generated face for at most REUSE_FRAMES frames; past that a
+    # skipped face would be filled gray, which is not what a sampling arm means to measure
+    longest = REUSE_FRAMES + 1
+    if args.generate_every > longest or (args.generate_adaptive is not None and args.generate_max_gap > longest):
+        p.error(f"--generate-every / --generate-max-gap above {longest} exceed compose_video.py's reuse window")
     if args.generate_adaptive is not None and args.generate_every != 1:
         p.error("--generate-adaptive and --generate-every are alternatives")
 
@@ -384,6 +398,8 @@ def main() -> None:
             embedder=ArcFaceEmbedder(ctx_id=args.ctx_id), pose_estimator=PoseEstimator(ctx_id=args.ctx_id),
             mode=args.aggregation, k_candidates=args.seed_candidates, limit=args.limit,
             ema_alpha_floor=args.ema_alpha_floor,
+            # the privacy gate reuses these real embeddings instead of recomputing them per face
+            keep_observations=args.privacy_gate is not None,
         )
         # The pre-pass's ONNX sessions are unreferenced now; collect them so
         # their GPU memory is back before the generator loads (shared GPUs).
@@ -402,17 +418,17 @@ def main() -> None:
             # in memory only: the two embeddings are compared and dropped (LGPD)
             return normalize(_arcface.embed(image, landmarks))
 
+        # (frame, track) -> the real face's unit embedding, from the identity pre-pass: the same
+        # model on the same frame and landmarks, so the gate need not embed the real face again
+        # (one ArcFace forward pass less per face). Memory only (LGPD).
+        gate_real = ({(o.frame_id, t): normalize(o.embedding) for t, obs in prepass.observations.items() for o in obs}
+                     if prepass is not None else {})
+
     landmarker = None
     if args.generate_adaptive is not None:
-        from ..identity import align
         from ..identity.embedder import Landmark106
 
         landmarker = Landmark106(ctx_id=args.ctx_id)
-
-        def face_change(a: np.ndarray, b: np.ndarray, iod: float) -> float:
-            # the evaluator's expression error (src/eval/evaluate.py), between two real frames
-            m = align.fit_similarity(b, a)
-            return float(np.linalg.norm(b @ m[:, :2].T + m[:, 2] - a, axis=1).mean() / max(iod, 1e-6))
     # track_id -> (frame_id, real 106 landmarks or None) of its last generated ("ok") face
     last_generated: dict[int, tuple[int, Optional[np.ndarray]]] = {}
     t_loop = t_steady = None   # the loop starts; the first generated face is done (servers and models up)
@@ -484,13 +500,15 @@ def main() -> None:
                 prev = last_generated.get(face.track_id)
                 if prev is not None:
                     gap = frame_rec.frame_id - prev[0]
-                    if args.generate_adaptive is not None:
+                    change = None
+                    if args.generate_adaptive is not None and prev[1] is not None and lmk is not None:
+                        # detector faces always carry landmarks; the box fallback is defensive only
                         iod = (float(np.linalg.norm(np.subtract(face.landmarks[0], face.landmarks[1])))
                                if face.landmarks else (face.box[2] - face.box[0]) / 2.5)
-                        skip = gap < args.generate_max_gap and face_change(prev[1], lmk, iod) < args.generate_adaptive
-                    else:
-                        skip = gap < args.generate_every
-                    if skip:
+                        # the evaluator's expression error, between the last generated and the current real face
+                        change = align.landmark_error(prev[1], lmk, iod)
+                    if not should_generate(gap, every=args.generate_every, adaptive_tau=args.generate_adaptive,
+                                           max_gap=args.generate_max_gap, change=change):
                         s["num_frames_subsampled"] = s.get("num_frames_subsampled", 0) + 1
                         lf.write(json.dumps({
                             "frame_id": frame_rec.frame_id, "track_id": face.track_id,
@@ -514,30 +532,40 @@ def main() -> None:
                 out_path = out_track_dir / f"{frame_rec.frame_id:06d}.png"
 
                 out_img = generator.generate(crop, identity.seed, context=context)
-                reason = None
+                reason, changed = None, None
                 if out_img is None:
                     status = "skipped_no_landmarks"
                     reason = generator.last_skip_reason
                     s["num_frames_passthrough"] += 1
                     key = reason or "unspecified"
                     s["passthrough_reasons"][key] = s["passthrough_reasons"].get(key, 0) + 1
-                    cv2.imwrite(str(out_path), crop)
                 else:
+                    changed = changed_fraction(crop, out_img, context.box_in_crop)
                     status = "ok"
-                    if gate_embedder is not None and face.landmarks:
-                        cos = float(gate_embedder(video_frame, face.landmarks)
-                                    @ gate_embedder(out_img, context.landmarks_in_crop))
+                    if changed < args.min_changed:
+                        # the backend returned the real crop (fail-open path): hide it, never show it
+                        status, reason = "failsafe", "unchanged"
+                        s["num_frames_unchanged"] = s.get("num_frames_unchanged", 0) + 1
+                    elif gate_embedder is not None and face.landmarks:
+                        real_unit = gate_real.get((frame_rec.frame_id, face.track_id))
+                        if real_unit is None:
+                            real_unit = gate_embedder(video_frame, face.landmarks)
+                        cos = float(real_unit @ gate_embedder(out_img, context.landmarks_in_crop))
                         if cos >= args.privacy_gate:
                             status, reason = "gated", "privacy_gate"
                             s["num_frames_gated"] = s.get("num_frames_gated", 0) + 1
                     if status == "ok":
                         s["num_frames_generated"] += 1
                         last_generated[face.track_id] = (frame_rec.frame_id, lmk)
-                    cv2.imwrite(str(out_path), out_img)
+                        cv2.imwrite(str(out_path), out_img)
+                # only generated faces are written: a passthrough, unchanged or gated crop still
+                # shows the real person (LGPD), and nothing downstream reads it
 
                 record = {
                     "frame_id": frame_rec.frame_id, "track_id": face.track_id,
-                    "status": status, "reason": reason, "output_path": str(out_path.relative_to(out_dir)),
+                    "status": status, "reason": reason,
+                    "output_path": str(out_path.relative_to(out_dir)) if status == "ok" else None,
+                    "changed": None if changed is None else round(changed, 4),
                     "model": args.model, "seed": identity.seed,
                     "identity_class": generator.identity_class(identity.seed),
                 }
@@ -571,6 +599,7 @@ def main() -> None:
         "context_ratio": context_ratio, "img_size": img_size,
         "generate_min_conf": args.generate_min_conf, "privacy_gate": args.privacy_gate,
         "generate_every": args.generate_every, "generate_adaptive": args.generate_adaptive,
+        "min_changed": args.min_changed,
         "generate_max_gap": args.generate_max_gap if args.generate_adaptive is not None else None,
         # cost of the frame loop after its first generated face (excludes the pre-pass and the
         # lazy start-up of the backend and its servers, reported apart), and what it did
@@ -578,7 +607,7 @@ def main() -> None:
         "startup_seconds": round(startup_seconds, 2) if startup_seconds is not None else None,
         "ctx_id": args.ctx_id,
         "generate_calls": sum(s["num_frames_generated"] + s["num_frames_passthrough"] + s.get("num_frames_gated", 0)
-                              for s in stats.values()),
+                              + s.get("num_frames_unchanged", 0) for s in stats.values()),
         "backend_config": backend_config,
         "identities": [
             {"track_id": tid, "seed": s["seed"],
@@ -589,6 +618,7 @@ def main() -> None:
              "num_frames_failsafe": s["num_frames_failsafe"],
              "num_frames_gated": s.get("num_frames_gated", 0),
              "num_frames_subsampled": s.get("num_frames_subsampled", 0),
+             "num_frames_unchanged": s.get("num_frames_unchanged", 0),
              "passthrough_reasons": s["passthrough_reasons"]}
             for tid, s in stats.items()
         ],
@@ -605,7 +635,7 @@ def main() -> None:
     if passthrough_total:
         logger.warning(
             f"{passthrough_total} frame(s) fell back to passthrough (no usable "
-            "landmarks) — unmodified original crop written, see generation.jsonl"
+            "landmarks) — not written; compose_video.py hides them, see generation.jsonl"
         )
     logger.info(f"Output: {ledger_path}, {out_dir / 'run_manifest.json'}")
 

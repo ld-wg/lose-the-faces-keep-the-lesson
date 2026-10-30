@@ -24,12 +24,25 @@ Metrics, per run and per recognizer:
     consistency   — mean pairwise cosine among one track's anonymized faces
     flicker       — mean cosine between consecutive anonymized frames
     rank5         — the same, own track among the 5 best
+    inv_rank      — the rank in increasing order of cosine: an attacker who knows the
+                    push sends the face *away* from the real identity ranks the least
+                    similar track first (2026-10-30 critical review)
+    shown_rank    — the final view restricted to boxes that show a face: a filled box
+                    counts as never re-identified, so hiding alone lowers the final-view
+                    rank-1; this one it cannot lower (reported with `shown`, the share)
+    track_rank    — one decision per track: the mean embedding shown for the track
+                    (the pseudonym is stable, an attacker can follow it) against the
+                    full gallery; on the track's first row only
+    identity_audit — (report) pairs of tracks never visible together whose real
+                    embeddings are as close as the FAR threshold: maybe one person
     privacy gain  — 1 − rank1(anonymized) / rank1(real vs real, the same
                     leave-one-out protocol): the share of re-identification removed
     utility       — (--utility, comma list), real vs anonymized:
                     expression  106-point landmark error after similarity
                                 alignment, in inter-ocular units
-                    pose        head-pose MAE (pitch, yaw, roll), degrees
+                    pose        head-pose MAE (pitch, yaw, roll), degrees; and a task
+                                proxy, "facing the front" (|yaw|, |pitch| < 30°) real
+                                vs shown, as Cohen's kappa (orient_kappa)
                     attributes  apparent-age error (years), gender agreement
                     emotion     agreement of the 8-class expression label (HSEmotion)
 Privacy metrics come in two versions: over anonymized observations only,
@@ -196,7 +209,9 @@ class Redetector:
             from insightface.app import FaceAnalysis
 
             self._app = FaceAnalysis(name="buffalo_l", allowed_modules=["detection"])
-            self._app.prepare(ctx_id=self.ctx_id, det_size=(self.det_size, self.det_size))
+            # det_thresh made explicit: insightface's own default, the value every run so far used
+            # (Phase 1 runs at 0.1, DECISIONS.md 35; re-detection asks whether a clear face is there)
+            self._app.prepare(ctx_id=self.ctx_id, det_size=(self.det_size, self.det_size), det_thresh=0.5)
         best, best_iou = None, self.min_iou
         for face in self._app.get(image_bgr):
             iou = _iou(face.bbox, expected_box)
@@ -206,9 +221,18 @@ class Redetector:
 
 
 def _expression_error(real_106: np.ndarray, anon_106: np.ndarray, iod: float) -> float:
-    m = align.fit_similarity(anon_106, real_106)
-    mapped = anon_106 @ m[:, :2].T + m[:, 2]
-    return float(np.linalg.norm(mapped - real_106, axis=1).mean() / max(iod, 1e-6))
+    return align.landmark_error(real_106, anon_106, iod)   # shared with run.py's adaptive sampling
+
+
+# Task-level utility proxy: is the face turned towards the front of the room? A binary label
+# per face from the head-pose probe, compared real vs shown with Cohen's kappa
+# (`orient_kappa`), like emotion. 30 degrees on both yaw and pitch.
+FACING_DEG = 30.0
+
+
+def facing(pose: tuple[float, float, float]) -> int:
+    pitch, yaw, _ = pose
+    return int(abs(yaw) < FACING_DEG and abs(pitch) < FACING_DEG)
 
 
 class Probes:
@@ -242,6 +266,7 @@ def compare(real: dict, anon: dict, iod: float, offset=(0.0, 0.0)) -> dict:
         out["expression"] = _expression_error(real["lmk106"], anon["lmk106"] + np.asarray(offset, np.float32), iod)
     if "pose" in real and "pose" in anon:
         out["pose_err"] = pose_error(real["pose"], anon["pose"])
+        out["orient_real"], out["orient_anon"] = facing(real["pose"]), facing(anon["pose"])
     if "age" in real and "age" in anon:
         out["age_err"] = float(abs(real["age"] - anon["age"]))
         out["gender_agree"] = float(real["gender"] == anon["gender"])
@@ -314,15 +339,64 @@ class Gallery:
             for rec in RECOGNIZERS:
                 self.sums[rec][self.tindex[r.track_id]] += r.emb[rec]
 
-    def rank(self, rec: str, probe: np.ndarray, real: RealObs) -> Optional[int]:
-        """1-based rank of the true track for `probe`; None if the track has one frame only."""
+    def sims(self, rec: str, probe: np.ndarray, exclude: Optional[RealObs] = None) -> np.ndarray:
+        """Cosine of `probe` to every track's mean real embedding; `exclude` (the probe's own
+        real frame) is left out of its track's mean."""
+        gallery = self.sums[rec].copy()
+        if exclude is not None:
+            gallery[self.tindex[exclude.track_id]] -= exclude.emb[rec]
+        gallery /= np.maximum(np.linalg.norm(gallery, axis=1, keepdims=True), 1e-12)
+        return gallery @ probe
+
+    def rank(self, rec: str, probe: np.ndarray, real: RealObs, *, inverse: bool = False) -> Optional[int]:
+        """1-based rank of the true track for `probe`; None if the track has one frame only.
+        `inverse`: the rank in increasing order of cosine, i.e. what an attacker who knows the
+        push goes *away* from the real identity would use (rank 1 = the least similar track)."""
         if self.counts[real.track_id] <= 1:
             return None
-        gallery = self.sums[rec].copy()
-        gallery[self.tindex[real.track_id]] -= real.emb[rec]
-        gallery /= np.maximum(np.linalg.norm(gallery, axis=1, keepdims=True), 1e-12)
-        sims = gallery @ probe
-        return int((sims > sims[self.tindex[real.track_id]]).sum()) + 1
+        sims = self.sims(rec, probe, real)
+        return rank_of(-sims if inverse else sims, self.tindex[real.track_id])
+
+    def track_rank(self, rec: str, probe: np.ndarray, track_id: int, *, inverse: bool = False) -> int:
+        """Rank of `track_id` for a probe that aggregates a whole track (full gallery)."""
+        sims = self.sims(rec, probe)
+        return rank_of(-sims if inverse else sims, self.tindex[track_id])
+
+
+def rank_of(sims: np.ndarray, index: int) -> int:
+    """1-based rank of entry `index` in decreasing order of `sims` (ties favor the true entry)."""
+    return int((sims > sims[index]).sum()) + 1
+
+
+def track_probe(embeddings: list[np.ndarray]) -> Optional[np.ndarray]:
+    """What an attacker who follows one pseudonym through the video compares: the mean of the
+    embeddings shown for that track, normalized. None when the track is never shown."""
+    if not embeddings:
+        return None
+    m = np.mean(embeddings, axis=0)
+    return m / max(float(np.linalg.norm(m)), 1e-12)
+
+
+def identity_audit(reals: list["RealObs"], gallery: Gallery, calibration: dict) -> dict:
+    """The evaluation's identities are tracker tracks, not annotated people. A person split
+    into two tracks becomes two gallery entries, and matching the other one counts as a
+    privacy success. Flags pairs of tracks that are never visible in the same frame and whose
+    mean real embeddings are at least as similar as the recognizer's FAR threshold: candidates
+    for one person, to check by eye on the server."""
+    frames: dict[int, set] = defaultdict(set)
+    for r in reals:
+        frames[r.track_id].add(r.frame_id)
+    tids = gallery.tids
+    out: dict = {"tracks": len(tids), "candidates": {}}
+    never = [(a, b) for i, a in enumerate(tids) for b in tids[i + 1:] if not frames[a] & frames[b]]
+    out["never_covisible_pairs"] = len(never)
+    for rec in RECOGNIZERS:
+        thr = calibration[rec]["threshold"]
+        cent = gallery.sums[rec] / np.maximum(np.linalg.norm(gallery.sums[rec], axis=1, keepdims=True), 1e-12)
+        out["candidates"][rec] = [
+            [a, b, _r(float(cent[gallery.tindex[a]] @ cent[gallery.tindex[b]]))] for a, b in never
+            if thr is not None and float(cent[gallery.tindex[a]] @ cent[gallery.tindex[b]]) >= thr]
+    return out
 
 
 def real_baseline(real_by_key: dict[tuple[int, int], RealObs], gallery: Gallery) -> dict:
@@ -386,30 +460,65 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
             real = real_by_key[(o.frame_id, o.track_id)]
             cos = float(o.emb[rec] @ real.emb[rec])
             # the noise floor's probe (the next real frame) is in its own track's gallery: no rank
-            rank = None if run_name == NOISE_FLOOR else gallery.rank(rec, o.emb[rec], real)
+            noise = run_name == NOISE_FLOOR
+            rank = None if noise else gallery.rank(rec, o.emb[rec], real)
             per_obs.append((o, cos, rank))
             obs_rows[(o.frame_id, o.track_id)].update({
                 f"{rec}_cos": round(cos, 5), f"{rec}_rank": rank,
+                # attacker who knows the push goes away from the real identity: least similar first
+                f"{rec}_inv_rank": None if noise else gallery.rank(rec, o.emb[rec], real, inverse=True),
                 f"{rec}_verified": int(cos >= thr) if thr is not None else None,
                 f"real_{rec}_rank": gallery.rank(rec, real.emb[rec], real)})
             if final is not None:
                 outcome, shown = final[(o.frame_id, o.track_id)]
                 fcos = None if shown is None else float(shown[rec] @ real.emb[rec])
+                single = gallery.counts[o.track_id] <= 1
+                frank = None if single else FILLED_RANK if shown is None else gallery.rank(rec, shown[rec], real)
                 obs_rows[(o.frame_id, o.track_id)].update({
                     "outcome": outcome,
-                    f"{rec}_final_rank": (None if gallery.counts[o.track_id] <= 1 else
-                                          FILLED_RANK if shown is None else gallery.rank(rec, shown[rec], real)),
+                    # 1 when the box shows a face (generated, reused or exposed), 0 when filled
+                    "shown": int(shown is not None),
+                    f"{rec}_final_rank": frank,
+                    f"{rec}_final_inv_rank": (None if single else FILLED_RANK if shown is None
+                                              else gallery.rank(rec, shown[rec], real, inverse=True)),
+                    # the final view restricted to shown faces: hiding cannot lower it
+                    f"{rec}_shown_rank": None if shown is None else frank,
                     f"{rec}_final_verified": 0 if fcos is None or thr is None else int(fcos >= thr)})
 
             if video is not None:
                 v = video.get((o.frame_id, o.track_id), {"outcome": "exposed"})
                 vshown = v.get("emb") if "emb" in v else (None if v["outcome"] == "filled" else o.emb)
                 vcos = None if vshown is None else float(vshown[rec] @ real.emb[rec])
+                vrank = (None if gallery.counts[o.track_id] <= 1 else
+                         FILLED_RANK if vshown is None else gallery.rank(rec, vshown[rec], real))
                 obs_rows[(o.frame_id, o.track_id)].update({
                     "video_outcome": v["outcome"],
-                    f"{rec}_video_rank": (None if gallery.counts[o.track_id] <= 1 else
-                                          FILLED_RANK if vshown is None else gallery.rank(rec, vshown[rec], real)),
+                    "video_shown": int(vshown is not None),
+                    f"{rec}_video_rank": vrank,
+                    f"{rec}_video_shown_rank": None if vshown is None else vrank,
                     f"{rec}_video_verified": 0 if vcos is None or thr is None else int(vcos >= thr)})
+
+        # Track level: an attacker follows one pseudonym (stable by design) through the video
+        # and decides once per person. One value per track, on the track's first row, so the
+        # harness's track bootstrap weighs tracks equally.
+        views = {"track": (lambda o: final[(o.frame_id, o.track_id)][1] if final is not None
+                           else (o.emb if o.anonymized else None))}
+        if video is not None:
+            views["video_track"] = lambda o: (lambda v: v.get("emb") if "emb" in v else
+                                              (None if v["outcome"] == "filled" else o.emb))(
+                video.get((o.frame_id, o.track_id), {"outcome": "exposed"}))
+        if run_name != NOISE_FLOOR:
+            by_track_obs: dict[int, list[AnonObs]] = defaultdict(list)
+            for o in obs:
+                by_track_obs[o.track_id].append(o)
+            for t, tobs in by_track_obs.items():
+                first = min(tobs, key=lambda x: x.frame_id)
+                for view, shown_of in views.items():
+                    probe = track_probe([e[rec] for e in map(shown_of, tobs) if e is not None])
+                    row = obs_rows[(first.frame_id, first.track_id)]
+                    row[f"{rec}_{view}_rank"] = FILLED_RANK if probe is None else gallery.track_rank(rec, probe, t)
+                    row[f"{rec}_{view}_inv_rank"] = (FILLED_RANK if probe is None
+                                                     else gallery.track_rank(rec, probe, t, inverse=True))
 
         def summarize(rows):
             ranks = [k for _, _, k in rows if k is not None]
@@ -480,6 +589,8 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
                 row["emotion_video"] = v["utility"].get("emotion_anon", "")
                 # the real label of the same face: every shown face, not only the generated ones
                 row["emotion_real_video"] = v["utility"].get("emotion_real", "")
+                row["orient_video"] = v["utility"].get("orient_anon", "")
+                row["orient_real_video"] = v["utility"].get("orient_real", "")
             prev_v = video.get((o.frame_id - 1, o.track_id), {})
             real, real_prev = real_by_key[key], real_by_key.get((o.frame_id - 1, o.track_id))
             if (v.get("lmk106") is not None and prev_v.get("lmk106") is not None and real_prev is not None
@@ -506,7 +617,9 @@ def run_metrics(obs: list[AnonObs], real_by_key: dict[tuple[int, int], RealObs],
                          **obs_rows[(o.frame_id, o.track_id)],
                          **{m: _r((o.utility or {}).get(m)) for m in UTILITY_METRICS},
                          "emotion_real": (o.utility or {}).get("emotion_real", ""),
-                         "emotion_anon": (o.utility or {}).get("emotion_anon", "")})
+                         "emotion_anon": (o.utility or {}).get("emotion_anon", ""),
+                         "orient_real": (o.utility or {}).get("orient_real", ""),
+                         "orient_anon": (o.utility or {}).get("orient_anon", "")})
     return out
 
 
@@ -724,6 +837,7 @@ def main() -> None:
                       "min_genuine_gap_frames": MIN_GENUINE_GAP, "utility": sorted(utility)},
         "calibration": calibration,
         "real_baseline": baseline,
+        "identity_audit": identity_audit(reals, gallery, calibration),
         "runs": {name: {"model": run_info[name].model if name in run_info else "real",
                         "dir": str(run_info[name].dir) if name in run_info else None,
                         "context_ratio": run_info[name].context_ratio if name in run_info else None,

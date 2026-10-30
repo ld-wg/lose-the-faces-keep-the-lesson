@@ -1,16 +1,19 @@
 # Lose the Faces, Keep the Lesson
 
-Expression-preserving face de-identification for educational research. Detects faces in classroom videos and replaces them with synthetic, demographically similar ones while preserving expressions, gaze, and affect.
+Facial de-identification for classroom video by synthetic identity swap (undergraduate thesis, UFPR). Detects every face, swaps it for one fixed synthetic identity per student (an SDXL source identity, swapped per frame by inswapper + GFPGAN), pushes that identity away from the real one, and composes a fail-closed output video that hides every detected face without a valid replacement. It covers far more faces than the released BLANKET with lower re-identification per shown face; blur, censoring and GANs still score lower on final-video rank-1 (they hide or erase the face). Expression error is about 4x its noise floor and ties GANonymization; emotion is not kept, and the output is not anonymized data in the LGPD's sense (non-face cues remain). Results and limits: `paper/tcc-latex/`.
 
 ## Pipeline
 
 ```
 Input video
-  -> phase1_detect   detection + tracking (SCRFD-10GF default, ByteTrack)
-  -> phase2_generate synthetic face, seeded per track
-  -> phase3_temporal temporal stabilization
-  -> Output video, de-identified, expression preserved
+  -> Stage 1  src/pipeline/phase1_detect     detection + tracking + recall post-pass (SCRFD-10GF, ByteTrack-style)
+  -> Stage 2  src/pipeline/phase2_generate   face replacement per track (BLANKET + P2 push; censor/GAN baselines),
+                                             release policies (privacy gate, hide-low), frame sampling
+  -> Stage 3  phase2_generate/compose_video  fail-closed composition: generated, reused or a gray fill
+  -> Output video + compose.jsonl (what every face box shows)
 ```
+
+Temporal consistency comes from the fixed identity per track and the reuse of the last generated face; there is no separate stabilization stage. Experiments: `experiments/` (E0–E5, each with its README).
 
 ## Setup
 
@@ -72,12 +75,13 @@ uv run python -m src.config
 
 | Stage | State |
 |---|---|
-| Detection + tracking | Implemented |
-| Generation + compositing | CIAGAN implemented + calibrated; GANonymization implemented + two rounds of real-video calibration (see its NOTICE.md) |
-| Temporal stabilization | Not started |
-| Evaluation | Not started |
+| 1 Detection + tracking + recall | Implemented (SCRFD-10GF; SCRFD-34GF and YOLO-FaceV2-s as alternatives) |
+| 2 Replacement | blur, mosaic, CIAGAN, GANonymization, BLANKET (bridge repo); C2 track identity, P2 push; P1/P3 implemented, negative |
+| 3 Fail-closed composition | Implemented |
+| Evaluation | E0–E5 run and exported to `paper/generated/` |
+| Tests | `tests/` (synthetic arrays only): `uv run --with pytest pytest` |
 
-See `research/` for design rationale and open questions.
+Design notes and the decision log live in a local research vault (not versioned); `experiments/DECISIONS.md` is the versioned decision record.
 
 ## References
 

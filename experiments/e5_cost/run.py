@@ -16,13 +16,18 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _common import SERIES, Experiment, paired_kappa_diff  # noqa: E402
-from _generation import anonymize, by_run, cell, detect, eval_ctx_args, evaluate, metric_keys, paired_rows  # noqa: E402
+from _common import SERIES, Experiment, holm, paired_kappa_diff  # noqa: E402
+from _generation import (anonymize, by_run, cell, detect, eval_ctx_args, evaluate, metric_keys,  # noqa: E402
+                         paired_rows, strata_rows)
 
 PIPELINE_KEYS = ("identity_cache_from", "reference", "arms")   # [pipeline] entries that are not arm flags
 # what the viewer sees (--video-view), FaceNet = held-out
 VIDEO = ["facenet_video.rank1", "facenet_video.verified", "arcface_video.rank1", "expression_video",
-         "pose_err_video", "emotion_kappa_video", "gender_agree_video", "motion_err_video"]
+         "pose_err_video", "emotion_kappa_video", "gender_agree_video", "motion_err_video",
+         "orient_kappa_video",
+         # 2026-10-30: shown faces only, one decision per track
+         "video_shown", "facenet_video_shown.rank1", "facenet_video_track.rank1", "facenet_video_track_inv.rank1"]
+SIZE_EDGES = [0, 48, 96, 1e9]   # face size strata in px, as E2 and E3e
 STAGES = {"client.head_segmentation": "Seg.", "server.enhance_face": "GFPGAN", "server.swap_face": "Swap",
           "server.create_faces": "Landm."}
 GROUPS = {"ref": 0, "ref-cpu": 0, "enh-off": 1, "enh-96": 1, "every2": 2, "every3": 2,
@@ -43,6 +48,10 @@ with Experiment(__file__) as exp:
         out = exp.results / video.name
         det_dir = detect(exp, video, cfg["detect"], out / "detect")
         cache = exp.cache.parent / pipe["identity_cache_from"] / video.name / "blanket"
+        if not (cache / "index.json").is_file():
+            # without E3's frozen identities every arm would generate new SDXL identities, and
+            # E5 would no longer swap the same synthetic faces as E3 (or across its own arms)
+            raise RuntimeError(f"missing {cache / 'index.json'}: run E3 first ({pipe['identity_cache_from']})")
 
         # the privacy gate's threshold: the video's in-domain ArcFace FAR 1% threshold (as E3e)
         cal = out / "calibration"
@@ -166,11 +175,19 @@ with Experiment(__file__) as exp:
         short = {"facenet_video.rank1": "fn-r1", "facenet_video.verified": "fn-ver",
                  "expression_video": "expr", "motion_err_video": "motion"}   # keys fit a line
         for m, by_arm in paired.items():
+            adjusted = holm({n: r[3] for n, r in by_arm.items()})   # one family per metric
             for n, r in by_arm.items():
                 if r[1] is not None:
                     exp.metric(f"e5/pooled/{n}/delta-{short[m]}", round(r[1][0], 3))
                     exp.metric(f"e5/pooled/{n}/delta-{short[m]}.ci", round(r[1][1], 3))
                     exp.metric(f"e5/pooled/{n}/delta-{short[m]}.excl", r[2])
+                if r[3] is not None:
+                    exp.metric(f"e5/pooled/{n}/delta-{short[m]}.p-holm", round(adjusted[n], 4))
+
+    # Large faces leak most (E2): FaceNet rank-1 on the composed video by face size.
+    bins, size_rows = strata_rows({n: pooled[n] for n in names if n != "ref-cpu"}, "face_px", SIZE_EDGES,
+                                  "facenet_video.rank1", ev, {})
+    exp.table("size", ["Face size (px)", *bins], size_rows, align="l" + "r" * len(bins))
 
     # Figure: one row per arm (cheapest at the top), four panels sharing the rows: GPU hours per
     # hour of class, then FaceNet rank-1, emotion κ and motion error on the composed video, with
