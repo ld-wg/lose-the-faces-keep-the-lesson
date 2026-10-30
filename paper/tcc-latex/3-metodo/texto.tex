@@ -64,7 +64,7 @@
   \item atacante ciente (\emph{parrot}: reconhecedor ajustado em rostos substituídos) \citep{hanisch};
   \item pessoa que conhece o aluno e assiste ao vídeo.
   \end{itemize}
-\item Identidade sintética nasce do crop real (SDEdit 0,6 + ControlNets): cosseno ArcFace com a pessoa real \result{e3g/pooled/identity-cos.plain}, contra \result{e3a/pooled/cross-track-cos-mean} entre pessoas diferentes.
+\item Identidade sintética nasce do crop real (SDEdit 0,6 + ControlNets): cosseno ArcFace com a pessoa real \result{e3g/pooled/identity-cos.plain}, contra \result{e3a/pooled/cross-track-cos-mean} entre pessoas diferentes. Causas no código do BLANKET: força 0,6 (cerca de 40\% do sinal real mantido na máscara), ControlNet de Canny com as bordas do rosto real e máscara restrita ao casco convexo dos landmarks (testa, linha do cabelo e orelhas reais; o \texttt{padding: 96} da configuração não é usado pelo código).
 \item Atacantes adicionais (2026-10-30; implementados no avaliador, resultados pendentes do servidor):
   \begin{itemize}
   \item ciente do empurrão: o P2 leva o alvo da troca para longe da identidade real e, acima de $\beta \approx$ \result{derived/p2geom/orthogonal-beta}, para a antípoda dela (Tabela~\ref{tab:derived-p2geom}); um atacante que conhece o método ordena a galeria pelo cosseno \emph{mais baixo} (rank inverso). Se o rank-1 inverso ficar alto, o P2 é reversível, e o ponto de operação seguro é $\beta \approx$ \result{derived/p2geom/orthogonal-beta};

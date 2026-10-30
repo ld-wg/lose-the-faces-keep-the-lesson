@@ -398,6 +398,8 @@ def main() -> None:
             embedder=ArcFaceEmbedder(ctx_id=args.ctx_id), pose_estimator=PoseEstimator(ctx_id=args.ctx_id),
             mode=args.aggregation, k_candidates=args.seed_candidates, limit=args.limit,
             ema_alpha_floor=args.ema_alpha_floor,
+            # the privacy gate reuses these real embeddings instead of recomputing them per face
+            keep_observations=args.privacy_gate is not None,
         )
         # The pre-pass's ONNX sessions are unreferenced now; collect them so
         # their GPU memory is back before the generator loads (shared GPUs).
@@ -415,6 +417,12 @@ def main() -> None:
         def gate_embedder(image, landmarks):
             # in memory only: the two embeddings are compared and dropped (LGPD)
             return normalize(_arcface.embed(image, landmarks))
+
+        # (frame, track) -> the real face's unit embedding, from the identity pre-pass: the same
+        # model on the same frame and landmarks, so the gate need not embed the real face again
+        # (one ArcFace forward pass less per face). Memory only (LGPD).
+        gate_real = ({(o.frame_id, t): normalize(o.embedding) for t, obs in prepass.observations.items() for o in obs}
+                     if prepass is not None else {})
 
     landmarker = None
     if args.generate_adaptive is not None:
@@ -539,8 +547,10 @@ def main() -> None:
                         status, reason = "failsafe", "unchanged"
                         s["num_frames_unchanged"] = s.get("num_frames_unchanged", 0) + 1
                     elif gate_embedder is not None and face.landmarks:
-                        cos = float(gate_embedder(video_frame, face.landmarks)
-                                    @ gate_embedder(out_img, context.landmarks_in_crop))
+                        real_unit = gate_real.get((frame_rec.frame_id, face.track_id))
+                        if real_unit is None:
+                            real_unit = gate_embedder(video_frame, face.landmarks)
+                        cos = float(real_unit @ gate_embedder(out_img, context.landmarks_in_crop))
                         if cos >= args.privacy_gate:
                             status, reason = "gated", "privacy_gate"
                             s["num_frames_gated"] = s.get("num_frames_gated", 0) + 1
