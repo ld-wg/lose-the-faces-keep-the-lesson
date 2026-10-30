@@ -130,6 +130,8 @@
 \item Imagem de identidade rejeitada pelo detector do FaceFusion: nova tentativa com detector permissivo (\texttt{many}, 0,25).
 \item Até 3 tentativas por identidade, sobre os 5 melhores quadros do track (\emph{seed candidates}).
 \item Identidades congeladas em cache por vídeo: todos os braços trocam as mesmas faces sintéticas.
+\item Fonte da troca (2026-10-30): o rosto da imagem de identidade que sobrepõe a caixa inpaintada (IoU $\ge 0{,}3$). Antes, o BLANKET usava o rosto de maior score do detector; como a imagem de identidade é o crop de contexto (margem 0,8), um vizinho real e intacto podia virar a fonte. Frequência nas execuções exportadas: pendente (servidor).
+\item Verificação da difusão (2026-10-30): imagem de identidade que muda menos de 5\% da caixa do rosto (além do ruído do JPEG, 12 níveis) é rejeitada (\texttt{identity\_unchanged}).
 \item Cobertura: de \result{e3b/pooled/original/anonymized} para \result{e3b/pooled/phase1/anonymized} dos rostos.
 \end{itemize}
 

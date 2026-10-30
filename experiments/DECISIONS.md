@@ -415,6 +415,16 @@ points an examining committee could use against the thesis.
       - the abstract uses the operating point (β 1.2), not the strongest arm, and
         states P2's κ drop.
 
+67. **The swap source must be the inpainted face (2026-10-30).** The identity image is the candidate's context crop with only the face inpainted, so real neighbours stay in it. BLANKET swaps from `source_faces[0]`, the highest-scoring detection.
+    - **Fix.** The backend sends `identity_box`. The swap server takes the face with the largest IoU with that box (bridge `fix/source-face-selection`). If none reaches IoU 0.3, the identity is unusable.
+    - **Why the metrics missed it.** E3g embeds the largest face. The privacy metrics compare against the track's own identity, so a neighbour's identity would have looked private.
+    - **To do on serra1.** Count `source_index != 0` over the cached identities. Re-run the affected arms if the count is not zero.
+68. **The diffusion must change the face.** An identity image that changes less than 5% of the face box, beyond JPEG noise (12 levels), is rejected as `identity_unchanged`.
+69. **Identity-server placement flags.**
+    - **Flags.** `--offload model|none`, `--attention-slicing off`, `--keep-landmarker` and `--openpose-device` replace BLANKET's `enable_sequential_cpu_offload()` + `attention_slicing(1)`. They change only where the same fp16 weights run.
+    - **Defaults.** Unchanged until benchmarked on serra1. The protocol is in `research/next-steps/diffusion-speed-2026-10-30.md`.
+    - **IPC files.** These scratch PNGs, passed between processes, are now written at compression 1. They stay lossless.
+
 ## Paper text to revise (not done here; `paper/main.tex` has uncommitted edits)
 
 - **Methodology, Stage 3.** Replace gradient injection on a canonical latent

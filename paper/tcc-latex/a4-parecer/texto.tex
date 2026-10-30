@@ -107,3 +107,11 @@
 \item G13, ``viável offline'': conclusão reescrita com o custo e o O4 refutado.
 \item Menores: C1 na lista de siglas; contagem de tracks do E1 explicada; eixos das figuras em português.
 \end{itemize}
+
+\section{Auditoria de código (2026-10-30, noite)}
+\begin{itemize}
+\item Fonte da troca: o rosto de maior score na imagem de identidade, que contém vizinhos reais, podia ser usado como identidade-fonte. Corrigido na ponte (\texttt{identity\_box}, branch \texttt{fix/source-face-selection}) e no backend; teste do seletor. Pendente (servidor): quantas identidades usavam outro rosto.
+\item Difusão sem efeito: imagem de identidade quase igual ao crop real agora é rejeitada.
+\item Desempenho da difusão: o BLANKET carrega SDXL, duas ControlNets e o refiner com \emph{sequential CPU offload} e \emph{attention slicing}; flags novas na ponte trocam só o posicionamento (mesmas imagens). Pendente (servidor): medir.
+\item Tabela de políticas do E3e: ``Hidden'' passa a ser só preenchimento, como no E5; reutilizados à parte.
+\end{itemize}
