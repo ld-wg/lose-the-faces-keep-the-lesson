@@ -1,6 +1,6 @@
 # Lose the Faces, Keep the Lesson
 
-Facial de-identification for classroom video (undergraduate thesis, UFPR). Detects every face, replaces it with one fixed synthetic identity per student, pushes that identity away from the real one, and composes a fail-closed output video that never shows a face the pipeline knows about. Expression and head pose are kept better than by blur or the GAN baselines; emotion is not, and the output is not anonymized data in the LGPD's sense (non-face cues remain). Results and limits: `paper/tcc-latex/`.
+Facial de-identification for classroom video by synthetic identity swap (undergraduate thesis, UFPR). Detects every face, swaps it for one fixed synthetic identity per student (an SDXL source identity, swapped per frame by inswapper + GFPGAN), pushes that identity away from the real one, and composes a fail-closed output video that hides every detected face without a valid replacement. It covers far more faces than the released BLANKET with lower re-identification per shown face; blur, censoring and GANs still score lower on final-video rank-1 (they hide or erase the face). Expression error is about 4x its noise floor and ties GANonymization; emotion is not kept, and the output is not anonymized data in the LGPD's sense (non-face cues remain). Results and limits: `paper/tcc-latex/`.
 
 ## Pipeline
 

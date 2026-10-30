@@ -346,6 +346,75 @@ Review: `research/next-steps/parecer-orientador-2026-10-29.md`. Branch
       margin of 0.8 is not calibrated. The seed and the identity cache depend on
       the video path.
 
+## Critical review (2026-10-30)
+
+Source: `research/next-steps/analise-critica-banca-2026-10-29.md`. These are the
+points an examining committee could use against the thesis.
+
+61. **The primary measure is now the privacy × coverage pair.**
+    - **What it is:** for each method, the share of faces that get a synthetic face,
+      and FaceNet rank-1 among those faces.
+    - **Why the old measure failed.** The old primary measure was final-video rank-1.
+      It counts a gray fill as never re-identified, so a method rewards itself for
+      hiding faces. On that measure the released BLANKET (0.147, with 72% of faces
+      filled), blur, mosaic, CIAGAN and GANonymization all beat the final pipeline
+      (0.303).
+    - **The text compared mismatched views.** It said the pipeline "halves
+      re-identification" against BLANKET, but set the pipeline's final-video number
+      against BLANKET's passthrough-as-leak view.
+    - **What the pair shows.** The pipeline covers 0.935 of faces at rank-1 0.370
+      (E5, shown faces). The released BLANKET covers 0.277 at 0.475.
+    - **Where it lives:** `experiments/derived.py` builds the frontier table and
+      figure.
+62. **New attacks in the evaluator** (`src/eval/evaluate.py`). All are tested on
+    synthetic embeddings.
+    - **`inv_rank`.** An attacker who knows P2 pushes away from the real identity
+      ranks the least similar track first. Above β ≈ c (c = cos(e_synth, e_real)
+      ≈ 0.33), the swap target points to the real identity's antipode.
+    - **`track_rank`.** The pseudonym is stable, so an attacker can follow it and
+      decide once per student: the mean embedding shown for a track against the full
+      gallery. One value per track, on its first row.
+    - **`shown_rank` / `shown`.** The final view restricted to boxes that show a
+      face; hiding cannot lower it.
+    - **`identity_audit`.** The evaluation's identities are tracker tracks. This
+      flags pairs of tracks that are never visible together and whose real centroids
+      are within the FAR-1% threshold, as candidates for one person split in two.
+    - **Status.** E2, E3 and E5 export the new keys. Producing them needs the evals
+      re-run on serra1; generation is reused.
+63. **Title and framing.**
+    - "Expression-Preserving" is dropped. Expression error is 4.6× the noise floor
+      and ties GANonymization (0.142 against 0.143).
+    - The pipeline is described as hybrid. Diffusion makes the source identity once
+      per track. The pixels shown come from `inswapper_128` and GFPGAN.
+    - The new title is "Face De-Identification of Classroom Video by Synthetic
+      Identity Swap". The choice of language is still open with the advisor.
+64. **P2 geometry.** The target normalize(e_synth − β e_real) has cosine (1 − βc)/n
+    with the synthetic identity and (c − β)/n with the real one, where
+    n = √(1 + β² − 2βc).
+    - At β 1.2 these are 0.47 and −0.68.
+    - β ≈ 0.35 ≈ c only removes the real component that the SDXL identity
+      inherited; its rank-1 is 0.424, against 0.472 for native.
+    - Below that point, P2 mostly undoes a leak the pipeline created. Above it,
+      P2 moves the target toward the antipode.
+    - **Plan.** If the inverse rank shows reversibility, operate at β ≈ c. Then E4-lite
+      (identities that never see the real crop) becomes the next experiment.
+65. **Portuguese figures without the server.** `derived.py` writes pgfplots
+    versions of the E3 P2 curve and the E5 trade-off from their exported CSVs, plus
+    the frontier figure. The thesis now uses these; the English PDFs stay for the
+    SBC draft.
+66. **Study order, stated honestly.**
+    - P2 was seen working on 2026-09-26, in an exploratory pilot on the same three
+      videos.
+    - The criteria were fixed on 2026-09-29, before the E0–E5 campaign.
+    - The final pipeline was chosen after the campaign.
+    - The thesis states all of this and mitigates it with LOVO.
+    - **Other corrections that go with this:**
+      - the verification target reads as undecided in both views (both 95%
+        intervals contain 5%);
+      - "every β ≥ 0.35 excludes zero" becomes β ≥ 0.5;
+      - the abstract uses the operating point (β 1.2), not the strongest arm, and
+        states P2's κ drop.
+
 ## Paper text to revise (not done here; `paper/main.tex` has uncommitted edits)
 
 - **Methodology, Stage 3.** Replace gradient injection on a canonical latent
