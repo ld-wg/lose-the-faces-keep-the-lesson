@@ -39,6 +39,9 @@ HEADERS = {
     # experiments/derived.py
     "Series": "Série", "Macro": "Macro", "Held-out video": "Vídeo de fora", "$\\beta$ chosen": "$\\beta$ escolhido",
     "R1 native": "R1 nativo", "R1 chosen": "R1 escolhido", "Best $\\beta$ (R1)": "Melhor $\\beta$ (R1)",
+    "Method": "Método", "View": "Visão", "Synthetic share": "Com face sintética", "R1 among them": "R1 entre eles",
+    "cos($\\hat e$, synth.)": "cos($\\hat e$, sint.)", "cos($\\hat e$, real)": "cos($\\hat e$, real)",
+    "FaceNet R1": "R1 FaceNet", "ArcFace R1": "R1 ArcFace",
 }
 
 LABELS = {
@@ -70,9 +73,14 @@ LABELS = {
     "final pipeline (gate), final video": "pipeline final (gate), vídeo final",
     "final pipeline, composed video": "pipeline final, vídeo composto",
     "final pipeline + adaptive, composed video": "pipeline final + adaptativa, vídeo composto",
+    "BLANKET (released)": "BLANKET (código liberado)",
+    "BLANKET native mix, Stage 1 detection": "BLANKET mix nativo (Estágio 1)",
+    "final pipeline": "pipeline final", "final pipeline + adaptive": "pipeline final + adaptativa",
+    "final pipeline, GFPGAN off": "pipeline final sem GFPGAN", "final pipeline (gate)": "pipeline final (gate)",
 }
 
-CELLS = {"yes": "sim", "no": "não"}
+CELLS = {"yes": "sim", "no": "não", "generated": "gerados", "final video, shown": "vídeo final",
+         "composed video, shown": "vídeo composto"}
 
 # a decimal number not preceded by a letter, digit, dot or backslash (keeps \hspace{5pt}, keys)
 DECIMAL = re.compile(r"(?<![A-Za-z0-9.\\])([+-]?\d*)\.(\d+)")
