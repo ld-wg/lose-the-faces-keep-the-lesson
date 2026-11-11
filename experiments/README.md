@@ -92,8 +92,11 @@ BLANKET, keyed by video hash and settings. Reusing them also controls SDXL's
 run-to-run non-determinism. `--fresh` clears the experiment's cache too.
 
 Machine-specific settings come from the environment, never from `config.toml`:
-`BLANKET_REPO`, `IDENTITY_GPU`, `SWAP_GPU`, `CTX_ID` (on constantine, with `CUDA_VISIBLE_DEVICES=1`
-from `~/.lftl_env`: `0`, `0`, `0`; on serra1 they were `1`, `0`, `-1`), and
+`BLANKET_REPO`, `IDENTITY_GPU`, `SWAP_GPU`, `CTX_ID` (on constantine: `1`, `1`, `0`, set by `~/.lftl_env`
+with `CUDA_DEVICE_ORDER=PCI_BUS_ID` and `CUDA_VISIBLE_DEVICES=1`; on serra1 they were `1`, `0`, `-1`).
+`IDENTITY_GPU`/`SWAP_GPU` are **physical** indices: the backend overwrites the servers'
+`CUDA_VISIBLE_DEVICES` with them, while `CTX_ID` is an index inside the main process's own
+`CUDA_VISIBLE_DEVICES`. And
 `EVAL_CTX_ID` for the evaluator (default `0`, the GPU: it runs after the generation
 servers exit). `E3_PARTS=e3c,e3d` runs a subset of E3.
 Videos resolve from `data/videos/<name>.*`.

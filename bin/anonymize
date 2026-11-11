@@ -4,7 +4,7 @@
 #   <model>  ciagan, ganonymization, blanket
 #   flags    passed through to src.pipeline.phase2_generate.run
 #            (e.g. --identity-prepass --blanket-swap-mode track --blanket-push-beta 1.2)
-#   env      BLANKET_REPO, IDENTITY_GPU, SWAP_GPU, CTX_ID (machine defaults; constantine: 0, 0, 0 with CUDA_VISIBLE_DEVICES=1)
+#   env      BLANKET_REPO, IDENTITY_GPU, SWAP_GPU, CTX_ID (machine defaults; constantine: 1, 1, 0 from ~/.lftl_env)
 # Prints the new results/ folder last.
 source "$(dirname "$0")/_lib.sh"
 [[ $# -ge 2 ]] || { sed -n '2,9p' "$0" >&2; exit 1; }
