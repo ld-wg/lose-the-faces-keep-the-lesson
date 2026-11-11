@@ -1,4 +1,5 @@
-"""Phase 2 post-processing — build the final video, and never let a known face through.
+"""Stage 3 (the thesis's fail-closed composition) — build the final video, and never let a
+known face through. Lives in phase2_generate/ for now; see research parecer 2026-10-29 §6.
 
 `run.py` writes one crop PNG per (frame, track) (`generated/<track_id>/
 <frame_id>.png`): the context-padded crop with the face replaced, whose
@@ -7,7 +8,9 @@ background pixels are bit-identical to the source (blending happened inside
 
 1. **Generated faces.** Pastes each generated crop back at the rectangle
    `run.py`'s `crop_box()` cut it from. Only the pixels the generator changed
-   are pasted. Before 2026-09-30 the whole crop was pasted, and a later
+   are pasted. A crop that changed less than `--min-changed` of the detection
+   box is not shown as generated (a backend that returned the real crop, e.g.
+   from an empty paste mask); it goes to the fail-safe like any failure. Before 2026-09-30 the whole crop was pasted, and a later
    crop's real background overwrote part of an earlier neighbour's generated
    face: 432 of 2139 generated faces on video-demo-3.mov (20%), 125 of them
    over at least half the box.
@@ -29,7 +32,7 @@ Faces Phase 1 never found cannot be hidden here; that is Phase 1's recall
 (`phase1_detect/fill.py`).
 
 Writes the video and `compose.jsonl` next to it: one line per face box,
-{frame_id, track_id, source, status, outcome}, where outcome is
+{frame_id, track_id, source, status, outcome, changed}, where outcome is
 generated / reused / filled, or `exposed` with `--failsafe off` (diagnostic
 only: the pre-2026-09-30 behavior for failures).
 
@@ -43,19 +46,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from collections import Counter
 from pathlib import Path
+from typing import Callable, Optional
 
 import cv2
 import numpy as np
 
-# allow running as a module from repo root
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from config import CONFIG  # noqa: E402,F401
-
-from .cropping import crop_box  # noqa: E402
-from ..contracts import Frame, Manifest  # noqa: E402
+from .cropping import crop_box
+from .policies import changed_fraction
+from ..contracts import MIN_CHANGED_FRACTION, REUSE_FRAMES, Face, Frame, Manifest
 
 FILL_BGR = (128, 128, 128)
 
@@ -99,8 +99,66 @@ def _blend(frame: np.ndarray, region, ellipse, content: np.ndarray) -> None:
     dst[:] = (a * content + (1 - a) * dst).astype(np.uint8)
 
 
+def compose_frame(frame: np.ndarray, frame_id: int, faces: list[Face], ledger: dict[tuple[int, int], dict],
+                  load_crop: Callable[[dict], Optional[np.ndarray]], context_ratio: float,
+                  last_face: dict[int, tuple[int, np.ndarray]], *, reuse_frames: int = REUSE_FRAMES,
+                  expand: float = 1.5, failsafe: bool = True,
+                  min_changed: float = MIN_CHANGED_FRACTION) -> tuple[dict[int, str], dict[int, float]]:
+    """Compose one frame in place. Returns ({track: outcome}, {track: changed fraction of
+    the detection box}) for the generated faces; `last_face` (track -> (frame, pixels)) is
+    updated for reuse. Pure apart from `load_crop`, so tests can run it on synthetic arrays."""
+    h, w = frame.shape[:2]
+    source = frame.copy()
+    result: dict[int, str] = {}
+    changed_by_track: dict[int, float] = {}
+
+    # 1. generated faces: only the pixels the generator changed, and only real replacements
+    for face in faces:
+        rec = ledger.get((frame_id, face.track_id))
+        if rec is None or rec["status"] != "ok" or not rec.get("output_path"):
+            continue
+        crop_img = load_crop(rec)
+        cx1, cy1, cx2, cy2 = crop_box(h, w, face.box, context_ratio)
+        if crop_img is None or crop_img.shape[:2] != (cy2 - cy1, cx2 - cx1):
+            continue  # missing or mismatched crop: left to the fail-safe below
+        x1, y1, x2, y2 = face.box
+        frac = changed_fraction(source[cy1:cy2, cx1:cx2], crop_img, (x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1))
+        if frac < min_changed:
+            continue  # the real crop came back as "ok" (fail-open path): fail-safe below
+        changed = np.any(crop_img != source[cy1:cy2, cx1:cx2], axis=2)
+        frame[cy1:cy2, cx1:cx2][changed] = crop_img[changed]
+        result[face.track_id] = "generated"
+        changed_by_track[face.track_id] = frac
+
+    # 2. fail-safe: reuse first, fills last
+    pending = [f for f in faces if f.track_id not in result]
+    if failsafe:
+        for face in pending:
+            prev = last_face.get(face.track_id)
+            if prev is not None and frame_id - prev[0] <= reuse_frames:
+                region, ellipse = _region(face.box, expand, w, h)
+                rx1, ry1, rx2, ry2 = region
+                if rx2 > rx1 and ry2 > ry1:
+                    _blend(frame, region, ellipse, cv2.resize(prev[1], (rx2 - rx1, ry2 - ry1)))
+                    result[face.track_id] = "reused"
+        for face in pending:
+            if face.track_id not in result:
+                region, ellipse = _region(face.box, expand, w, h)
+                rx1, ry1, rx2, ry2 = region
+                _blend(frame, region, ellipse, np.full((ry2 - ry1, rx2 - rx1, 3), FILL_BGR, np.uint8))
+                result[face.track_id] = "filled"
+
+    # 3. remember each generated face as it finally looks (neighbours already hidden)
+    for face in faces:
+        if result.get(face.track_id) == "generated":
+            (rx1, ry1, rx2, ry2), _ = _region(face.box, expand, w, h)
+            if rx2 > rx1 and ry2 > ry1:
+                last_face[face.track_id] = (frame_id, frame[ry1:ry2, rx1:rx2].copy())
+    return result, changed_by_track
+
+
 def main() -> None:
-    p = argparse.ArgumentParser(description="Phase 2 — final video: generated faces, every other face hidden")
+    p = argparse.ArgumentParser(description="Stage 3 — final video: generated faces, every other face hidden")
     p.add_argument("--phase1-dir", type=str, required=True, help="Phase 1 output dir")
     p.add_argument("--phase2-dir", type=str, required=True,
                    help="Phase 2 output dir (from run.py --out) — needs generation.jsonl, "
@@ -111,8 +169,11 @@ def main() -> None:
                    help="Output video path (default: <phase2-dir>/output.mp4); compose.jsonl goes next to it")
     p.add_argument("--failsafe", choices=("on", "off"), default="on",
                    help="off leaves failed faces real (diagnostic only)")
-    p.add_argument("--reuse-frames", type=int, default=10,
+    p.add_argument("--reuse-frames", type=int, default=REUSE_FRAMES,
                    help="Reuse the track's last generated face if at most this many frames old")
+    p.add_argument("--min-changed", type=float, default=MIN_CHANGED_FRACTION, metavar="FRAC",
+                   help="show a generated crop only if it changed at least this share of the detection "
+                        "box's pixels; otherwise it is a failure and the fail-safe hides it")
     p.add_argument("--expand", type=float, default=1.5,
                    help="Hidden region: ellipse inscribed in the box expanded this much (>= 1.42 covers the box)")
     p.add_argument("--limit", type=int, default=None, help="Stop after this many frames (testing)")
@@ -151,54 +212,19 @@ def main() -> None:
             ret, frame = cap.read()
             if not ret:
                 break  # source video ended before detections.jsonl did — same gap run.py logs
-            source = frame.copy()
             fid = frame_rec.frame_id
-            result: dict[int, str] = {}
-
-            # 1. generated faces: only the pixels the generator changed
-            for face in frame_rec.faces:
-                rec = ledger.get((fid, face.track_id))
-                if rec is None or rec["status"] != "ok" or not rec.get("output_path"):
-                    continue
-                crop_img = cv2.imread(str(phase2_dir / rec["output_path"]))
-                cx1, cy1, cx2, cy2 = crop_box(h, w, face.box, context_ratio)
-                if crop_img is None or crop_img.shape[:2] != (cy2 - cy1, cx2 - cx1):
-                    continue  # missing or mismatched crop: left to the fail-safe below
-                changed = np.any(crop_img != source[cy1:cy2, cx1:cx2], axis=2)
-                frame[cy1:cy2, cx1:cx2][changed] = crop_img[changed]
-                result[face.track_id] = "generated"
-
-            # 2. fail-safe: reuse first, fills last
-            pending = [f for f in frame_rec.faces if f.track_id not in result]
-            if args.failsafe == "on":
-                for face in pending:
-                    prev = last_face.get(face.track_id)
-                    if prev is not None and fid - prev[0] <= args.reuse_frames:
-                        region, ellipse = _region(face.box, args.expand, w, h)
-                        rx1, ry1, rx2, ry2 = region
-                        if rx2 > rx1 and ry2 > ry1:
-                            _blend(frame, region, ellipse, cv2.resize(prev[1], (rx2 - rx1, ry2 - ry1)))
-                            result[face.track_id] = "reused"
-                for face in pending:
-                    if face.track_id not in result:
-                        region, ellipse = _region(face.box, args.expand, w, h)
-                        rx1, ry1, rx2, ry2 = region
-                        _blend(frame, region, ellipse, np.full((ry2 - ry1, rx2 - rx1, 3), FILL_BGR, np.uint8))
-                        result[face.track_id] = "filled"
-
-            # 3. remember each generated face as it finally looks (neighbours already hidden)
-            for face in frame_rec.faces:
-                if result.get(face.track_id) == "generated":
-                    (rx1, ry1, rx2, ry2), _ = _region(face.box, args.expand, w, h)
-                    if rx2 > rx1 and ry2 > ry1:
-                        last_face[face.track_id] = (fid, frame[ry1:ry2, rx1:rx2].copy())
+            result, changed_by_track = compose_frame(
+                frame, fid, frame_rec.faces, ledger, lambda rec: cv2.imread(str(phase2_dir / rec["output_path"])),
+                context_ratio, last_face, reuse_frames=args.reuse_frames, expand=args.expand,
+                failsafe=args.failsafe == "on", min_changed=args.min_changed)
 
             for face in frame_rec.faces:
                 outcome = result.get(face.track_id, "exposed")
                 outcomes[outcome] += 1
                 rec = ledger.get((fid, face.track_id))
                 cf.write(json.dumps({"frame_id": fid, "track_id": face.track_id, "source": face.source,
-                                     "status": rec["status"] if rec else None, "outcome": outcome}) + "\n")
+                                     "status": rec["status"] if rec else None, "outcome": outcome,
+                                     "changed": changed_by_track.get(face.track_id)}) + "\n")
             writer.write(frame)
 
     cap.release()

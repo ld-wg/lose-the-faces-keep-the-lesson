@@ -1,6 +1,7 @@
 %=====================================================
 
 % lista de símbolos
+% 2026-10-29: \tau desambiguado (antes: três sentidos) em \tau_h e \tau_a.
 
 \begin{listasimb}
 
@@ -8,9 +9,11 @@
 $e_{\mathrm{real}}$ & Embedding ArcFace da identidade real (agregado no track)\\
 $e_{\mathrm{synth}}$ & Embedding ArcFace da identidade sintética\\
 $\hat{e}$ & Embedding usado pela troca após o empurrão P2\\
+$\alpha_f$ & Piso do fator da EMA adaptativa (C2)\\
 $\beta$ & Força do empurrão P2\\
-$\tau$ & Limiar (\emph{hinge} de P1/P3; amostragem adaptativa)\\
-$\kappa$ & Kappa de Cohen (concordância de emoção)\\
+$\tau_h$ & Margem da \emph{hinge} de cosseno (P1, P3)\\
+$\tau_a$ & Limiar de mudança de landmarks da amostragem adaptativa (unidades de IOD)\\
+$\kappa$ & Kappa de Cohen (concordância de emoção e de orientação)\\
 $\lambda$ & Peso da penalidade do pseudônimo (P3)\\
 $\sigma$ & Confiança mínima no termo de qualidade de detecção\\
 $N$ & Número de tracks da galeria (acaso do rank-1 $= 1/N$)\\

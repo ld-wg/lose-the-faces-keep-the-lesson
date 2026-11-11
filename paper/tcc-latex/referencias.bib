@@ -1,6 +1,7 @@
 % Referências do TCC. Revisadas em 2026-10-22 contra as fontes primárias
 % (verificação em research/next-steps/paper-synthesis-2026-10-21.md).
-% Entradas com note = {verificar} não tiveram todos os metadados conferidos.
+% 2026-10-29: as entradas marcadas "verificar" foram conferidas (DBLP, PoPETs, UMass,
+% ICLR, IEEE); celebrefhq removida (não citada).
 
 % ---------------------------------------------------------------- detecção
 
@@ -79,18 +80,20 @@
 }
 
 @techreport{wildface,
-  author      = {Huang, Gary B. and Mattar, Marwan and Berg, Tamara and Learned-Miller, Erik},
+  author      = {Huang, Gary B. and Ramesh, Manu and Berg, Tamara and Learned-Miller, Erik},
   title       = {Labeled Faces in the Wild: A Database for Studying Face Recognition in Unconstrained Environments},
   institution = {University of Massachusetts, Amherst},
-  year        = {2008},
-  note        = {verificar número do relatório técnico}
+  number      = {07-49},
+  month       = oct,
+  year        = {2007}
 }
 
-@misc{fddb,
-  author = {Jain, Vidit and Learned-Miller, Erik},
-  title  = {{FDDB}: A Benchmark for Face Detection in Unconstrained Settings},
-  year   = {2010},
-  note   = {Relatório técnico, University of Massachusetts, Amherst; verificar número}
+@techreport{fddb,
+  author      = {Jain, Vidit and Learned-Miller, Erik},
+  title       = {{FDDB}: A Benchmark for Face Detection in Unconstrained Settings},
+  institution = {University of Massachusetts, Amherst},
+  number      = {UM-CS-2010-009},
+  year        = {2010}
 }
 
 % ---------------------------------------------------------------- rastreamento
@@ -107,7 +110,8 @@
   title     = {Deep {OC-SORT}: Multi-Pedestrian Tracking by Adaptive Re-Identification},
   booktitle = {IEEE International Conference on Image Processing (ICIP)},
   year      = {2023},
-  note      = {arXiv:2302.11813; verificar venue}
+  pages     = {3025--3029},
+  doi       = {10.1109/ICIP49359.2023.10222576}
 }
 
 % ---------------------------------------------------------------- reconhecimento facial
@@ -145,16 +149,16 @@
 @misc{insightface,
   author       = {{InsightFace}},
   title        = {{InsightFace}: 2D and 3D Face Analysis Project},
-  howpublished = {\url{https://github.com/deepinsight/insightface}},
-  note         = {Código MIT; modelos apenas para pesquisa não comercial},
+  howpublished = {Disponível em: \url{https://github.com/deepinsight/insightface}},
+  note         = {Código MIT; modelos apenas para pesquisa não comercial. Acesso em: 22 out. 2026},
   year         = {2026}
 }
 
 @misc{facenetpytorch,
   author       = {Esler, Tim},
   title        = {facenet-pytorch},
-  howpublished = {\url{https://github.com/timesler/facenet-pytorch}},
-  note         = {Licença MIT},
+  howpublished = {Disponível em: \url{https://github.com/timesler/facenet-pytorch}},
+  note         = {Licença MIT. Acesso em: 22 out. 2026},
   year         = {2026}
 }
 
@@ -348,8 +352,7 @@
   author    = {He, Yutong and Murata, Naoki and Lai, Chieh-Hsin and Takida, Yuhta and Uesaka, Toshimitsu and Kim, Dongjun and Liao, Wei-Hsiang and Mitsufuji, Yuki and Kolter, J. Zico and Salakhutdinov, Ruslan and Ermon, Stefano},
   title     = {Manifold Preserving Guided Diffusion},
   booktitle = {International Conference on Learning Representations (ICLR)},
-  year      = {2024},
-  note      = {verificar lista de autores}
+  year      = {2024}
 }
 
 @inproceedings{gfpgan,
@@ -376,8 +379,8 @@
 @misc{facefusion,
   author       = {Ruhs, Henry},
   title        = {{FaceFusion}},
-  howpublished = {\url{https://github.com/facefusion/facefusion}},
-  note         = {Licença OpenRAIL-AS},
+  howpublished = {Disponível em: \url{https://github.com/facefusion/facefusion}},
+  note         = {Licença OpenRAIL-AS. Acesso em: 22 out. 2026},
   year         = {2026}
 }
 
@@ -406,12 +409,16 @@
   year      = {2022}
 }
 
-@misc{hsemotion,
-  author       = {Savchenko, Andrey V.},
-  title        = {{HSEmotion}: High-Speed Emotion Recognition Library},
-  howpublished = {\url{https://github.com/HSE-asavchenko/face-emotion-recognition}},
-  note         = {verificar referência formal (artigo do autor)},
-  year         = {2022}
+@article{hsemotion,
+  author  = {Savchenko, Andrey V. and Savchenko, Lyudmila V. and Makarov, Ilya},
+  title   = {Classifying Emotions and Engagement in Online Learning Based on a Single Facial Expression Recognition Neural Network},
+  journal = {IEEE Transactions on Affective Computing},
+  volume  = {13},
+  number  = {4},
+  pages   = {2132--2143},
+  year    = {2022},
+  doi     = {10.1109/TAFFC.2022.3188390},
+  note    = {Modelo \texttt{enet\_b0\_8\_best\_vgaf}; código: \url{https://github.com/HSE-asavchenko/face-emotion-recognition}. Acesso em: 22 out. 2026}
 }
 
 @article{affectnet,
@@ -463,14 +470,6 @@
   year    = {2021}
 }
 
-@article{celebrefhq,
-  author  = {Li, Xiaoming and Zhang, Shiguang and Zhou, Shangchen and Zhang, Lei and Zuo, Wangmeng},
-  title   = {Learning Dual Memory Dictionaries for Blind Face Restoration},
-  journal = {IEEE Transactions on Pattern Analysis and Machine Intelligence},
-  year    = {2022},
-  note    = {Introduz o CelebRef-HQ; verificar lista de autores}
-}
-
 @inproceedings{ladn,
   author    = {Gu, Qiao and Wang, Guanzhi and Chiu, Mang Tik and Tai, Yu-Wing and Tang, Chi-Keung},
   title     = {{LADN}: Local Adversarial Disentangling Network for Facial Makeup and De-Makeup},
@@ -505,8 +504,11 @@
   author  = {Todt, Julian and Hanisch, Simon and Strufe, Thorsten},
   title   = {Fant{\^o}mas: Understanding Face Anonymization Reversibility},
   journal = {Proceedings on Privacy Enhancing Technologies},
+  volume  = {2024},
+  number  = {4},
+  pages   = {24--43},
   year    = {2024},
-  note    = {arXiv:2210.10651; verificar volume e páginas}
+  doi     = {10.56553/popets-2024-0105}
 }
 
 % ---------------------------------------------------------------- estatística
@@ -533,6 +535,7 @@
 @misc{lgpd,
   author       = {{Brasil}},
   title        = {Lei n.\textordmasculine{} 13.709, de 14 de agosto de 2018: Lei Geral de Proteção de Dados Pessoais ({LGPD})},
-  howpublished = {\url{https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709compilado.htm}},
+  howpublished = {Disponível em: \url{https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709compilado.htm}},
+  note         = {Acesso em: 22 out. 2026},
   year         = {2018}
 }

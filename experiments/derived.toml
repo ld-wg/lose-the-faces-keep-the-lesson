@@ -1,0 +1,14 @@
+# Fallbacks for experiments/derived.py, for exports made before E3 exported e3/<video>/tracks.
+# Measured 2026-10-21 on serra1 from experiments/e3_contribution/results/<video>/detect/:
+#   tracks = len(tracks.json["identities"])   (the closed-set gallery; chance rank-1 = 1/N)
+#   faces  = detector faces in detections.jsonl (Face.source == "detector"), the weights of the
+#            pooled values and of the leave-one-video-out choice
+[tracks]
+demo1 = 16
+demo2 = 21
+demo3 = 22
+
+[faces]
+demo1 = 1337
+demo2 = 4432
+demo3 = 6864

@@ -1,0 +1,117 @@
+\chapter{Correções do parecer de orientação (2026-10-29)}
+\label{ap:parecer}
+
+% Fonte: research/next-steps/parecer-orientador-2026-10-29.md (vault).
+% Código: branch feature/wrap-up-review; decisões 53--60 em experiments/DECISIONS.md.
+% Estado: feito = no código ou no texto; pendente (servidor) = depende do serra1,
+% indisponível desde 2026-10-21; pendente (orientador/autor) = decisão fora do código.
+
+\section{Críticos}
+\begin{itemize}
+\item C1, procedência e ética dos dados.
+  \begin{itemize}
+  \item Feito: origem registrada como ``vídeos públicos na internet'' (Seção~\ref{cap:experimentos}); cópias locais de vídeos e resultados apagadas; tratamento de dados corrigido (Seção~\ref{cap:metodo}).
+  \item Pendente (autor): fonte, licença e termos de cada vídeo.
+  \item Pendente (orientador): consulta ao CEP; plano B com gravações próprias consentidas.
+  \end{itemize}
+\item C2, tamanho e representatividade dos dados.
+  \begin{itemize}
+  \item Feito: valores por vídeo, macro-média e múltiplo do acaso (Tabela~\ref{tab:derived-chance}); duração e participação de cada vídeo no agregado; ameaça à validade externa (Seção~\ref{sec:ameacas-validade}).
+  \item Pendente: mais dados; segundo reconhecedor não usado na otimização.
+  \end{itemize}
+\item C3, hiperparâmetros escolhidos nos dados de avaliação.
+  \begin{itemize}
+  \item Feito: LOVO para $\beta$ (Tabela~\ref{tab:derived-lovo}); ameaça à validade interna declarada.
+  \item Pendente: vídeos de teste separados com o pipeline congelado.
+  \end{itemize}
+\item C4, modelo de ameaça e alegação de anonimização.
+  \begin{itemize}
+  \item Feito: modelo de ameaça (Seção~\ref{sec:ameaca}); alegação trocada para desidentificação facial em resumo, abstract, palavras-chave, introdução, discussão e conclusão; identificadores fora do rosto nas limitações.
+  \item Pendente: \emph{parrot attack} (trabalho futuro); título (orientador).
+  \end{itemize}
+\item C5, furo na garantia \emph{fail-closed}.
+  \begin{itemize}
+  \item Feito: fração mínima de pixels alterados (1\%) no Estágio~2 e na composição; teste do invariante em quadros sintéticos.
+  \item Pendente (servidor): frequência do \emph{fail-open} nas execuções existentes; anotação de rostos nunca detectados (\texttt{miss\_sheet}).
+  \end{itemize}
+\item C6, validade da utilidade.
+  \begin{itemize}
+  \item Feito: proxy de tarefa (orientação, $\kappa$) implementado; ``sem custo'' reescrito como ``sem diferença significativa''; ameaça à validade de construto.
+  \item Pendente (servidor): $\kappa$ de orientação. Pendente: TOST; avaliação humana com gravação consentida; título (``Expression-Preserving'').
+  \end{itemize}
+\end{itemize}
+
+\section{Importantes}
+\begin{itemize}
+\item I1, visões de privacidade inconsistentes: divergência declarada (Seção~\ref{cap:experimentos}). Pendente (servidor): E2/E3 com \texttt{--video-view}.
+\item I2, ocultar infla a privacidade: declarado; par (rank-1 nos mostrados, parcela mostrada) na discussão.
+\item I3, rostos grandes e o professor: estratos por tamanho no E3e e no E5 implementados; pendente (servidor). Política por tamanho: trabalho futuro.
+\item I4, identidade sintética nasce do rosto real: declarado no modelo de ameaça; E4-lite como trabalho futuro.
+\item I5, estatística: Holm por família; tabelas por vídeo e macro. Pendente: valores ajustados (próxima exportação); TOST.
+\item I6, escopo da métrica de custo: definições de quadros/s (E2) e ms por rosto (E5) separadas; projeção rotulada; exclusões listadas. Pendente: tempo ponta a ponta por estágio.
+\item I7, reprodutibilidade: \texttt{SOURCES.md} com commit da ponte, Python, torch e \texttt{uv.lock}; E5 aborta sem o cache do E3. Pendente (servidor): push da ponte, E0/E1 no commit final, tag \texttt{tcc-defesa}.
+\item I8, sem testes: 45 testes unitários (\texttt{tests/}).
+\item I9, dados reais persistidos: crops de rostos não substituídos não gravados; scratch apagado em SIGTERM e SIGHUP; \texttt{purge.sh}.
+\item I10, novidade modesta: contribuições enquadradas como empíricas e de sistema (Seção~\ref{cap:intro}).
+\item I11, dez divergências entre texto e código, corrigidas no texto:
+  \begin{enumerate}
+  \item dilatação só em tracks confirmados;
+  \item rastreador sem modelo de movimento, associação gulosa;
+  \item margem de contexto 0,8 do BLANKET não calibrada;
+  \item $\beta = 0{,}35$ não equivale ao mix nativo (nativo normalizado $\approx 0{,}26$);
+  \item re-detecção a 320\,px e corte 0,5;
+  \item E1 com limiar 0,3;
+  \item cache de identidades chaveado pela seed derivada do caminho;
+  \item apagamento do scratch e dos crops descrito como realmente ocorre;
+  \item GPU-horas sem detecção, pré-passe, identidades e composição;
+  \item quadros/s do E2 com outra definição (tempo total).
+  \end{enumerate}
+\end{itemize}
+
+\section{Menores e formato}
+\begin{itemize}
+\item Objetivos geral e específicos (O1--O4, com situação); classificação da pesquisa; desvios e Quadro~\ref{qua:desvios}.
+\item ``Cap.'' substituído por ``Seção''.
+\item Listas de figuras, tabelas e quadros ativadas; todo float com título acima, \texttt{\textbackslash label}, fonte abaixo e menção no texto.
+\item Tabelas em português com vírgula decimal (\texttt{generated/<experimento>/pt}). Pendente (servidor): eixos das figuras em português.
+\item Resumo e abstract em 3ª pessoa, parágrafo único, sem rótulos internos; palavras-chave com ``;'' e minúsculas.
+\item Siglas completadas (CEP, CPU, GPU, EMA, IoU, LOVO, RMS, TCC, TOST, VAE e outras); $\tau$ desambiguado em $\tau_h$ e $\tau_a$; $\alpha_f$ na lista de símbolos.
+\item Bibliografia: entradas ``verificar'' conferidas (LFW, FDDB, Deep OC-SORT, MPGD, HSEmotion, Fantômas); ``Disponível em'' e ``Acesso em'' nas referências online.
+\item Restos do modelo removidos: \texttt{a1-exemplo}, \texttt{a2-exemplo}, \texttt{exemplo.c}, \texttt{exemplo-figura.pdf}, \texttt{main\_maziero.pdf}, \texttt{lipsum}; ficha catalográfica fora (não exigida para TCC); descrição do trabalho pelo modelo SiBi; ``Prof. Dr.'' no orientador.
+\item README atualizado; \texttt{phase3\_temporal} removido; \texttt{fps} do \texttt{tracks.json}; código morto removido.
+\item Pendente (orientador): idioma do documento e título; metas da hipótese.
+\item Pendente (autor): agradecimentos e dedicatória; desenvolver os tópicos em parágrafos; diagrama do pipeline; geometria do P2.
+\end{itemize}
+
+\section{Análise crítica (2026-10-30)}
+% Fonte: research/next-steps/analise-critica-banca-2026-10-29.md. Decisões 61--66.
+\begin{itemize}
+\item F1, critério primário vencido pelos baselines: medida primária revista para o par (rank-1 entre rostos com face sintética, parcela coberta); Tabela~\ref{tab:derived-frontier}, Figura~\ref{fig:derived-frontier}; frase ``reidentificação dividida por mais de dois'' corrigida (visões misturadas). Pendente (servidor): rank-1 entre rostos mostrados no vídeo final do E2/E3.
+\item F2, ``Expression-Preserving'' e ``por difusão'': título trocado; pipeline descrito como híbrido; formulação dos componentes (Seção~\ref{sec:formulacao}); empate de expressão com o GANonymization declarado.
+\item F3, empurrão para a antípoda: geometria do P2 (Tabela~\ref{tab:derived-p2geom}, Figura~\ref{fig:p2geom}); atacante de rank inverso implementado no avaliador, com teste. Pendente (servidor): medir; se reversível, operar em $\beta \approx c$.
+\item F4, unidade quadro $\times$ pessoa: rank-1 por track implementado no avaliador, com teste. Pendente (servidor): medir.
+\item F5, ética: base legal possível (LGPD art.~7º, IV; art.~11, II, c) registrada como a validar. Pendente (autor, orientador): fonte dos vídeos e CEP.
+\item F6, texto em tópicos: equações dos componentes, diagrama do pipeline e da geometria do P2 adicionados; figuras em português (pgfplots). Pendente (autor): desenvolver em parágrafos.
+\item G1, track como identidade: auditoria de pares candidatos no avaliador (\texttt{identity\_audit}), exportada pelo E3. Pendente (servidor): conferir.
+\item G2, rostos que o detector perde: declarado com os números do E1. Pendente (servidor): conferir as caixas extras.
+\item G3, meta de verificação: lida pelo intervalo; indistinguível de 5\% nas duas visões.
+\item G4, critérios ``antes de rodar'': piloto exploratório declarado.
+\item G5, nulos previsíveis (P1, P3): apresentados como diagnóstico da arquitetura.
+\item G6, custo em emoção do P2 e braço mais forte no resumo: resumo usa $\beta$ 1,2 e cita a queda de $\kappa$.
+\item G7, ``todo $\beta \ge 0{,}35$ exclui zero'': trocado para $\beta \ge 0{,}5$; 0,35 no limite.
+\item G8, P2 desfaz o vazamento da identidade SDXL: leitura geométrica ($\beta \approx c$) nos resultados. Pendente (servidor): E4-lite e braço ortogonal.
+\item G9, métrica de expressão favorece a troca: ameaça de construto.
+\item G10, atributos demográficos: números de idade e gênero mantidos como evidência contra a similaridade demográfica.
+\item G11, avaliador fraco no demo1: declarado; demo1 à parte.
+\item G12, galeria do mesmo clipe: declarado.
+\item G13, ``viável offline'': conclusão reescrita com o custo e o O4 refutado.
+\item Menores: C1 na lista de siglas; contagem de tracks do E1 explicada; eixos das figuras em português.
+\end{itemize}
+
+\section{Auditoria de código (2026-10-30, noite)}
+\begin{itemize}
+\item Fonte da troca: o rosto de maior score na imagem de identidade, que contém vizinhos reais, podia ser usado como identidade-fonte. Corrigido na ponte (\texttt{identity\_box}, branch \texttt{fix/source-face-selection}) e no backend; teste do seletor. Pendente (servidor): quantas identidades usavam outro rosto.
+\item Difusão sem efeito: imagem de identidade quase igual ao crop real agora é rejeitada.
+\item Desempenho da difusão: o BLANKET carrega SDXL, duas ControlNets e o refiner com \emph{sequential CPU offload} e \emph{attention slicing}; flags novas na ponte trocam só o posicionamento (mesmas imagens). Pendente (servidor): medir.
+\item Tabela de políticas do E3e: ``Hidden'' passa a ser só preenchimento, como no E5; reutilizados à parte.
+\end{itemize}

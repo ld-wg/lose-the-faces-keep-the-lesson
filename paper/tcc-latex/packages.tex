@@ -98,7 +98,6 @@
 
 % pacotes diversos
 \usepackage{alltt,moreverb}	% mais comandos no modo verbatim
-\usepackage{lipsum}		% gera texto aleatório (para os exemplos)
 \usepackage{currfile}		% infos sobre o arquivo/diretório atual
 \usepackage[final]{pdfpages}	% inclusão de páginas em PDF
 \usepackage{longtable}		% tabelas multi-páginas (tab símbolos/acrônimos)
@@ -106,3 +105,19 @@
 
 % ------------------------------------------------------------------------------
 
+
+% ------------------------------------------------------------------------------
+% 2026-10-29 (parecer de orientação, §7): ABNT/SiBi
+% - "Quadro" para conteúdo não numérico, com lista própria;
+% - "Fonte:" abaixo de cada ilustração e tabela (título acima).
+\usepackage{newfloat}
+\DeclareFloatingEnvironment[fileext=loq,listname={Lista de quadros},name=Quadro,placement=htbp,within=chapter]{quadro}
+\newcommand{\fonte}[1]{\par\vspace{2pt}{\footnotesize Fonte: #1\par}}
+\newcommand{\fonteautor}{\fonte{o autor (2026).}}
+
+% 2026-10-30 (análise crítica): figuras em português geradas por experiments/derived.py
+% a partir dos CSVs exportados (pgfplots), diagramas do pipeline e da geometria do P2 (TikZ)
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usepgfplotslibrary{groupplots}
+\usetikzlibrary{arrows.meta,positioning,calc,fit}

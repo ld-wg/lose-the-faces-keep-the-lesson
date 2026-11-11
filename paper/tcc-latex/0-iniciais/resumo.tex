@@ -1,25 +1,41 @@
 \begin{resumo}
 
-% Rascunho factual (2026-10-22): uma frase por fato, para reescrever depois.
+% Rascunho factual (2026-10-22), revisado em 2026-10-29 (parecer de orientação) e em
+% 2026-10-30 (análise crítica):
+% - parágrafo único, 3ª pessoa, objetivo → método → resultados → conclusão (NBR 6028);
+% - alegação: desidentificação facial, não anonimização (LGPD art. 12; Seção~\ref{sec:ameaca});
+% - substituição híbrida: difusão só na identidade-fonte; pixels da troca de rosto (F2);
+% - ponto de operação β 1,2 (não o braço mais forte); custo em emoção explícito (G6);
+% - comparação pelo par (rank-1 entre rostos com face sintética, parcela coberta): o
+%   rank-1 do vídeo final premia ocultar (F1).
 Vídeos de sala de aula expõem a identidade de alunos e professores. Este
-trabalho substitui cada rosto detectado por um rosto sintético e mede, no vídeo
-que o espectador vê, quanto da identidade some e quanto do comportamento
-(expressão, pose, emoção) permanece. O pipeline tem três estágios: detecção
-SCRFD-10GF com rastreamento e um pós-passe de recall; substituição com BLANKET
-(identidade sintética SDXL por track e troca de rosto \texttt{inswapper} por
-quadro); e composição \emph{fail-closed}, que nunca mostra um rosto conhecido
-real. A contribuição principal empurra o embedding de identidade usado pela
-troca para longe da identidade real estimada no track (P2). Em três vídeos, o
-rank-1 do FaceNet (reconhecedor não usado na otimização) cai de
-\result{e3c/pooled/native/facenet.rank1} para
-\result{e3c/pooled/b-1.6/facenet.rank1}, sem custo em expressão e pose. Com o
-\emph{privacy gate}, o vídeo final fica em
-\result{e3e/pooled/gate/facenet_final.rank1}, contra
-\result{e2/pooled/blur/facenet_final.rank1} do blur, que apaga o comportamento.
-Orientação por gradiente no amostrador de difusão (P1) e otimização do código
-de identidade do CIAGAN (P3) não têm efeito mensurável. Processo principal na
-GPU e amostragem adaptativa de quadros levam o custo a
-\result{e5/pooled/adapt-0.08/class-hours} GPU-horas por hora de aula. Nenhum
-método preserva a emoção perto do piso de ruído.
+trabalho investiga se trocar cada rosto detectado por uma identidade sintética
+reduz a reidentificação facial automática e mantém o sinal comportamental
+(expressão, pose, emoção), medido no vídeo que o espectador vê. O pipeline é
+híbrido e tem três estágios: detecção SCRFD-10GF com rastreamento e um pós-passe
+de recall; uma identidade sintética Stable Diffusion XL por track, trocada no
+rosto de cada quadro por \texttt{inswapper} com restauração GFPGAN; e composição
+\emph{fail-closed}, que oculta todo rosto detectado sem substituição válida. A
+contribuição principal empurra o embedding de identidade usado pela troca para
+longe da identidade real estimada no track. Em três vídeos curtos (29\,s no
+total), no ponto de operação escolhido, o rank-1 do FaceNet, reconhecedor não
+usado na otimização, cai de \result{e3c/pooled/native/facenet.rank1} para
+\result{e3c/pooled/b-1.2/facenet.rank1}, sem diferença mensurável em expressão e
+pose e com queda não significativa da concordância de emoção
+(\result{e3c/pooled/native/emotion_kappa} para \result{e3c/pooled/b-1.2/emotion_kappa}).
+Entre os rostos que recebem face sintética, o pipeline final é reidentificado em
+\result{derived/frontier/e5-ref/rank1} cobrindo \result{derived/frontier/e5-ref/share}
+dos rostos, contra \result{derived/frontier/e2-blanket/rank1} do BLANKET liberado,
+que cobre \result{derived/frontier/e2-blanket/share}; no vídeo final, porém,
+métodos que ocultam mais rostos têm rank-1 menor, e borramento, mosaico e GANs
+têm rank-1 menor que o do pipeline. Orientação por gradiente no amostrador de difusão e
+otimização do código de identidade de uma rede adversarial generativa não têm
+efeito mensurável. O erro de expressão fica em
+\result{e3e/pooled/gate/expression} unidades de distância interocular, cerca de
+quatro vezes o piso de ruído, e nenhum método preserva a emoção. O custo projetado
+do laço por rosto é de \result{e5/pooled/adapt-0.08/class-hours} horas de unidade
+de processamento gráfico (GPU) por hora de aula. O resultado é desidentificação
+facial parcial, outro ponto do compromisso entre privacidade, cobertura e
+utilidade, e não anonimização: cabelo, contorno da cabeça, roupa e voz permanecem.
 
 \end{resumo}

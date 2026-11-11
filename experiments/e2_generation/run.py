@@ -21,8 +21,12 @@ UTILITY = ["expression", "pose_err", "emotion_kappa", "age_err", "gender_agree",
 # Over all detector faces: `facenet.rank1` is the "passthrough as a leak" view (a failed
 # face is scored with its real embedding), `facenet_final.*` what the composed video shows.
 KEYS = ["anonymized", "facenet.rank1", "facenet.rank5", "facenet_final.rank1", "facenet_final.rank5",
-        "facenet_final.verified", "arcface.rank1", "arcface_final.rank1"]
-GENERATED_KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet.cos", "emotion_agree", *UTILITY]
+        "facenet_final.verified", "arcface.rank1", "arcface_final.rank1",
+        # 2026-10-30: shown faces only, least-similar-first attacker, one decision per track
+        "shown", "facenet_shown.rank1", "facenet_final_inv.rank1", "facenet_track.rank1", "facenet_track_inv.rank1"]
+# orient_kappa (facing the front, real vs generated): a task-level utility proxy, keys only
+GENERATED_KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet_inv.rank1", "arcface_inv.rank1", "facenet.cos", "emotion_agree", "orient_kappa",
+                  *UTILITY]
 
 
 with Experiment(__file__) as exp:
@@ -59,7 +63,9 @@ with Experiment(__file__) as exp:
             exp.metric(f"e2/pooled/{name}/facenet_final.privacy-gain", round(pg[0], 3))
 
     # Main table: coverage and FaceNet (held-out) rank-1 in the three views, pooled over videos.
-    exp.table("main", ["Arm", "Coverage", "R1 gen.", "R1 all", "R1 final", "PG final", "Verified"], [
+    # "Rel. red.": 1 − R1/R1_real, the relative rank-1 reduction (the survey's "Privacy Gain" is the
+    # absolute difference; key name kept as privacy-gain for existing \result references)
+    exp.table("main", ["Arm", "Coverage", "R1 gen.", "R1 all", "R1 final", "Rel. red.", "Verified"], [
         [labels[n], cell(pooled[n], "anonymized", ev), cell([r for r in pooled[n] if r["anonymized"]], "facenet.rank1", ev),
          cell(pooled[n], "facenet.rank1", ev), cell(pooled[n], "facenet_final.rank1", ev),
          privacy_gain_cell(pooled[n], ev), cell(pooled[n], "facenet_final.verified", ev)]

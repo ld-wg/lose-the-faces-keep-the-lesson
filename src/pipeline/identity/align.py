@@ -47,6 +47,16 @@ def fit_similarity(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
     return np.hstack([scale * rot, t[:, None]]).astype(np.float32)
 
 
+def landmark_error(reference: np.ndarray, moving: np.ndarray, iod: float) -> float:
+    """Mean distance between two landmark sets after mapping `moving` onto `reference`
+    with a similarity transform, in units of `iod` (inter-ocular distance). The
+    evaluator's expression error (real vs shown face) and the adaptive sampler's
+    change measure (last generated vs current real face) are this one function."""
+    m = fit_similarity(moving, reference)
+    mapped = moving @ m[:, :2].T + m[:, 2]
+    return float(np.linalg.norm(mapped - reference, axis=1).mean() / max(iod, 1e-6))
+
+
 def template(size: int, margin: float = 0.0) -> np.ndarray:
     """The ArcFace template scaled to a `size`x`size` output with `margin`
     (fraction of the template's own extent) of extra context on each side.

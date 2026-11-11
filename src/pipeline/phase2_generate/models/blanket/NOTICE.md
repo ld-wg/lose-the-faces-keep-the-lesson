@@ -561,3 +561,27 @@ Bridge commit `d1bc6d1`. An exposure audit of `video-demo-3.mov`
 
 **What stays the same:** `--blanket-detection upstream` keeps BLANKET's own
 flow, and reproduces the runs before 2026-09-30.
+
+### 2026-10-30: swap source face and identity-server speed (bridge `eabfbf3`, branch `fix/source-face-selection`)
+
+**Source face (found by reading the code; not measured yet).**
+- The identity image is the candidate's context crop, with a margin of 0.8 face-widths and only the face inpainted. Real neighbours stay in it, untouched.
+- BLANKET's swap source is `source_faces[0]`, the highest-scoring face FaceFusion detects in that image. Nothing guaranteed it was the inpainted face.
+- A sharper neighbour would have made a real classmate's identity the swap source. The privacy metrics would not have seen it: E3g embeds the largest face, and the swap leak is measured against the track's own identity.
+
+**The fix.**
+- This backend now sends the candidate's box as `identity_box` to `check_identity` and `swap_with_reason`.
+- The swap server takes the face that overlaps that box. If no face reaches IoU 0.3, the identity is unusable.
+- Cache entries now store `box` and `source_index`. For older entries, the box comes from the candidate the entry names (`candidate_box`).
+- The cache settings are unchanged, so cached identities stay valid.
+- **To measure on serra1:** how many identities have `source_index != 0`. These are the identities whose swaps used a different face before this fix.
+
+**Speed.** `BLANKET_IDENTITY_ARGS` passes the new identity-server flags through:
+- `--offload model|none`
+- `--attention-slicing off`
+- `--keep-landmarker`
+- `--openpose-device cuda`
+
+Benchmark them against the default (BLANKET's `enable_sequential_cpu_offload` + `attention_slicing(1)`) before using them in a run. See `research/next-steps/diffusion-speed-2026-10-30.md`.
+
+**Bridge version.** This backend needs bridge ≥ `eabfbf3` merged with the three server-only commits (`f376d0b`, `3004a3a`, `16cf02d`). Older bridges reject the `identity_box` argument.

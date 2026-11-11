@@ -178,6 +178,7 @@ def run_video(args, detector: FaceDetector, tracker: FaceTracker) -> None:
         if frame_id % 100 == 0:
             logger.info(f"frame {frame_id}: {len(tracks)} active tracks")
 
+    video_fps = cap.get(cv2.CAP_PROP_FPS) or 0.0   # read before release (it returned -1 after)
     cap.release()
     if args.webcam:
         cv2.destroyAllWindows()
@@ -199,7 +200,7 @@ def run_video(args, detector: FaceDetector, tracker: FaceTracker) -> None:
     # Only confirmed tracks get an identity; unconfirmed faces are hidden downstream.
     manifest = Manifest(
         video=Video(source=video_source, width=frame_w, height=frame_h,
-                    fps=cap.get(cv2.CAP_PROP_FPS) or 0.0, frame_count=frame_id),
+                    fps=video_fps, frame_count=frame_id),
         identities=[
             Identity(
                 track_id=tid, seed=derive_seed(video_source, tid),

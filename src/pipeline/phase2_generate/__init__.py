@@ -1,10 +1,8 @@
-"""Phase 2 — synthetic face generation + inpainting (merged).
+"""Stage 2 — face replacement, plus the Stage 3 composition (compose_video.py).
 
-Candidates (research/pipeline.md): BLANKET / Reverse Personalization /
-ReferenceNet / CIAGAN. Implicit conditioning + end-to-end inpainting.
-
-`ciagan` is implemented (see `models/ciagan/`) — the GAN baseline, picked
-first for its simplicity and settled public code/weights. BLANKET/
-Reverse Personalization/ReferenceNet remain future candidates, pending the
-fairness down-select described in research/pipeline.md.
+Backends (models/): censor (blur, mosaic), ciagan, ganonymization, blanket (SDXL
+identity once per track + inswapper swap per frame, through the sibling bridge repo).
+run.py applies the per-face policies (policies.py: frame sampling, the changed-pixels
+guard; the privacy gate and hide-low) and writes generation.jsonl; compose_video.py
+builds the fail-closed output video from it.
 """
