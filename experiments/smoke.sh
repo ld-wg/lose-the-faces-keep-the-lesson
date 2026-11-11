@@ -5,7 +5,7 @@
 # first failure.
 #
 #   experiments/smoke.sh [video] [frames]          # default: demo2, 20 frames
-#   env: BLANKET_REPO, IDENTITY_GPU, SWAP_GPU, CTX_ID (as for the experiments), SMOKE_DIR,
+#   env: BLANKET_REPO, IDENTITY_GPU, SWAP_GPU, CTX_ID (as for the experiments), SMOKE_DIR, SMOKE_KEEP,
 #        BLANKET_TIMEOUT (seconds per RPC, default 2400, as in experiments/_generation.py)
 #
 # Checks, in order:
@@ -23,14 +23,13 @@ cd "$(dirname "$0")/.."
 VIDEO=${1:-demo2} N=${2:-20}
 # private scratch (crops, videos and identity images show real people: LGPD), deleted on exit
 S=${SMOKE_DIR:-$(mktemp -d /tmp/smoke.XXXXXX)}
-chmod 700 "$S"
-trap 'rm -rf "$S"' EXIT
+mkdir -p "$S" && chmod 700 "$S"
+[[ -n ${SMOKE_KEEP:-} ]] || trap 'rm -rf "$S"' EXIT   # SMOKE_KEEP=1: keep it, to debug a late failure
 BR=${BLANKET_REPO:-$HOME/projects/blanket-anonymizer-bridge}
 CTX=${CTX_ID:-0}
 V=$(ls data/videos/$VIDEO.* | head -1)
 step() { echo; echo "$(date '+%T') == $*"; }
 py() { uv run python "$@"; }
-mkdir -p "$S"
 
 step "phase1 on $VIDEO"
 py -m src.pipeline.phase1_detect.run --input "$V" --out "$S/det" > "$S/det.log" 2>&1
