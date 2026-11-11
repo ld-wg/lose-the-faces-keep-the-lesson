@@ -57,6 +57,10 @@ with Experiment(__file__) as exp:
         n_tracks = len(json.loads((det_dir / "tracks.json").read_text())["identities"])
         exp.metric(f"e3/{video.name}/tracks", n_tracks)
         exp.metric(f"e3/{video.name}/chance-rank1", round(1 / n_tracks, 4))
+        # detector faces: the weights of the pooled values and of derived.py's leave-one-video-out choice
+        with (det_dir / "detections.jsonl").open() as fh:
+            n_faces = sum(f.get("source", "detector") == "detector" for line in fh for f in json.loads(line)["tracks"])
+        exp.metric(f"e3/{video.name}/faces", n_faces)
         cache = exp.cache / video.name / "blanket"
         done: dict[tuple, Path] = {}
 

@@ -92,13 +92,15 @@ BLANKET, keyed by video hash and settings. Reusing them also controls SDXL's
 run-to-run non-determinism. `--fresh` clears the experiment's cache too.
 
 Machine-specific settings come from the environment, never from `config.toml`:
-`BLANKET_REPO`, `IDENTITY_GPU`, `SWAP_GPU`, `CTX_ID` (on serra1: `1`, `0`, `-1`), and
+`BLANKET_REPO`, `IDENTITY_GPU`, `SWAP_GPU`, `CTX_ID` (on constantine, with `CUDA_VISIBLE_DEVICES=1`
+from `~/.lftl_env`: `0`, `0`, `0`; on serra1 they were `1`, `0`, `-1`), and
 `EVAL_CTX_ID` for the evaluator (default `0`, the GPU: it runs after the generation
 servers exit). `E3_PARTS=e3c,e3d` runs a subset of E3.
 Videos resolve from `data/videos/<name>.*`.
 
-P1 (E3, part e3g) needs the bridge on its `p1-guidance` branch and two packages in
-its identity environment: `.venv-identity/bin/pip install "onnx>=1.15" "onnx2torch>=1.5"`.
+P1 (E3, part e3g) needs the bridge at `276970a` or later (P1 merged into
+`fix/source-face-selection`) and the identity server started with `--p1`; its
+`requirements-identity.txt` already lists `onnx` and `onnx2torch`.
 Run it only after `tools/p1_spike.py` (also called by `smoke.sh`) shows at most ~3 s
 and ~3 GB extra per guided step.
 
@@ -151,7 +153,10 @@ and `graphicx`, no `pgfplots`/`siunitx`):
   show real people in the background, so they are a manual, consent-checked
   decision.
 
-## Cost on serra1 (GPUs shared with another job)
+## Cost on serra1 (2× RTX A5000, GPUs shared with another job; historical)
+
+constantine (one GTX 1080, from 2026-11-11) is slower; its estimates come from
+the first smoke and identity timings and are logged in `DECISIONS.md`.
 
 | Experiment | Estimate |
 |---|---|

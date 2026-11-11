@@ -584,4 +584,4 @@ flow, and reproduces the runs before 2026-09-30.
 
 Benchmark them against the default (BLANKET's `enable_sequential_cpu_offload` + `attention_slicing(1)`) before using them in a run. See `research/next-steps/diffusion-speed-2026-10-30.md`.
 
-**Bridge version.** This backend needs bridge ≥ `eabfbf3` merged with the three server-only commits (`f376d0b`, `3004a3a`, `16cf02d`). Older bridges reject the `identity_box` argument.
+**Bridge version.** This backend needs bridge ≥ `276970a` (branch `fix/source-face-selection`). Older bridges reject the `identity_box` argument. serra1's three server-only commits (`f376d0b`, `3004a3a`, `16cf02d`) never reached GitHub; `276970a` rewrites them from this backend's protocol (`last_guidance`, per-call `enhance` and `profile`, deletion of the mask and ControlNet maps) and merges P1 (`p1-guidance`). Runs from 2026-11-11 on (constantine) use it; serra1's runs used the lost commits.

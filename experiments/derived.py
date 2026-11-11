@@ -6,8 +6,8 @@ Reads paper/generated/e*_*/results.tex and writes paper/generated/derived/:
 - results.tex: \\result{derived/...} keys
   - chance level per video: 1/N, N = tracks of the video's gallery;
   - rank-1 per video, as a multiple of chance, and its macro mean (videos weighted
-    equally; the pooled values weight them by faces, so demo3 counts 54%);
-  - leave-one-video-out choice of the P2 strength β: chosen on the other two videos
+    equally; the pooled values weight them by faces);
+  - leave-one-video-out choice of the P2 strength β: chosen on the other videos
     (face-weighted mean of FaceNet rank-1), scored on the held-out one. It tests whether
     E3c's choice of β survives outside the videos it was made on.
 - tab-derived-chance.tex, tab-derived-lovo.tex (+ pt/ copies via tables_pt.py).
@@ -25,8 +25,9 @@ Added with the 2026-10-30 critical review (research/next-steps/analise-critica-b
 - Portuguese pgfplots versions of the E3 and E5 figures from their exported CSVs
   (pt/fig-e3-p2-curve.tex, pt/fig-e5-tradeoff.tex): no server needed.
 
-Track counts come from the e3/<video>/tracks keys (E3 exports them from tracks.json); for
-runs older than that, from experiments/derived.toml, measured from the same tracks.json files.
+The videos, their track counts and their detector-face counts come from the e3/<video>/tracks
+and e3/<video>/faces keys (E3 exports them from tracks.json and detections.jsonl); for runs older
+than that, from experiments/derived.toml, measured from the same files.
 Standard library only.
 """
 
@@ -44,7 +45,6 @@ from tables_pt import LABELS
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED = ROOT / "paper" / "generated"
 OUT = GENERATED / "derived"
-VIDEOS = ("demo1", "demo2", "demo3")
 BETAS = ("b-0.2", "b-0.35", "b-0.5", "b-0.8", "b-1.2", "b-1.6")
 
 # rank-1 series: (key part, label, key pattern with {v} for the video)
@@ -83,10 +83,13 @@ def fmt(x: float, nd: int = 3) -> str:
 def main() -> int:
     keys = read_keys()
     fallback = tomllib.loads((Path(__file__).with_name("derived.toml")).read_text())
+    # the videos are the ones E3 exported (e3/<video>/tracks); derived.toml only for older exports
+    VIDEOS = tuple(sorted({k.split("/")[1] for k in keys if re.fullmatch(r"e3/[^/]+/tracks", k)})
+                   or fallback["tracks"])
     tracks = {v: num(keys, f"e3/{v}/tracks") or fallback["tracks"][v] for v in VIDEOS}
     from_keys = all(num(keys, f"e3/{v}/tracks") for v in VIDEOS)
-    # face counts per video for the leave-one-video-out weights: detector faces of E3 (derived.toml)
-    faces = {v: fallback["faces"][v] for v in VIDEOS}
+    # face counts per video for the leave-one-video-out weights: detector faces of E3
+    faces = {v: num(keys, f"e3/{v}/faces") or fallback["faces"][v] for v in VIDEOS}
 
     out: dict[str, str] = {}
     for v in VIDEOS:
@@ -153,7 +156,7 @@ def main() -> int:
                "\\bottomrule", "\\end{tabular}", ""]
         (OUT / f"tab-derived-{name}.tex").write_text("\n".join(tex), encoding="utf-8")
 
-    table("chance", ["Series", *(f"{v} (N={int(tracks[v])})" for v in VIDEOS), "Macro"], chance_rows, "lrrrr")
+    table("chance", ["Series", *(f"{v} (N={int(tracks[v])})" for v in VIDEOS), "Macro"], chance_rows, "l" + "r" * (len(VIDEOS) + 1))
     table("lovo", ["Held-out video", "$\\beta$ chosen", "R1 native", "R1 chosen", "$\\Delta$", "Best $\\beta$ (R1)"],
           lovo_rows, "lrrrrr")
     table("frontier", ["Method", "View", "Synthetic share", "R1 among them"],

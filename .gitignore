@@ -4,6 +4,7 @@ config.local.json
 # SSH/infra notes — hostnames, key filenames, access topology. Local-only,
 # never committed.
 docs/serra1-ssh.md
+docs/constantine-ssh.md
 
 # Python
 __pycache__/

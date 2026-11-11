@@ -4,8 +4,9 @@
 # mktemp dir) that is deleted on exit; keeps nothing in results/. Stops at the
 # first failure.
 #
-#   experiments/smoke.sh [video] [frames]          # default: demo1, 20 frames
-#   env: BLANKET_REPO, IDENTITY_GPU, SWAP_GPU, CTX_ID (as for the experiments), SMOKE_DIR
+#   experiments/smoke.sh [video] [frames]          # default: demo2, 20 frames
+#   env: BLANKET_REPO, IDENTITY_GPU, SWAP_GPU, CTX_ID (as for the experiments), SMOKE_DIR,
+#        BLANKET_TIMEOUT (seconds per RPC, default 2400, as in experiments/_generation.py)
 #
 # Checks, in order:
 #   - ArcFace torch vs ONNX parity (P1/P3 gradients; must be >= 0.999)
@@ -17,9 +18,9 @@
 #   - the evaluator with every probe, the noise floor and the per-face export
 #   - WIDER FACE on 50 images
 set -euo pipefail
-export PYTHONUTF8=1   # non-interactive shells on serra1 have an ASCII locale
+export PYTHONUTF8=1   # non-interactive shells on the servers can have an ASCII locale
 cd "$(dirname "$0")/.."
-VIDEO=${1:-demo1} N=${2:-20}
+VIDEO=${1:-demo2} N=${2:-20}
 # private scratch (crops, videos and identity images show real people: LGPD), deleted on exit
 S=${SMOKE_DIR:-$(mktemp -d /tmp/smoke.XXXXXX)}
 chmod 700 "$S"
@@ -63,7 +64,8 @@ anon censor-mosaic --model censor --censor-mode mosaic --ctx-id "$CTX"
 anon ciagan-p3 --model ciagan --identity-prepass --ciagan-push track --ctx-id "$CTX"
 anon blanket --model blanket --blanket-repo "$BR" --identity-prepass --blanket-swap-mode track --blanket-push-beta 1.2 \
   --blanket-identity-cache "$S/ids" --privacy-gate 0.5 --generate-min-conf 0.5 --ctx-id "$CTX" \
-  ${IDENTITY_GPU:+--blanket-identity-gpu $IDENTITY_GPU} ${SWAP_GPU:+--blanket-swap-gpu $SWAP_GPU}
+  ${IDENTITY_GPU:+--blanket-identity-gpu $IDENTITY_GPU} ${SWAP_GPU:+--blanket-swap-gpu $SWAP_GPU} \
+  --blanket-server-timeout "${BLANKET_TIMEOUT:-2400}"
 
 step "evaluate every arm with every probe"
 py -m src.eval.evaluate --phase1-dir "$S/det" --video "$V" --phase2-dir "$S/censor-blur" --phase2-dir "$S/censor-mosaic" \

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Delete what the experiments keep on disk that still shows real people (LGPD), once the
 # paper artifacts are exported (experiments/export_paper.sh). Lists by default; deletes
-# only with --yes. Run on the machine that holds the results (serra1).
+# only with --yes. Run on the machine that holds the results (constantine).
 #
 #   experiments/purge.sh            # list what would be deleted, with sizes
 #   experiments/purge.sh --yes      # delete it
