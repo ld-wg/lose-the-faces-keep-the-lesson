@@ -430,6 +430,11 @@ points an examining committee could use against the thesis.
     - **Bridge.** serra1's three server-only commits are rewritten from the backend's protocol (bridge `276970a`, which also merges P1).
     - **No mixing.** Results of the two machines are not compared or pooled with each other. `SOURCES.md` gains a host and GPU column.
     - **Derived counts.** E3 exports `e3/<video>/faces`. `derived.py` takes its video list from E3's keys, not from a fixed list.
+71. **P1 on the 8 GB GPU: E3g swaps on the CPU (2026-11-12).**
+    - **Failure.** P1 backpropagates through the VAE decoder and ArcFace and needs more than 4.4 GB on the GPU. That does not fit next to the swap server (3 GB) and the main process on the GTX 1080. The second identity of `g-p1-c0.1-quality_mean` failed with CUDA OOM; the first had been generated before the swap server started.
+    - **Fix.** E3g alone runs with `SWAP_GPU=-1`, so FaceFusion's ONNX sessions fall back to the CPU. The identity server and every other arm keep the GTX 1080.
+    - **What changes.** The swap computes the same thing on another device, so only floating-point noise differs. The E3g arm's wall-clock time is not comparable with the other arms', and E5 measures cost without P1.
+    - **How it runs.** `E3_PARTS` runs E3 in three steps: every other part, then E3g, then all parts from the cache.
 
 ## Paper text to revise (not done here; `paper/main.tex` has uncommitted edits)
 
