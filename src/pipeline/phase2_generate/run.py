@@ -183,6 +183,10 @@ def main() -> None:
                         "(and failures) across runs, so experiment arms share identical identities")
     p.add_argument("--blanket-swap-face-detector-score", type=float, default=None,
                    help="blanket: FaceFusion's face_detector_score in the swap stage (BLANKET ships 0.5)")
+    p.add_argument("--blanket-swap-model", type=str, default=None,
+                   help="blanket: FaceFusion face swapper (default: BLANKET's inswapper_128; BLANKET also "
+                        "accepts simswap_256, blendswap_256, uniface_256). Needs bridge >= the "
+                        "--face-swapper-model commit")
     p.add_argument("--blanket-identity-gpu", type=str, default=None,
                    help="blanket: CUDA_VISIBLE_DEVICES for the SDXL identity server (default: inherit). "
                         "On a shared GPU, put it on a different device than the swap server")
@@ -353,6 +357,7 @@ def main() -> None:
             max_identity_attempts=args.blanket_max_identity_attempts,
             identity_cache_dir=Path(args.blanket_identity_cache) if args.blanket_identity_cache else None,
             swap_face_detector_score=args.blanket_swap_face_detector_score,
+            swap_model=args.blanket_swap_model,
             identity_gpu=args.blanket_identity_gpu,
             swap_gpu=args.blanket_swap_gpu,
             swap_mode=args.blanket_swap_mode,

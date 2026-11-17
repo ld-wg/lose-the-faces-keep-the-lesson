@@ -23,7 +23,7 @@ from _common import SERIES, Experiment, holm, obs_ci  # noqa: E402
 from _generation import (_done, anonymize, by_run, cell, detect, eval_ctx_args, evaluate,  # noqa: E402
                          metric_keys, paired_rows, strata_rows)
 
-PARTS = [p for p in os.environ.get("E3_PARTS", "e3a,e3b,e3c,e3d,e3e,e3f,e3g").split(",") if p]
+PARTS = [p for p in os.environ.get("E3_PARTS", "e3a,e3b,e3c,e3d,e3e,e3f,e3g,e3h").split(",") if p]
 GEN = lambda rows: [r for r in rows if r["anonymized"]]  # noqa: E731
 KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet_final.rank1", "facenet_final.verified",
         "anonymized", "expression", "pose_err", "emotion_agree", "emotion_kappa", "age_err", "gender_agree",
@@ -146,6 +146,19 @@ with Experiment(__file__) as exp:
                 name = p2_name(e["beta"], e["aggregation"]) if not extra else f"e-{arm['name']}-{e['aggregation']}"
                 arms[arm["name"]] = run({**p2(e["beta"], e["aggregation"], extra), "name": name})
             part_eval("e3e", arms)
+
+        if "e3h" in PARTS:
+            h = cfg["e3h"]
+            arms = {"inswapper native": run({**base, "name": "c-native", "swap_mode": "native",
+                                             "aggregation": h["aggregation"]}),
+                    "inswapper P2": run({**p2(h["beta"], h["aggregation"]), "name": p2_name(h["beta"], h["aggregation"])})}
+            for model in h["models"]:
+                short = model.split("_")[0]
+                arms[f"{short} native"] = run({**base, "name": f"h-{short}-native", "swap_mode": "native",
+                                               "aggregation": h["aggregation"], "swap_model": model})
+                arms[f"{short} P2"] = run({**p2(h["beta"], h["aggregation"], {"swap_model": model}),
+                                           "name": f"h-{short}-{p2_name(h['beta'], h['aggregation'])}"})
+            part_eval("e3h", arms)
 
         if "e3g" in PARTS:
             g = cfg["e3g"]
@@ -291,6 +304,9 @@ with Experiment(__file__) as exp:
 
     if "e3g" in parts:
         strength_table("e3g", "p1", "P2")
+
+    if "e3h" in parts:
+        strength_table("e3h", "swapper", cfg["e3h"]["reference"])
 
     def mean(xs):
         return round(sum(xs) / len(xs), 3) if xs else None

@@ -366,6 +366,9 @@ class Backend:
         max_identity_attempts: int = 3,
         identity_cache_dir: Optional[Path] = None,
         swap_face_detector_score: Optional[float] = None,
+        # FaceFusion swapper (bridge --face-swapper-model; None = BLANKET's inswapper_128).
+        # BLANKET accepts inswapper_128, simswap_256, blendswap_256, uniface_256.
+        swap_model: Optional[str] = None,
         # GPU placement of the two servers (CUDA_VISIBLE_DEVICES), for shared
         # machines: on serra1 another user's job can hold 20 of each GPU's
         # 24 GB, and SDXL + FaceFusion + this process's own models on one GPU
@@ -454,6 +457,8 @@ class Backend:
             )
             swap_args = [] if swap_face_detector_score is None else [
                 "--face-detector-score", str(swap_face_detector_score)]
+            if swap_model is not None:
+                swap_args += ["--face-swapper-model", swap_model]
             if detection == "phase1":
                 swap_args.append("--lenient-identity")
             self._swap_client = _RpcClient(
