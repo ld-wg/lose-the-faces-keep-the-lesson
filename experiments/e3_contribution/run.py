@@ -33,6 +33,10 @@ KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet_final.rank1"
         # one decision per track (the pseudonym is stable)
         "shown", "facenet_shown.rank1", "facenet_inv.rank1", "arcface_inv.rank1", "facenet_track.rank1",
         "facenet_track_inv.rank1", "arcface_track.rank1", "arcface_track_inv.rank1"]
+# The keys above are over every detected face (a face that was not replaced counts with its
+# real embedding). The same metrics among the replaced faces only go under <arm>/generated/,
+# as in E2; the tables and the P2 curve already use that subset.
+GEN_KEYS = ["facenet.rank1", "arcface.rank1", "facenet_inv.rank1", "arcface_inv.rank1"]
 SIZE_EDGES = [0, 48, 96, 1e9]   # face size strata in px (sqrt of the box area), as E2
 
 
@@ -84,6 +88,7 @@ with Experiment(__file__) as exp:
                 for label, d in arms.items():
                     if d == name:
                         metric_keys(exp, f"{part}/{video.name}/{label}", run_rows, KEYS, ev)
+                        metric_keys(exp, f"{part}/{video.name}/{label}/generated", GEN(run_rows), GEN_KEYS, ev)
 
         if "e3a" in PARTS:
             a = cfg["e3a"]
@@ -207,6 +212,7 @@ with Experiment(__file__) as exp:
     for part in parts:
         for label, rows in rows_of(part).items():
             metric_keys(exp, f"{part}/pooled/{label}", rows, KEYS, ev)
+            metric_keys(exp, f"{part}/pooled/{label}/generated", GEN(rows), GEN_KEYS, ev)
 
     if "e3b" in parts:
         exp.table("coverage", ["Arm", "Coverage", "Identity unusable", "Swap no face", "R1 final", "Expr.", "Emotion κ"], [

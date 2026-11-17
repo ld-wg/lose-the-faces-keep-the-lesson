@@ -52,9 +52,9 @@ SERIES = [
     ("blur-final", "blur, final video", "e2/{v}/blur/facenet_final.rank1"),
     ("ciagan-final", "CIAGAN, final video", "e2/{v}/ciagan/facenet_final.rank1"),
     ("blanket-final", "BLANKET (released), final video", "e2/{v}/blanket/facenet_final.rank1"),
-    ("native-generated", "BLANKET native mix, generated", "e3c/{v}/native/facenet.rank1"),
-    ("p2-1.2-generated", "P2 $\\beta$ 1.2, generated", "e3c/{v}/b-1.2/facenet.rank1"),
-    ("p2-1.6-generated", "P2 $\\beta$ 1.6, generated", "e3c/{v}/b-1.6/facenet.rank1"),
+    ("native-generated", "BLANKET native mix, generated", "e3c/{v}/native/generated/facenet.rank1"),
+    ("p2-1.2-generated", "P2 $\\beta$ 1.2, generated", "e3c/{v}/b-1.2/generated/facenet.rank1"),
+    ("p2-1.6-generated", "P2 $\\beta$ 1.6, generated", "e3c/{v}/b-1.6/generated/facenet.rank1"),
     ("gate-final", "final pipeline (gate), final video", "e3e/{v}/gate/facenet_final.rank1"),
     ("ref-video", "final pipeline, composed video", "e5/{v}/ref/facenet_video.rank1"),
     ("adapt-video", "final pipeline + adaptive, composed video", "e5/{v}/adapt-0.08/facenet_video.rank1"),
@@ -117,23 +117,23 @@ def main() -> int:
         others = [v for v in VIDEOS if v != held]
 
         def score(arm: str) -> float:
-            return sum(num(keys, f"e3c/{o}/{arm}/facenet.rank1") * faces[o] for o in others) / sum(faces[o] for o in others)
+            return sum(num(keys, f"e3c/{o}/{arm}/generated/facenet.rank1") * faces[o] for o in others) / sum(faces[o] for o in others)
 
-        if any(num(keys, f"e3c/{v}/{a}/facenet.rank1") is None for v in VIDEOS for a in (*BETAS, "native")):
+        if any(num(keys, f"e3c/{v}/{a}/generated/facenet.rank1") is None for v in VIDEOS for a in (*BETAS, "native")):
             break
         chosen = min(BETAS, key=score)
-        native = num(keys, f"e3c/{held}/native/facenet.rank1")
-        got = num(keys, f"e3c/{held}/{chosen}/facenet.rank1")
-        oracle = min(BETAS, key=lambda a: num(keys, f"e3c/{held}/{a}/facenet.rank1"))
+        native = num(keys, f"e3c/{held}/native/generated/facenet.rank1")
+        got = num(keys, f"e3c/{held}/{chosen}/generated/facenet.rank1")
+        oracle = min(BETAS, key=lambda a: num(keys, f"e3c/{held}/{a}/generated/facenet.rank1"))
         beta = chosen.removeprefix("b-")
         out[f"derived/lovo/{held}/beta"] = beta
         out[f"derived/lovo/{held}/rank1"] = fmt(got)
         out[f"derived/lovo/{held}/native"] = fmt(native)
         out[f"derived/lovo/{held}/delta"] = f"{got - native:+.3f}"
         out[f"derived/lovo/{held}/oracle-beta"] = oracle.removeprefix("b-")
-        out[f"derived/lovo/{held}/oracle-rank1"] = fmt(num(keys, f"e3c/{held}/{oracle}/facenet.rank1"))
+        out[f"derived/lovo/{held}/oracle-rank1"] = fmt(num(keys, f"e3c/{held}/{oracle}/generated/facenet.rank1"))
         lovo_rows.append([held, beta, fmt(native, 3), fmt(got, 3), f"{got - native:+.3f}",
-                          f"{oracle.removeprefix('b-')} ({fmt(num(keys, f'e3c/{held}/{oracle}/facenet.rank1'), 3)})"])
+                          f"{oracle.removeprefix('b-')} ({fmt(num(keys, f'e3c/{held}/{oracle}/generated/facenet.rank1'), 3)})"])
 
     frontier_rows = frontier(keys, out)
     geom_rows = p2_geometry_rows(keys, out)
@@ -191,7 +191,7 @@ def frontier(keys: dict[str, str], out: dict[str, str]) -> list[dict]:
             points.append({"key": f"e2-{name}", "label": label, "view": "generated", "share": share, "rank1": r1})
     for arm, label in (("native", "BLANKET native mix, Stage 1 detection"), ("b-1.2", "P2 $\\beta$ 1.2"),
                        ("b-1.6", "P2 $\\beta$ 1.6")):
-        share, r1 = num(keys, f"e3c/pooled/{arm}/anonymized"), num(keys, f"e3c/pooled/{arm}/facenet.rank1")
+        share, r1 = num(keys, f"e3c/pooled/{arm}/anonymized"), num(keys, f"e3c/pooled/{arm}/generated/facenet.rank1")
         if share is not None and r1 is not None:
             points.append({"key": f"e3c-{arm}", "label": label, "view": "generated", "share": share, "rank1": r1})
     # once E3 is re-evaluated (shown / facenet_shown.rank1 keys), the final pipeline's own point
@@ -227,8 +227,8 @@ def p2_geometry_rows(keys: dict[str, str], out: dict[str, str]) -> list[list[str
     for beta in (0.0, c, 0.35, 0.5, 0.8, 1.2, 1.6):
         cs, cr = geometry(c, beta)
         arm = "none" if beta == 0 else f"b-{beta:g}" if beta != c else None
-        fn = num(keys, f"e3c/pooled/{arm}/facenet.rank1") if arm else None
-        af = num(keys, f"e3c/pooled/{arm}/arcface.rank1") if arm else None
+        fn = num(keys, f"e3c/pooled/{arm}/generated/facenet.rank1") if arm else None
+        af = num(keys, f"e3c/pooled/{arm}/generated/arcface.rank1") if arm else None
         if beta != c and beta > 0:
             out[f"derived/p2geom/b-{beta:g}/cos-synth"] = fmt(cs, 2)
             out[f"derived/p2geom/b-{beta:g}/cos-real"] = fmt(cr, 2)
@@ -335,7 +335,7 @@ def p2_curve_figure(keys: dict[str, str]) -> str:
         "\\nextgroupplot[ylabel={rank-1 (rostos gerados)}, ymin=0, legend style={font=\\scriptsize, draw=none, "
         "fill=none}, legend pos=south west]",
         plot("facenet", "lftl0", "FaceNet (avaliador)"), plot("arcface", "lftl1", "ArcFace (otimizado)"),
-        native("e3c/pooled/native/facenet.rank1", "lftl0"), native("e3c/pooled/native/arcface.rank1", "lftl1"),
+        native("e3c/pooled/native/generated/facenet.rank1", "lftl0"), native("e3c/pooled/native/generated/arcface.rank1", "lftl1"),
         "\\nextgroupplot[ylabel={erro de expressão (IOD)}, ymin=0, scaled y ticks=false, yticklabel style={/pgf/number format/fixed, /pgf/number format/precision=2}]",
         plot("expression", "lftl2"), native("e3c/pooled/native/expression", "lftl2"),
         "\\end{groupplot}", "\\end{tikzpicture}", ""])
