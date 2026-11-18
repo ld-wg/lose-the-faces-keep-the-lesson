@@ -126,9 +126,13 @@ def anonymize(exp: Experiment, video: Video, det_dir: Path, arm: dict, out: Path
 
 
 def evaluate(exp: Experiment, video: Video, det_dir: Path, arm_dirs: Sequence[Path], ev: dict, out: Path,
-             noise_floor: bool = True, video_view: bool = False) -> tuple[dict, list[dict]]:
-    """One evaluate call for every arm of a video. Returns (eval.json, per-face rows with video=)."""
-    utility = [u for u in ev["utility"] if u != "gaze"]   # gaze: a stated limitation (DECISIONS.md 10)
+             noise_floor: bool = True, video_view: bool = False, face_mask: str = "none",
+             utility: Optional[Sequence[str]] = None) -> tuple[dict, list[dict]]:
+    """One evaluate call for every arm of a video. Returns (eval.json, per-face rows with video=).
+    `utility` overrides the config's probes (an empty list: privacy only); `face_mask` is the
+    evaluator's --face-mask."""
+    # gaze: a stated limitation (DECISIONS.md 10)
+    utility = [u for u in (ev["utility"] if utility is None else utility) if u != "gaze"]
     if _done(exp, out / "eval.json", out / "obs.csv"):
         exp.note(f"reused/evaluate/{video.name}/{out.name}", str(out))
         return json.loads((out / "eval.json").read_text()), load_obs(out / "obs.csv", video=video.name)
@@ -136,6 +140,7 @@ def evaluate(exp: Experiment, video: Video, det_dir: Path, arm_dirs: Sequence[Pa
                *[a for d in arm_dirs for a in ("--phase2-dir", d)], "--far", ev["far"],
                "--utility", ",".join(utility), *(["--noise-floor"] if noise_floor else []),
                *(["--video-view"] if video_view else []),
+               *(["--face-mask", face_mask] if face_mask != "none" else []),
                "--obs-out", out / "obs.csv", "--out", out, *eval_ctx_args())
     report = json.loads((out / "eval.json").read_text())
     return report, load_obs(out / "obs.csv", video=video.name)

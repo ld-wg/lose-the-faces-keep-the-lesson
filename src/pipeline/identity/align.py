@@ -78,6 +78,35 @@ def warp(image: np.ndarray, landmarks: Sequence[Sequence[float]], size: int = AR
     return cv2.warpAffine(image, m, (size, size), borderValue=0.0)
 
 
+# The face core in the 112 template: brows to chin, cheek to cheek. The ellipse's top passes the
+# brow line (~0.35 inter-ocular distances above the eyes) and its bottom the chin (~0.55 below the
+# mouth); everything outside it (hair, forehead, ears, jaw outline, background) is "context".
+# The evaluator's --face-mask splits an aligned crop into the two, to measure where a recognizer
+# finds the identity (2026-11-18 review).
+FACE_CORE_ELLIPSE = (56.0, 74.0, 41.0, 38.0)   # (cx, cy, half-width, half-height), template pixels
+MASK_GRAY = 128                                 # ~zero after both recognizers' input normalization
+
+
+def face_core_mask(size: int, margin: float = 0.0) -> np.ndarray:
+    """Boolean `size`x`size` mask of the face core, for a crop aligned with `template(size, margin)`."""
+    scale = size / (ARCFACE_SIZE * (1.0 + 2.0 * margin))
+    cx, cy, ax, ay = FACE_CORE_ELLIPSE
+    cx, cy = (cx + ARCFACE_SIZE * margin) * scale, (cy + ARCFACE_SIZE * margin) * scale
+    yy, xx = np.mgrid[0:size, 0:size]
+    return ((xx - cx) / (ax * scale)) ** 2 + ((yy - cy) / (ay * scale)) ** 2 <= 1.0
+
+
+def mask_aligned(aligned: np.ndarray, margin: float, keep: str) -> np.ndarray:
+    """An aligned crop with `keep="core"` (gray outside the face core) or `keep="context"`
+    (gray inside it)."""
+    if keep not in ("core", "context"):
+        raise ValueError(f"keep must be 'core' or 'context', not {keep!r}")
+    inside = face_core_mask(aligned.shape[0], margin)
+    out = aligned.copy()
+    out[~inside if keep == "core" else inside] = MASK_GRAY
+    return out
+
+
 def shift(landmarks: Sequence[Sequence[float]], dx: float, dy: float) -> list[tuple[float, float]]:
     """Landmarks translated by (-dx, -dy) — frame coordinates into a crop's own."""
     return [(float(x) - dx, float(y) - dy) for x, y in landmarks]

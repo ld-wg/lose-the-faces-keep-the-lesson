@@ -5,9 +5,12 @@
 
 Parts: e3a C2 identity estimate · e3b coverage (seed candidates, Phase 1 detection)
 · e3c P2 strength · e3d P2 target · e3e fail-closed policies · e3f P3 (CIAGAN)
-· e3g P1 (SDXL guidance, on top of P2; run only after the bridge's tools/p1_spike.py says go).
+· e3g P1 (SDXL guidance, on top of P2; run only after the bridge's tools/p1_spike.py says go)
+· e3h face swapper · e3m where the identity is (face core vs context masks; re-evaluation only).
 Arms with identical settings run once and are shared between parts; BLANKET
 identities are frozen per video in cache/ so every BLANKET arm swaps the same faces.
+With e3b, e3c and e3e, the same-face table compares the arms on the faces the released
+flow swaps and on the faces only Stage 1 detection adds (2026-11-18 review).
 """
 
 from __future__ import annotations
@@ -19,11 +22,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _common import SERIES, Experiment, holm, obs_ci  # noqa: E402
+from _common import SERIES, Experiment, holm, obs_ci, paired_obs, strata  # noqa: E402
 from _generation import (_done, anonymize, by_run, cell, detect, eval_ctx_args, evaluate,  # noqa: E402
                          metric_keys, paired_rows, strata_rows)
 
-PARTS = [p for p in os.environ.get("E3_PARTS", "e3a,e3b,e3c,e3d,e3e,e3f,e3g,e3h").split(",") if p]
+PARTS = [p for p in os.environ.get("E3_PARTS", "e3a,e3b,e3c,e3d,e3e,e3f,e3g,e3h,e3m").split(",") if p]
 GEN = lambda rows: [r for r in rows if r["anonymized"]]  # noqa: E731
 KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet_final.rank1", "facenet_final.verified",
         "anonymized", "expression", "pose_err", "emotion_agree", "emotion_kappa", "age_err", "gender_agree",
@@ -43,6 +46,15 @@ SIZE_EDGES = [0, 48, 96, 1e9]   # face size strata in px (sqrt of the box area),
 def reason_share(rows, reason: str):
     v = [1.0 if r.get("reason") == reason else 0.0 for r in rows]
     return round(sum(v) / len(v), 3) if v else None
+
+
+def face_key(r: dict) -> tuple:
+    return r["video"], r["frame_id"], r["track_id"]
+
+
+def tracks_per_bin(rows, key: str, edges) -> list[int]:
+    """Distinct tracks with at least one face in each stratum: the unit the intervals resample."""
+    return [len({(r["video"], r["track_id"]) for r in sub}) for _, sub in strata(rows, key, edges)]
 
 
 with Experiment(__file__) as exp:
@@ -75,9 +87,10 @@ with Experiment(__file__) as exp:
                 done[key] = anonymize(exp, video, det_dir, arm, out / arm["name"], cache)
             return done[key].name
 
-        def part_eval(part: str, arms: dict[str, str]) -> None:
+        def part_eval(part: str, arms: dict[str, str], **eval_kwargs) -> None:
             dirs = sorted({out / d for d in arms.values()})
-            report, rows = evaluate(exp, video, det_dir, dirs, ev, out / f"eval-{part}", noise_floor=False)
+            report, rows = evaluate(exp, video, det_dir, dirs, ev, out / f"eval-{part}", noise_floor=False,
+                                    **eval_kwargs)
             parts[part] = arms
             audit = report.get("identity_audit")   # tracks that may be one person (evaluate.identity_audit)
             if audit is not None:
@@ -146,6 +159,21 @@ with Experiment(__file__) as exp:
                 name = p2_name(e["beta"], e["aggregation"]) if not extra else f"e-{arm['name']}-{e['aggregation']}"
                 arms[arm["name"]] = run({**p2(e["beta"], e["aggregation"], extra), "name": name})
             part_eval("e3e", arms)
+
+        if "e3m" in PARTS:
+            # Where the identity is (2026-11-18 review): the same swaps, re-evaluated with the face
+            # core grayed out (context) or everything but it (core), real faces and gallery alike.
+            # No generation: the arms reuse E3c's folders. Privacy only, no utility probes.
+            m = cfg["e3m"]
+            arms = {"native": run({**base, "name": "c-native", "swap_mode": "native", "aggregation": m["aggregation"]}),
+                    "P2": run({**p2(m["beta"], m["aggregation"]), "name": p2_name(m["beta"], m["aggregation"])})}
+            for mask in m["masks"]:
+                part_eval(f"e3m-{mask}", arms, face_mask=mask, utility=[])
+                # the real face against its own gallery under the same mask: how much identity the
+                # masked crop carries before any anonymization
+                metric_keys(exp, f"e3m-{mask}/{video.name}/real",
+                            [r for r in pooled[f"e3m-{mask}"][arms["native"]] if r["video"] == video.name],
+                            ["real_facenet.rank1", "real_arcface.rank1"], ev)
 
         if "e3h" in PARTS:
             h = cfg["e3h"]
@@ -226,6 +254,62 @@ with Experiment(__file__) as exp:
         for label, rows in rows_of(part).items():
             metric_keys(exp, f"{part}/pooled/{label}", rows, KEYS, ev)
             metric_keys(exp, f"{part}/pooled/{label}/generated", GEN(rows), GEN_KEYS, ev)
+        if part.startswith("e3m-"):
+            metric_keys(exp, f"{part}/pooled/real", rows_of(part)["native"], ["real_facenet.rank1", "real_arcface.rank1"], ev)
+    if any(p.startswith("e3m-") for p in parts):
+        masks = [p.removeprefix("e3m-") for p in parts if p.startswith("e3m-")]
+        exp.table("where", ["Faces scored", *[f"FaceNet R1, {m}" for m in masks], *[f"ArcFace R1, {m}" for m in masks]], [
+            [label, *[cell(rows_for(f"e3m-{m}"), f"{rec}.rank1", ev) for rec in ("facenet", "arcface") for m in masks]]
+            for label, rows_for in (
+                ("real face", lambda part: [{**r, "facenet_rank": r.get("real_facenet_rank"),
+                                             "arcface_rank": r.get("real_arcface_rank")} for r in rows_of(part)["native"]]),
+                ("native swap", lambda part: GEN(rows_of(part)["native"])),
+                ("P2 swap", lambda part: GEN(rows_of(part)["P2"])))],
+            best=None, align="l" + "r" * (2 * len(masks)))
+
+    # ---- the same faces (2026-11-18 review) ------------------------------------------
+    # Coverage changes WHICH faces are scored: the faces the released flow cannot swap are small
+    # and leak less even when nothing else changes. Every arm on the faces the released flow
+    # swaps ("covered") and on the faces only Stage 1 detection adds ("added"), with the real
+    # face's own rank-1 on the same faces as the ceiling.
+    if {"e3b", "e3c", "e3e"} <= set(parts):
+        orig, native = rows_of("e3b")["original"], rows_of("e3c")[cfg["e3c"]["reference"]]
+        p2_rows, gate = rows_of("e3c")[f"β {cfg['e3e']['beta']}"], rows_of("e3e")["gate"]
+        covered = {face_key(r) for r in GEN(orig)}
+        added = {face_key(r) for r in GEN(native)} - covered
+        real = [{**r, "facenet_rank": r.get("real_facenet_rank")} for r in orig]   # every detector face
+        series = [("Real face (ceiling)", "real", real), ("BLANKET, released flow", "original", GEN(orig)),
+                  ("Stage 1 detection, native mix", "native", GEN(native)),
+                  (f"P2 $\\beta$ {cfg['e3e']['beta']}", "p2", GEN(p2_rows)),
+                  ("Privacy gate, shown faces", "gate", [{**r, "facenet_rank": r.get("facenet_shown_rank")}
+                                                         for r in gate if r.get("shown")])]
+        videos = sorted({r["video"] for r in orig})
+        table = []
+        for label, key, rows in series:
+            cells = []
+            for subset, keys in (("covered", covered), ("added", added)):
+                for scope in ("pooled", *videos):
+                    sub = [r for r in rows if face_key(r) in keys and scope in ("pooled", r["video"])]
+                    c = cell(sub, "facenet.rank1", ev)
+                    if c is not None:
+                        exp.metric(f"e3/matched/{scope}/{key}/{subset}/facenet.rank1", round(c[0], 3))
+                        exp.metric(f"e3/matched/{scope}/{key}/{subset}/facenet.rank1.ci", round(c[1], 3))
+                        exp.metric(f"e3/matched/{scope}/{key}/{subset}/faces", len(sub))
+                    if scope == "pooled":
+                        cells.append(c)
+            table.append([label, *cells])
+        exp.table("matched", ["Arm", "Faces the released flow swaps", "Faces only Stage 1 adds"], table,
+                  best=None, align="lrr")
+        # paired on the covered faces, against the released flow
+        for key, rows in (("native", GEN(native)), ("p2", GEN(p2_rows))):
+            for scope in ("pooled", *videos):
+                pick = lambda rs: [r for r in rs if face_key(r) in covered and scope in ("pooled", r["video"])]  # noqa: E731
+                d = paired_obs(pick(rows), pick(GEN(orig)), "facenet.rank1", n=ev["bootstrap"], seed=ev["seed"])
+                if d["diff"] is not None:
+                    exp.metric(f"e3/matched/{scope}/{key}/covered/delta-vs-original", round(d["diff"], 3))
+                    exp.metric(f"e3/matched/{scope}/{key}/covered/delta-vs-original.ci", round(d["half"], 3))
+                if d["p"] is not None:
+                    exp.metric(f"e3/matched/{scope}/{key}/covered/delta-vs-original.p", round(d["p"], 4))
 
     if "e3b" in parts:
         exp.table("coverage", ["Arm", "Coverage", "Identity unusable", "Swap no face", "R1 final", "Expr.", "Emotion κ"], [
@@ -251,6 +335,16 @@ with Experiment(__file__) as exp:
             if r[3] is not None:
                 exp.metric(f"{part}/pooled/{r[0]}/delta-p", round(r[3], 4))
                 exp.metric(f"{part}/pooled/{r[0]}/delta-p-holm", round(adjusted[r[0]], 4))
+        # the same paired comparisons within each video (2026-11-18 review): demo4 is the only
+        # video the choices never saw, so its test is the confirmatory one; no Holm across videos
+        for v in sorted({r["video"] for rs in gen.values() for r in rs}):
+            for r in paired_rows({k: [x for x in rs if x["video"] == v] for k, rs in gen.items()},
+                                 reference, "facenet.rank1", ev):
+                if r[1] is not None:
+                    exp.metric(f"{part}/{v}/{r[0]}/delta-facenet.rank1", round(r[1][0], 3))
+                    exp.metric(f"{part}/{v}/{r[0]}/delta-facenet.rank1.ci", round(r[1][1], 3))
+                if r[3] is not None:
+                    exp.metric(f"{part}/{v}/{r[0]}/delta-p", round(r[3], 4))
 
     if "e3c" in parts:
         strength_table("e3c", "p2-strength", cfg["e3c"]["reference"])
@@ -292,12 +386,23 @@ with Experiment(__file__) as exp:
              share(r, "reused"), delta.get(label), cell(GEN(r), "expression", ev), cell(GEN(r), "emotion_kappa", ev)]
             for label, r in rows.items()], best={"R1 final": "min", "Verified": "min"}, align="lrrrrrrr")
         # large faces (the teacher, front rows) leak most in E2: the same strata for the policies
-        bins, size_rows = strata_rows(rows, "face_px", SIZE_EDGES, "facenet_final.rank1", ev, {})
-        exp.table("policies-size", ["Face size (px)", *bins], size_rows, align="l" + "r" * len(bins))
-        for label, *cells in size_rows:
-            for b, c in zip(bins, cells):
-                if c is not None:
-                    exp.metric(f"e3e/pooled/{label}/size-{b}/facenet_final.rank1", round(c[0], 3))
+        # By face size, among the shown faces (2026-11-18 review: in the final view a hidden face
+        # counts as never re-identified, so hiding alone lowers it); the final view as keys only.
+        bins, size_rows = strata_rows(rows, "face_px", SIZE_EDGES, "facenet_shown.rank1", ev, {})
+        tracks = tracks_per_bin(rows[ref], "face_px", SIZE_EDGES)
+        exp.table("policies-size", ["Face size (px)", *bins], [["Tracks", *tracks], *size_rows],
+                  align="l" + "r" * len(bins))
+        for b, n in zip(bins, tracks):
+            exp.metric(f"e3e/pooled/size-{b}/tracks", n)
+        for label, r in rows.items():
+            for b, (_, sub) in zip(bins, strata(r, "face_px", SIZE_EDGES)):
+                for metric in ("facenet_shown.rank1", "facenet_final.rank1"):
+                    c = cell(sub, metric, ev)
+                    if c is not None:
+                        exp.metric(f"e3e/pooled/{label}/size-{b}/{metric}", round(c[0], 3))
+                        exp.metric(f"e3e/pooled/{label}/size-{b}/{metric}.ci", round(c[1], 3))
+                exp.metric(f"e3e/pooled/{label}/size-{b}/shown",
+                           round(sum(bool(x.get("shown")) for x in sub) / len(sub), 3) if sub else None)
 
     if "e3f" in parts:
         strength_table("e3f", "p3", cfg["e3f"]["reference"])

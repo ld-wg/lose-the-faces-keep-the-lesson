@@ -78,6 +78,12 @@ aggregation = "quality_mean"
 models = ["simswap_256"]
 reference = "inswapper P2"
 
+[e3m]                                  # where the identity is (2026-11-18 review): re-evaluation only
+beta = 1.2                             # E3c's native and P2 folders, no generation
+aggregation = "quality_mean"
+# core: gray outside the face core (brows to chin, src/pipeline/identity/align.py); context: the core grayed out
+masks = ["core", "context"]
+
 [eval]
 far = 0.01
 recognizers = ["facenet", "arcface"]
