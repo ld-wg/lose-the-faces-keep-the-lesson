@@ -55,9 +55,11 @@ The mechanism check runs in the BLANKET bridge's swap environment
 such in `provenance.json`. It takes about 5 min per video for detection and
 calibration.
 
-## Already measured (exploratory, 2026-09)
+## Status
 
-- **TAR @ FAR 1%:** FaceNet 0.69 (demo2) and 0.73 (demo3); ArcFace 0.80 and
-  0.74.
-- **Recognizer equivalence:** cosine 1.0000 on 300 crops.
-- **`emap`:** ‖EᵀE − I‖/√512 = 51.9, and cos(e, e·E) ≈ 0.00.
+Final campaign on constantine (one GTX 1080), 2026-11-11, on demo2 and demo4;
+exported to `paper/generated/e0_instruments/`.
+- **TAR @ FAR 1%:** FaceNet 0.642 (demo2) and 0.525 (demo4); ArcFace 0.653 and
+  0.478. A weak recognizer on these faces: low verification rates mean little.
+- **Recognizer equivalence:** cosine 1.000 on 300 crops.
+- **`emap`:** ‖EᵀE − I‖/√512 = 51.87, and cos(e, e·E) = −0.003.
