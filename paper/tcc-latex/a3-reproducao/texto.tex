@@ -2,7 +2,7 @@
 \label{ap:reproducao}
 
 \begin{itemize}
-\item Servidor: constantine (DInf/UFPR), uma NVIDIA GeForce GTX 1080 de 8\,GB (Pascal), 24 \emph{threads}, 31\,GB de RAM, compartilhado. Substituiu o serra1 (2$\times$ RTX A5000), bloqueado em 2026-10-21 com os dados da campanha anterior; nenhum número do serra1 é usado.
+\item Servidor: constantine (DInf/UFPR), uma NVIDIA GeForce GTX 1080 de 8\,GB (Pascal), 24 \emph{threads}, 31\,GB de RAM, compartilhado.
 \item Ambiente: Python 3.11 com \texttt{uv}; torch 2.6.0+cu124; \texttt{onnxruntime-gpu} 1.20.2; dois venvs isolados para a ponte do BLANKET.
 \item Ponte: repositório \texttt{blanket-anonymizer-bridge} (servidores de identidade e de troca, RPC por socket Unix), commit \texttt{276970a} na campanha e \texttt{2116af2} no E3h (opção de trocador).
 \item Experimentos: \texttt{experiments/e0..e5}, cada um com \texttt{config.toml}, \texttt{run.py}, README.

@@ -16,10 +16,10 @@
   \item \result{e3/demo2/faces} e \result{e3/demo4/faces} rostos-quadro detectados (10.119); demo4 tem 56\% dos rostos.
   \end{itemize}
 \item Acaso do rank-1 $= 1/N$: \result{derived/demo2/chance-rank1} e \result{derived/demo4/chance-rank1}.
-\item Papel de cada vídeo: o demo2 foi usado no piloto, quando $\beta$, o \emph{gate} e a amostragem foram fixados (com outros dois vídeos, demo1 e demo3, perdidos com o servidor anterior); o demo4 só entrou depois, com o pipeline já congelado. Ele é o único teste fora da amostra.
+\item Papel de cada vídeo: o demo2 foi usado no piloto, quando $\beta$, o \emph{gate} e a amostragem foram fixados; o demo4 só entrou depois, com o pipeline já congelado. Ele é o único teste fora da amostra.
 \item Origem: vídeos públicos na internet. Fonte, licença e termos de cada vídeo: pendente de registro. Não é conjunto consentido de crianças.
 \item Ética: consulta ao CEP da UFPR pendente (regulamento do TCC: aprovação, se necessária, na matrícula). Plano B: 2 ou 3 gravações próprias com adultos voluntários e termo de uso de imagem, repetindo E3e e E5.
-\item Todos os experimentos rodaram de novo na constantine (UFPR, GTX 1080) em novembro de 2026; números do servidor anterior não são usados nem comparados (Apêndice~\ref{ap:reproducao}).
+\item Todos os números deste texto vêm de uma única campanha, rodada na constantine (UFPR, GTX 1080) em novembro de 2026 (Apêndice~\ref{ap:reproducao}); números do piloto não são reportados.
 \end{itemize}
 
 \section{Privacidade}
@@ -73,7 +73,7 @@
 \item Agregado ponderado por rosto (demo4 = 56\%); ao lado: valores por vídeo e múltiplo do acaso ($R \times N$). Com dois vídeos, o resultado por vídeo é o que importa: demo2 visto no piloto, demo4 novo.
 \item Estratos: tamanho do rosto (0--48, 48--96, $\ge 96$\,px), $|$yaw$|$, confiança de detecção.
 \item Testes de equivalência (TOST) com margem no piso de ruído: não feitos (trabalho futuro).
-\item Critérios fixados em 2026-09-29, antes da campanha E0--E5 e depois de um piloto exploratório nos mesmos vídeos (P2 visto em 2026-09-26): melhora de privacidade = rank-1 cai e o intervalo pareado exclui zero; utilidade preservada = dentro do intervalo do braço de referência, lido contra o piso de ruído.
+\item Critérios fixados em 2026-09-29, antes da campanha E0--E5 e depois de um piloto exploratório que incluía o demo2 (P2 visto em 2026-09-26): melhora de privacidade = rank-1 cai e o intervalo pareado exclui zero; utilidade preservada = dentro do intervalo do braço de referência, lido contra o piso de ruído.
 \item Integridade: chaves \texttt{\textbackslash result} que colidem após a conversão para ASCII abortam a exportação; estatística, composição, pós-passe e rastreador com testes unitários (\texttt{tests/}, 62 testes).
 \end{itemize}
 
