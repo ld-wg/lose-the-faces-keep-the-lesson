@@ -22,7 +22,7 @@ rostos ainda verificados como o aluno, o pipeline final fica em
 que decide uma vez por aluno acerta \result{e5/pooled/ref/facenet_video_track.rank1}.
 O borramento fica em \result{e2/pooled/blur/facenet_final.rank1}. O vazamento
 está na troca de rosto, que preserva a forma do rosto original, e não na
-identidade sintética. Expressão e pose são mais bem preservadas que por
+identidade sintética; o SimSwap no lugar do \texttt{inswapper} não vaza menos. Expressão e pose são mais bem preservadas que por
 borramento e por redes adversariais generativas (erro de expressão de
 \result{e3e/pooled/gate/expression} unidades de distância interocular, cerca de
 cinco vezes o piso de ruído); a emoção não é preservada por nenhum método. O

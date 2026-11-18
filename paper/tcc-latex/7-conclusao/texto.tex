@@ -31,7 +31,7 @@
 
 \section{Trabalhos futuros}
 \begin{itemize}
-\item Trocador de rosto: é onde a identidade vaza; comparar trocadores como anonimizadores \citep{mustu} e escolher pelo vazamento medido, não pela fidelidade.
+\item Trocador de rosto: é onde a identidade vaza, e o SimSwap não vaza menos que o \texttt{inswapper} (E3h). Testar trocadores de outras famílias (por exemplo, os que geram o rosto inteiro em vez de editar o alvo) e escolher pelo vazamento medido, não pela fidelidade \citep{mustu}.
 \item Recall: segundo detector ou entrada maior no SCRFD, com a ocultação já existente cobrindo os falsos positivos; anotar rostos perdidos.
 \item Política por tamanho do rosto: ocultar ou censurar rostos $\ge 96$\,px (professor), que vazam quase sempre.
 \item Identidade sem a imagem real: banco de identidades geradas por prompt genérico; tira o custo de difusão por track, sem perda esperada de privacidade, já que o vazamento está na troca.
@@ -46,7 +46,7 @@
 \begin{itemize}
 \item Trocar cada rosto por uma identidade sintética fixa por track desidentifica parcialmente o vídeo de aula: a reidentificação automática cai, mas fica de 4 a 9 vezes acima do acaso entre os rostos mostrados, acima do blur.
 \item O ganho sobre o método publicado é sobretudo de cobertura: com a detecção do Estágio~1 na troca e a ocultação do que falha, quase quatro vezes mais rostos recebem face sintética e nenhum rosto detectado sai real.
-\item O vazamento está na troca de rosto, não na identidade gerada por difusão; empurrar a identidade para longe da real ajuda pouco, e orientar a difusão não ajuda.
+\item O vazamento está na troca de rosto, não na identidade gerada por difusão; empurrar a identidade para longe da real ajuda pouco, orientar a difusão não ajuda e trocar o \texttt{inswapper} pelo SimSwap também não.
 \item Expressão e pose são mantidas melhor que por censura e GANs; emoção não é mantida por nenhum método.
 \item Num vídeo novo, o pipeline congelado protege menos que no vídeo do piloto.
 \item Custo de dezenas a centenas de GPU-horas por hora de aula: viável para estudos de poucas horas de vídeo, não para acervos.

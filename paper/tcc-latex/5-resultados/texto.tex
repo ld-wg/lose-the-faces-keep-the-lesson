@@ -137,6 +137,23 @@
 \item P3, código de identidade do CIAGAN: $\Delta$ \result{e3f/pooled/P3-tau-0.0/delta-facenet.rank1} e \result{e3f/pooled/P3-tau--0.2/delta-facenet.rank1}; o CIAGAN puro já está em \result{e3f/pooled/ciagan/facenet.rank1} e o otimizador não move o código (massa na identidade da seed \result{e3f/pooled/P3-tau-0.0/push.p-seed}).
 \end{itemize}
 
+\subsection{Outro trocador: SimSwap (E3h)}
+\begin{itemize}
+\item Pergunta: se o vazamento está na troca, um trocador diferente vaza menos? Mesmas identidades SDXL, mesma detecção, só o modelo de troca muda (Tabela~\ref{tab:e3-swapper}).
+\item Nativo, FaceNet rank-1 entre os rostos trocados: \texttt{inswapper} \result{e3h/pooled/inswapper-native/generated/facenet.rank1}, SimSwap \result{e3h/pooled/simswap-native/generated/facenet.rank1}; ArcFace \result{e3h/pooled/inswapper-native/generated/arcface.rank1} e \result{e3h/pooled/simswap-native/generated/arcface.rank1}. O SimSwap vaza mais, nos dois vídeos.
+\item Com P2 $\beta = 1{,}2$: \texttt{inswapper} \result{e3h/pooled/inswapper-P2/generated/facenet.rank1}, SimSwap \result{e3h/pooled/simswap-P2/generated/facenet.rank1}; diferença pareada \result{e3h/pooled/simswap-P2/delta-facenet.rank1}~$\pm$~\result{e3h/pooled/simswap-P2/delta-facenet.rank1.ci} ($p$ de Holm \result{e3h/pooled/simswap-P2/delta-p-holm}). Empate; a ordem se inverte entre demo2 e demo4.
+\item O empurrão funciona também no SimSwap, que recebe o embedding ArcFace empurrado por uma conversão própria: \result{e3h/pooled/simswap-native/generated/facenet.rank1} $\to$ \result{e3h/pooled/simswap-P2/generated/facenet.rank1}. No ArcFace a queda é menor que no \texttt{inswapper} (\result{e3h/pooled/simswap-P2/generated/arcface.rank1} contra \result{e3h/pooled/inswapper-P2/generated/arcface.rank1}), porque o empurrão é feito no espaço do \texttt{inswapper}.
+\item Utilidade: expressão (\result{e3h/pooled/inswapper-P2/expression} e \result{e3h/pooled/simswap-P2/expression}), pose (\result{e3h/pooled/inswapper-P2/pose_err}\textdegree{} e \result{e3h/pooled/simswap-P2/pose_err}\textdegree) e $\kappa$ de emoção (\result{e3h/pooled/inswapper-P2/emotion_kappa} e \result{e3h/pooled/simswap-P2/emotion_kappa}) dentro do ruído.
+\item Leitura: trocar o \texttt{inswapper} pelo SimSwap não resolve o vazamento. Os dois partem do rosto alvo e só injetam nele a identidade da fonte \citep{simswap}; a forma do rosto real sobrevive nos dois. O pipeline final mantém o \texttt{inswapper}.
+\end{itemize}
+
+\begin{table}[ht]\centering
+\caption{E3h: trocador de rosto, nativo e com P2 $\beta = 1{,}2$, nos rostos trocados; $\Delta$ pareado contra \texttt{inswapper} com P2, em todos os rostos.}
+\label{tab:e3-swapper}
+\input{generated/e3_contribution/pt/tab-e3-swapper}
+\fonteautor
+\end{table}
+
 \section{E5: custo}
 \begin{itemize}
 \item Custo por braço: Tabela~\ref{tab:e5-cost}; diferenças pareadas: Tabela~\ref{tab:e5-paired}; compromisso: Figura~\ref{fig:e5-tradeoff}.

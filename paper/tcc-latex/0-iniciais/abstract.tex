@@ -22,7 +22,8 @@ faces still verified as the student, the final pipeline reaches
 who decides once per student is right for
 \resulten{e5/pooled/ref/facenet_video_track.rank1} of them. Blurring reaches
 \resulten{e2/pooled/blur/facenet_final.rank1}. The leak is in the face swap,
-which keeps the shape of the original face, not in the synthetic identity.
+which keeps the shape of the original face, not in the synthetic identity; SimSwap in place of
+\texttt{inswapper} does not leak less.
 Expression and pose are kept better than by blurring and by generative
 adversarial networks (expression error of \resulten{e3e/pooled/gate/expression}
 inter-ocular units, about five times the noise floor); no method keeps emotion.
