@@ -52,7 +52,7 @@
 \item Erro de landmarks, decisão de amostragem e janela de reaproveitamento definidos uma vez (DECISIONS 55).
 \item Holm por família; colisão de chaves aborta a exportação; código morto removido (DECISIONS 56).
 \item Análises derivadas (por vídeo, acaso, macro, LOVO) e tabelas em português (DECISIONS 57).
-\item Proxy de orientação, estratos por tamanho, tracks por vídeo: implementados, pendentes do servidor (DECISIONS 58).
+\item Proxy de orientação, estratos por tamanho, tracks por vídeo (DECISIONS 58).
 \item Proveniência completa em \texttt{SOURCES.md}; \texttt{fps} do \texttt{tracks.json} corrigido (DECISIONS 59).
 \item \texttt{phase3\_temporal} removido; testes unitários; reempacotamento depois da defesa (DECISIONS 60).
 \end{itemize}
@@ -66,3 +66,12 @@
 \item Figuras do texto em português com pgfplots a partir dos CSVs exportados (DECISIONS 65).
 \item Piloto exploratório declarado; critérios valem para a campanha E0--E5 (DECISIONS 66).
 \end{itemize}
+
+\section{Avaliação final e revisão (2026-11)}
+\begin{itemize}
+\item Avaliação final com o pipeline congelado, no demo2 e num vídeo novo, demo4, numa GTX 1080 (DECISIONS 70).
+\item O P1 não cabe na GPU de 8\,GB ao lado do servidor de troca: o E3g troca o rosto na CPU (DECISIONS 71).
+\item Revisão final: as chaves do E3 usadas como ``rostos gerados'' contavam todos os rostos; corrigido (\texttt{<braço>/generated}). O braço do E5 com o processo principal na CPU rodou, por engano, na GPU e saiu.
+\item E3h: comparação de trocadores de rosto (\texttt{inswapper} e SimSwap), depois de a campanha mostrar que o vazamento está na troca. Resultado: o SimSwap não vaza menos; o \texttt{inswapper} fica.
+\end{itemize}
+

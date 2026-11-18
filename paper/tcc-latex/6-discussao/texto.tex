@@ -1,59 +1,43 @@
 \chapter{Pipeline final e discussão}
 \label{cap:discussao}
 
-% Rascunho em tópicos (2026-10-22).
-% 2026-10-29 (parecer de orientação): ameaças à validade; alegações recalibradas
-% (desidentificação; "sem diferença significativa" em vez de "sem perda"); β escolhido
-% nos mesmos vídeos, com LOVO ao lado.
-% 2026-10-30 (análise crítica): comparação com o BLANKET liberado pelo par privacidade x
-% cobertura; empate de expressão com o GANonymization; ameaças: piloto, track como
-% identidade, recall, galeria, atacantes por track e ciente do empurrão.
+% 2026-11-17: reescrito sobre a campanha da constantine (demo2 visto, demo4 novo).
 
 \section{Pipeline final}
 \begin{enumerate}
 \item Estágio~1: SCRFD-10GF a 0,1, rastreador estilo ByteTrack, pós-passe de recall.
-\item BLANKET com a detecção do Estágio~1 na troca, identidade do track (C2) como alvo, P2 $\beta = 1{,}2$, processo principal na GPU.
+\item BLANKET com a detecção do Estágio~1 na troca, identidade real do track como alvo, P2 $\beta = 1{,}2$.
 \item \emph{Privacy gate} no limiar do vídeo a FAR 1\%.
 \item Amostragem adaptativa: $\tau_a = 0{,}08$ IOD, máximo de 6 quadros.
-\item Composição \emph{fail-closed}, com rejeição de saídas que não alteram o rosto (2026-10-29).
+\item Composição \emph{fail-closed}: todo rosto detectado sem substituição válida (inclusive a saída da troca que não altera o rosto) é ocultado.
 \end{enumerate}
 
 \section{Números do pipeline final}
 \begin{itemize}
-\item Sem amostragem (E3e): vídeo final rank-1 \result{e3e/pooled/gate/facenet_final.rank1} (macro \result{derived/gate-final/macro}; \result{derived/gate-final/x-chance-min}$\times$--\result{derived/gate-final/x-chance-max}$\times$ o acaso); verificação \result{e3e/pooled/gate/facenet_final.verified}; gerados \result{e3e/pooled/gate/anonymized}.
-\item Utilidade (rostos gerados): expressão \result{e3e/pooled/gate/expression}; pose \result{e3e/pooled/gate/pose_err}\textdegree; $\kappa$ \result{e3e/pooled/gate/emotion_kappa}.
-\item No vídeo composto, com amostragem adaptativa (E5): rank-1 \result{e5/pooled/adapt-0.08/facenet_video.rank1}; \result{e5/pooled/adapt-0.08/class-hours} GPU-horas projetadas por hora de aula (laço por rosto).
+\item Vídeo composto (E5): face sintética em \result{derived/frontier/e5-ref/share} dos rostos; reidentificação entre os mostrados \result{derived/frontier/e5-ref/rank1} (demo2 \result{e5/demo2/ref/facenet_video_shown.rank1}, demo4 \result{e5/demo4/ref/facenet_video_shown.rank1}); por aluno \result{e5/pooled/ref/facenet_video_track.rank1}.
+\item Utilidade: expressão \result{e3e/pooled/gate/expression} (piso \result{e0/noise/expression}); pose \result{e3e/pooled/gate/pose_err}\textdegree; $\kappa$ de emoção \result{e5/pooled/ref/emotion_kappa_video} (piso \result{e0/noise/emotion_kappa}); orientação $\kappa$ \result{e5/pooled/ref/orient_kappa_video}.
+\item Custo: \result{e5/pooled/adapt-0.08/class-hours} GPU-horas por hora de aula com amostragem adaptativa, numa GTX 1080, só o laço por rosto.
 \end{itemize}
 
 \section{Escolhas}
 \begin{itemize}
-\item $\beta = 1{,}2$, não 1,6: ArcFace satura em 1,2; $\kappa$ maior; políticas medidas em 1,2. Escolhido nos mesmos três vídeos; LOVO escolhe 1,6, 1,6 e 1,2 (Tabela~\ref{tab:derived-lovo}).
-\item $\beta$ 1,2 fica no lado da antípoda (cosseno \result{derived/p2geom/b-1.2/cos-real} com a identidade real); se o rank inverso mostrar reversibilidade, o ponto de operação passa a $\beta \approx$ \result{derived/p2geom/orthogonal-beta} (pendente).
-\item \emph{Gate}, não \emph{hide-low}: mesmo rank-1 com metade dos rostos ocultos e menor verificação.
-\item Alvo: a média simples estima tão bem quanto a ponderada (E3a); como alvo não há diferença (E3d).
-\item GFPGAN ligado: parte da privacidade.
-\item P1 e P3 fora.
+\item $\beta = 1{,}2$ foi escolhido no piloto, em outubro. Com os dados novos, a queda de reidentificação no FaceNet para em $\beta = 0{,}8$ (Tabela~\ref{tab:e3-p2}); acima disso só cresce a recuperação pelo atacante que inverte o empurrão no ArcFace. O valor foi mantido para não escolher hiperparâmetros depois de ver o vídeo novo; $\beta = 0{,}8$ teria o mesmo efeito com menos risco.
+\item \emph{Gate}, não \emph{hide-low}: rank-1 do vídeo final igual, com mais rostos mostrados (\result{e3e/pooled/gate/shown} contra \result{e3e/pooled/hide-low/shown}) e a menor verificação.
+\item GFPGAN ligado: com ele desligado, a emoção melhora (\result{e5/pooled/ref/emotion_kappa_video} $\to$ \result{e5/pooled/enh-off/emotion_kappa_video}), mas a verificação sobe e o \emph{gate} oculta \result{e5/pooled/enh-off/hidden-share} dos rostos. Para um estudo que prioriza o comportamento, desligá-lo é a outra escolha legítima.
+\item P1, P3 e os pesos de qualidade do alvo: fora, sem efeito medido.
+\item \texttt{inswapper}, não SimSwap: empatam com P2, e o SimSwap vaza mais sem ele (E3h).
 \item SCRFD-10GF: licença verificada; YOLO-FaceV2-s tem mais recall, licença não verificada.
-\end{itemize}
-
-\section{Variante que prioriza o comportamento}
-\begin{itemize}
-\item GFPGAN desligado: $\kappa$ \result{e5/pooled/enh-off/emotion_kappa_video} (o maior de qualquer método medido).
-\item Custo: \result{e5/pooled/enh-off/hidden-share} dos rostos ocultos; verificação \result{e5/pooled/enh-off/facenet_video.verified} contra \result{e5/pooled/ref/facenet_video.verified}.
-\item Ocultar conta como privacidade: comparar pelo par (rank-1 entre os rostos mostrados, parcela mostrada).
-\item Escolha depende do estudo: todos os rostos visíveis ou expressões fiéis.
 \end{itemize}
 
 \section{Leitura}
 \begin{itemize}
-\item Contra o BLANKET do código liberado, pelo par privacidade $\times$ cobertura (Figura~\ref{fig:derived-frontier}): face sintética em \result{derived/frontier/e5-ref/share} dos rostos contra \result{derived/frontier/e2-blanket/share}, com rank-1 entre eles de \result{derived/frontier/e5-ref/rank1} contra \result{derived/frontier/e2-blanket/rank1}. No rank-1 do vídeo final o BLANKET liberado fica abaixo (\result{e2/pooled/blanket/facenet_final.rank1} contra \result{e3e/pooled/gate/facenet_final.rank1}), porque 72\% dos seus rostos viram elipse cinza. Comparar o vídeo final do pipeline com a visão ``passthrough como vazamento do BLANKET (\result{e2/pooled/blanket/facenet.rank1}) misturaria visões (corrigido em 2026-10-30).
-\item Acima do acaso e do blur (\result{e2/pooled/blur/facenet_final.rank1}); blur não carrega comportamento. Outro ponto do compromisso, não dominância. No vídeo final, blur, mosaico, CIAGAN e GANonymization têm rank-1 menor que o do pipeline.
-\item Contra o GANonymization: mesmo erro de expressão, pose e $\kappa$ melhores, cobertura maior, reidentificação maior nos rostos gerados (\result{e3c/pooled/b-1.2/facenet.rank1} contra \result{e2/pooled/ganonymization/generated/facenet.rank1}).
-\item Medir só os rostos que o método escolhe substituir, ou só o que ele publica, distorce a privacidade.
-\item Avaliar só com o reconhecedor usado na otimização superestima o ganho (ArcFace contra FaceNet).
-\item Rostos grandes vazam: a troca preserva o formato do rosto alvo \citep{bondalakunta}. Rosto do professor: maior risco; política por tamanho (trabalho futuro).
-\item O enhancer re-renderiza o rosto: apaga identidade residual e expressão juntas.
-\item Gerar menos quadros quase não custa nada: segurar o rosto quando o real está parado tira o tremor da troca.
+\item \textbf{Cobertura primeiro.} O BLANKET liberado deixa \result{e2/pooled/blanket/shown} dos rostos com face sintética e, sem o nosso \emph{fail-safe}, publica o resto real. A maior parte do ganho do pipeline vem de engenharia simples: usar a detecção do Estágio~1 dentro da troca e ocultar o que falha.
+\item \textbf{O vazamento está na troca.} Tirar do alvo da troca toda a componente da identidade real herdada pela imagem SDXL ($\beta = c$) só baixa a reidentificação de \result{e3c/pooled/native/generated/facenet.rank1} para \result{e3c/pooled/b-0.35/generated/facenet.rank1}; orientar a difusão (P1) não muda nada. O \texttt{inswapper} mantém a forma e parte da textura do rosto alvo \citep{bondalakunta}, e é isso que o FaceNet reconhece. Trocar o \texttt{inswapper} pelo SimSwap não muda isso: nativo, o SimSwap vaza mais (\result{e3h/pooled/simswap-native/generated/facenet.rank1}); com P2, empata (\result{e3h/pooled/simswap-P2/generated/facenet.rank1} contra \result{e3h/pooled/inswapper-P2/generated/facenet.rank1}). Rostos grandes vazam mais (Tabela~\ref{tab:r-e2-size}); o do professor costuma ser o maior. Consequência prática: a difusão por track, a parte mais cara do método, é a que menos importa para a privacidade.
+\item \textbf{O empurrão é real, mas pequeno.} No espaço em que atua (ArcFace) a queda é grande; no reconhecedor independente é cerca de um terço disso, sem significância após Holm, e por aluno quase some no vídeo novo. Medir só com o reconhecedor usado na otimização superestimaria o ganho.
+\item \textbf{O vídeo novo é mais difícil.} No demo4, visto só depois de o pipeline estar congelado, a reidentificação entre os rostos mostrados é mais que o dobro da do demo2. Duas causas medidas: o detector acha metade das caixas que o YOLO-FaceV2 acha nesse vídeo, e os rostos são mais virados (TAR menor). Os números do piloto não se transferem.
+\item \textbf{Ocultar não é proteger.} No vídeo final, blur, mosaico, CIAGAN, GANonymization e até o BLANKET liberado (com a maioria dos rostos ocultos) têm rank-1 menor que o pipeline. Pelo par (cobertura, reidentificação entre os mostrados), o pipeline é outro ponto do compromisso, não uma melhora sobre a censura.
+\item \textbf{Comportamento.} Expressão e pose ficam mais perto do real que com censura e GANs, mas em parte porque a troca mantém a geometria do rosto alvo por construção, e a métrica de expressão mede geometria. A emoção não é preservada por nenhum método.
+\item \textbf{Custo.} Gerar menos quadros quase não custa nada em privacidade e melhora o movimento: segurar o rosto quando o real está parado tira o tremor da troca. O GFPGAN é metade do tempo por rosto.
 \end{itemize}
 
 \section{Ameaças à validade}
@@ -61,41 +45,33 @@
 \begin{itemize}
 \item Interna:
   \begin{itemize}
-  \item $\beta$, política do \emph{gate}, $\tau_a$ e parâmetros do pós-passe escolhidos nos mesmos vídeos avaliados; sem conjunto de teste;
-  \item mitigação: LOVO para $\beta$ (direção mantida, magnitude não); pipeline congelado para avaliação em vídeos novos;
-  \item saída sem troca registrada como gerada (\emph{fail-open}) nos braços sem \emph{gate}; corrigida, frequência não medida.
-  \item fonte da troca possivelmente um vizinho real em parte das identidades exportadas (rosto de maior score no crop de contexto); corrigida em 2026-10-30, frequência não medida;
-  \item piloto exploratório nos mesmos vídeos antes de fixar os critérios (P2 visto em 2026-09-26, critérios em 2026-09-29); pipeline final escolhido depois da campanha;
-  \item identidade de referência = track do rastreador (guloso, sem modelo de movimento): fragmentação conta acerto como privacidade; auditoria de pares candidatos implementada, conferência pendente.
+  \item $\beta$, \emph{gate}, $\tau_a$ e parâmetros do pós-passe escolhidos no piloto, que incluía o demo2; só o demo4 é fora da amostra;
+  \item limiar do \emph{gate} e de verificação calibrados no próprio vídeo (FAR 1\%), com pares genuínos de quadros próximos;
+  \item identidade de referência = track do rastreador (guloso, sem modelo de movimento): fragmentação conta acerto como privacidade; a auditoria acha 1 par candidato a mesma pessoa no demo4 e nenhum no demo2.
   \end{itemize}
 \item Externa:
   \begin{itemize}
-  \item três clipes, 29,1\,s, 59 tracks; demo3 = 54\% dos rostos;
-  \item vídeos públicos, não consentidos, sem crianças identificadas como tal; validade em crianças não demonstrada;
-  \item custo projetado de 29\,s para 1\,h.
+  \item dois clipes, 22\,s, 41 tracks; vídeos públicos, não consentidos; validade em crianças não demonstrada;
+  \item custo projetado de 22\,s para 1\,h;
   \item galeria do mesmo clipe de poucos segundos; atacante com foto de outra sessão não medido;
-  \item recall sem anotação: o YOLO-FaceV2-s acha 25\% a 37\% mais caixas por quadro; rostos perdidos pelo detector saem reais.
+  \item recall sem anotação: rostos que o detector perde saem reais e não entram em nenhuma métrica.
   \end{itemize}
 \item De construto:
   \begin{itemize}
   \item privacidade = reidentificação automática do miolo do rosto, galeria fechada, atacante ingênuo (Seção~\ref{sec:ameaca});
-  \item unidade = quadro; atacante por pessoa (rank-1 por track) e atacante ciente do empurrão (rank inverso) implementados, pendentes;
-  \item erro de expressão por landmarks favorece a troca, que mantém a geometria do rosto alvo por construção;
-  \item avaliador fraco no demo1 (TAR FaceNet \result{e0/demo1/facenet.tar} nos rostos reais);
-  \item probes de utilidade não validados em rostos de 30--80\,px; $\kappa \le 0{,}2$ na maioria dos braços;
-  \item analisabilidade pedagógica (O3) não medida; proxy de orientação pendente;
-  \item rosto oculto conta como não reidentificado.
+  \item o reconhecedor é fraco nesses rostos (TAR a FAR 1\% de \result{e0/demo4/facenet.tar} a \result{e0/demo2/facenet.tar} nos rostos reais): taxas de verificação baixas valem pouco;
+  \item erro de expressão por landmarks favorece a troca;
+  \item probes de utilidade não validados em rostos de 30--80\,px; $\kappa \le 0{,}25$ na maioria dos braços.
   \end{itemize}
 \item De conclusão:
   \begin{itemize}
-  \item ``sem custo de utilidade'' = sem diferença significativa com 59 tracks (baixo poder), não equivalência; TOST não feito;
-  \item comparações múltiplas: Holm por família implementado; valores ajustados pendentes da próxima exportação;
-  \item agregado ponderado por rosto; macro-média e valores por vídeo ao lado.
+  \item 41 tracks: baixo poder; ``sem custo de utilidade'' = sem diferença significativa, não equivalência;
+  \item com correção de Holm, nenhum $\beta$ do P2 é significativo; os intervalos das tabelas pareadas não são corrigidos.
   \end{itemize}
 \end{itemize}
 
 \section{O que o trabalho pode afirmar (e o que não)}
 \begin{itemize}
-\item Pode: a ordem dos métodos depende da visão medida; o pipeline cobre muito mais rostos que o BLANKET liberado com menos reidentificação por rosto mostrado; P2 reduz a reidentificação de forma significativa num avaliador não usado na otimização, monotônica no agregado, com direção mantida no LOVO; o mix nativo não faz nada mensurável; P1 e P3 não funcionam neste pipeline, por razões da arquitetura (diagnóstico); o GFPGAN faz trabalho de privacidade; amostragem adaptativa reduz o custo do laço 2,5$\times$ sem diferença pareada significativa.
-\item Não pode: anonimização no sentido da LGPD (identificadores fora do rosto permanecem); mais privacidade que censura ou GANs no vídeo final; preservação de expressão (erro $\approx 4\times$ o piso, igual ao GANonymization); que o P2 seja irreversível (rank inverso pendente); reidentificação por aluno (pendente); ``primeiro'' empurrão contra a identidade real (NullFace, FAMS, Reverse Personalization, mix do FaceFusion); C2 como mecanismo novo (NAN, QAN, Zhu et al.); privacidade formal; validade em crianças; generalização para além dos três vídeos.
+\item Pode: a ordem dos métodos depende do que se mede; o pipeline dá face sintética a muito mais rostos que o BLANKET liberado, com menos reidentificação entre os mostrados; o vazamento do método híbrido está na troca de rosto, não na identidade da difusão, e não some com o SimSwap no lugar do \texttt{inswapper}; o empurrão P2 reduz a reidentificação na direção esperada sem custo de utilidade, mas o efeito no reconhecedor independente é pequeno e não significativo com estes dados; P1 e P3 não têm efeito, por razões da arquitetura; o desempenho cai num vídeo novo.
+\item Não pode: anonimização no sentido da LGPD; mais privacidade que censura; preservação de emoção; novidade do mecanismo de empurrão ou da identidade estável por pessoa \citep{fiva,nullface,kung,revpers}.
 \end{itemize}

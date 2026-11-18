@@ -76,6 +76,8 @@ with Experiment(__file__) as exp:
         _, rows = evaluate(exp, video, det_dir, list(dirs.values()), ev, out / "eval", noise_floor=False,
                            video_view=True)
         for name, run_rows in by_run(rows).items():
+            if name not in dirs:   # an arm dropped from config.toml, still in a cached evaluation
+                continue
             pooled.setdefault(name, []).extend(run_rows)
             metric_keys(exp, f"e5/{video.name}/{name}", run_rows, VIDEO, ev)
             m = json.loads((dirs[name] / "run_manifest.json").read_text())

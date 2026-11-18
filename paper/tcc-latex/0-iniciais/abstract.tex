@@ -1,34 +1,35 @@
 \begin{abstract}
 
-% Factual draft (2026-10-22), revised 2026-10-29 and 2026-10-30: translation of the resumo.
 Classroom recordings expose students' and teachers' identities. This work
 investigates whether swapping every detected face for a synthetic identity
 reduces automatic face re-identification while keeping behavioral signal
-(expression, pose, emotion), measured on the video a viewer sees. The pipeline is
-hybrid and has three stages: SCRFD-10GF detection with tracking and a recall
-post-pass; one Stable Diffusion XL synthetic identity per track, swapped onto the
-face in every frame by \texttt{inswapper} with GFPGAN restoration; and fail-closed
-composition, which hides every detected face that has no valid replacement. The
-main contribution pushes the swap's identity embedding away from the track's
-estimated real identity. On three short videos (29\,s in total), at the chosen
-operating point, held-out FaceNet rank-1 drops from
-\resulten{e3c/pooled/native/facenet.rank1} to \resulten{e3c/pooled/b-1.2/facenet.rank1},
-with no measurable expression or pose cost and a non-significant drop in emotion
-agreement (\resulten{e3c/pooled/native/emotion_kappa} to
-\resulten{e3c/pooled/b-1.2/emotion_kappa}). Among the faces that receive a
-synthetic face, the final pipeline is re-identified at
-\resulten{derived/frontier/e5-ref/rank1} while covering
-\resulten{derived/frontier/e5-ref/share} of the faces, against
-\resulten{derived/frontier/e2-blanket/rank1} for the released BLANKET, which covers
-\resulten{derived/frontier/e2-blanket/share}; on the final video, however, methods
-that hide more faces score a lower rank-1, and blur, mosaic and GANs score below the
-pipeline. Gradient guidance inside the diffusion sampler and identity-code
-optimization in a generative adversarial network have no measurable effect.
-Expression error stays at \resulten{e3e/pooled/gate/expression} inter-ocular
-units, about four times its noise floor, and no method keeps emotion. The projected
-per-face loop cost is \resulten{e5/pooled/adapt-0.08/class-hours} GPU hours per
-hour of class. The result is partial face de-identification, another point on the
-privacy--coverage--utility trade-off, not anonymization: hair, head outline,
-clothing and voice remain.
+(expression, pose, emotion). The pipeline has three stages: SCRFD-10GF detection
+with tracking; one synthetic identity per track, generated with Stable Diffusion
+XL and swapped onto the face in every frame by \texttt{inswapper} with GFPGAN
+restoration, as in BLANKET; and a composition step that hides every detected face
+that has no valid replacement. On two short videos (22\,s, 41 tracks), the
+released BLANKET code swaps \resulten{derived/frontier/e2-blanket/share} of the
+faces and leaves the rest real; the pipeline shows a synthetic face on
+\resulten{derived/frontier/e5-ref/share} of the faces and hides the others.
+Swapped faces remain recognizable: FaceNet, a recognizer not used in the
+optimization, re-identifies \resulten{e3c/pooled/native/generated/facenet.rank1}
+of them (chance: \resulten{derived/demo2/chance-rank1}). Pushing the swap's
+identity embedding away from the track's real identity lowers this to
+\resulten{e3c/pooled/b-1.2/generated/facenet.rank1}, a difference that is not
+significant after correction for multiple comparisons; after also hiding the
+faces still verified as the student, the final pipeline reaches
+\resulten{derived/frontier/e5-ref/rank1} among the shown faces, and an attacker
+who decides once per student is right for
+\resulten{e5/pooled/ref/facenet_video_track.rank1} of them. Blurring reaches
+\resulten{e2/pooled/blur/facenet_final.rank1}. The leak is in the face swap,
+which keeps the shape of the original face, not in the synthetic identity; SimSwap in place of
+\texttt{inswapper} does not leak less.
+Expression and pose are kept better than by blurring and by generative
+adversarial networks (expression error of \resulten{e3e/pooled/gate/expression}
+inter-ocular units, about five times the noise floor); no method keeps emotion.
+The projected cost is \resulten{e5/pooled/adapt-0.08/class-hours} to
+\resulten{e5/pooled/ref/class-hours} GPU hours per hour of class. The result is
+partial face de-identification, not anonymization: the face swap evaluated here
+does not replace blurring when privacy is the requirement.
 
 \end{abstract}

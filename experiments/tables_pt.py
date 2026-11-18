@@ -47,7 +47,8 @@ HEADERS = {
 LABELS = {
     # arms (internal names -> descriptive)
     "blanket": "BLANKET", "ciagan": "CIAGAN", "ganonymization": "GANonymization", "mosaic": "mosaico",
-    "native": "mix nativo", "none": "sem mix", "candidates": "candidatos", "phase1": "detecção do Estágio 1",
+    "native": "mix nativo", "none": "sem mix",
+    "inswapper native": "inswapper nativo", "simswap native": "SimSwap nativo", "simswap P2": "SimSwap P2", "candidates": "candidatos", "phase1": "detecção do Estágio 1",
     "p2": "P2", "hide-low": "oculta conf. < 0,5", "gate": "privacy gate",
     "first": "primeiro quadro", "best": "melhor quadro", "mean": "média", "quality\\_mean": "média ponderada",
     "ema\\_adaptive": "EMA adaptativa", "ref": "referência", "ref-cpu": "referência (CPU)",

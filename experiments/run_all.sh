@@ -8,7 +8,7 @@
 #   experiments/run_all.sh --fresh         # also clear cache/ (SDXL identities)
 #   experiments/run_all.sh --resume        # keep results/, skip completed generation steps
 set -euo pipefail
-export PYTHONUTF8=1   # non-interactive shells on serra1 have an ASCII locale
+export PYTHONUTF8=1   # non-interactive shells on the servers can have an ASCII locale
 
 cd "$(dirname "$0")/.."
 only="" extra=()

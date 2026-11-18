@@ -292,7 +292,8 @@ distribution (via `dlib.net`, trained on the iBUG 300-W dataset) is the
 canonical source and is recommended instead; confirm its license before
 redistributing this repository publicly with the file included. Verified
 working from that source: `http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2`,
-decompressed with `bunzip2`.
+decompressed with `bunzip2`. Fetched again on constantine (2026-11-11): 99,693,937 bytes,
+SHA256 `fbdc2cb80eb9aa7a758672cbfdda32ba6300efe9b6e6c7a299ff7e736b11b92f`.
 
 ## Verified facts from reading the pinned source directly (not assumed)
 

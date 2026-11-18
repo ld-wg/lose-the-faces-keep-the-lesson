@@ -26,7 +26,6 @@ synthetic faces and are compared on the same faces.
 | Arm | Factor | Setting |
 |---|---|---|
 | `ref` | — | every frame, GFPGAN on, main process on the GPU |
-| `ref-cpu` | device | main process on CPU, as in the campaign (demo1 and demo2 only) |
 | `enh-off` | enhancer | no GFPGAN |
 | `enh-96` | enhancer | GFPGAN only on faces of at least 96 px |
 | `every2`, `every3` | fixed sampling | a track's face is generated on one of every 2 (≈15 fps) or 3 (≈10 fps) frames |

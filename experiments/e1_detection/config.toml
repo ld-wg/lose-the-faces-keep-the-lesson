@@ -3,7 +3,7 @@
 # (config.local.json or PPY_WIDERFACE).
 
 [inputs]
-videos = ["demo1", "demo2", "demo3"]
+videos = ["demo2", "demo4"]   # constantine, 2026-11-11: demo2 as on serra1 (same sha256); demo4 new; demo1/demo3 stayed on serra1
 widerface_split = "val"
 
 [arms]

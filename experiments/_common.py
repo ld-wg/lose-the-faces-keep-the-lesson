@@ -53,7 +53,7 @@ from typing import Any, Iterable, Optional, Sequence
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[1]
-os.environ.setdefault("PYTHONUTF8", "1")   # a non-interactive shell on serra1 has an ASCII locale
+os.environ.setdefault("PYTHONUTF8", "1")   # a non-interactive shell on the servers can have an ASCII locale
 VIDEOS_DIR = Path(os.environ.get("VIDEOS_DIR", REPO / "data" / "videos"))
 PENDING_EXIT = 2          # run_all.sh reports it as "pending" and continues
 

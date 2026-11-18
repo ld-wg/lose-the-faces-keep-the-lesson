@@ -7,15 +7,15 @@
 \section{Formulação dos componentes usados}
 \label{sec:formulacao}
 \begin{itemize}
-\item Difusão (DDPM) \citep{ldm}: processo direto com ruído gaussiano,
+\item Difusão (DDPM) \citep{ddpm}: processo direto com ruído gaussiano,
   \begin{equation}
   q(x_t \mid x_0) = \mathcal{N}\!\left(\sqrt{\bar\alpha_t}\,x_0,\ (1-\bar\alpha_t)\,I\right),\qquad \bar\alpha_t = \textstyle\prod_{i\le t}\alpha_i;
   \end{equation}
   rede $\epsilon_\theta$ treinada para prever o ruído, $\mathcal{L} = \mathbb{E}\,\lVert \epsilon - \epsilon_\theta(x_t, t, y)\rVert^2$.
   \begin{itemize}
   \item difusão latente (SDXL): o processo roda em $z = \mathcal{E}(x)$ do VAE; imagem final $\mathcal{D}(z_0)$ \citep{sdxl};
-  \item previsão do latente limpo (usada pelo P1/MPGD): $\hat z_0 = (z_t - \sqrt{1-\bar\alpha_t}\,\epsilon_\theta)/\sqrt{\bar\alpha_t}$ \citep{mpgd};
-  \item \emph{classifier-free guidance}: $\tilde\epsilon = \epsilon_\theta(z_t,\varnothing) + w\,(\epsilon_\theta(z_t,y) - \epsilon_\theta(z_t,\varnothing))$;
+  \item previsão do latente limpo: $\hat z_0 = (z_t - \sqrt{1-\bar\alpha_t}\,\epsilon_\theta)/\sqrt{\bar\alpha_t}$ \citep{ddpm}; o MPGD e o P1 orientam por ela \citep{mpgd};
+  \item \emph{classifier-free guidance}: $\tilde\epsilon = \epsilon_\theta(z_t,\varnothing) + w\,(\epsilon_\theta(z_t,y) - \epsilon_\theta(z_t,\varnothing))$ \citep{cfg};
   \item SDEdit com \emph{strength} $\rho$: parte do crop real com ruído no passo $t_0 = \rho T$ e só remove ruído a partir dali; com $\rho = 0{,}6$ a estrutura do rosto real sobrevive \citep{sdedit}.
   \end{itemize}
 \item ArcFace \citep{arcface}: margem angular aditiva sobre embeddings normalizados,
@@ -31,7 +31,7 @@
 
 \section{Detecção de faces}
 \begin{itemize}
-\item WIDER FACE: benchmark com subconjuntos \emph{easy}/\emph{medium}/\emph{hard} \citep{widerface}. Outros: LFW \citep{wildface}, FDDB \citep{fddb}.
+\item WIDER FACE: benchmark com subconjuntos \emph{easy}/\emph{medium}/\emph{hard} \citep{widerface}. Outro: FDDB \citep{fddb}. LFW \citep{wildface} é benchmark de verificação, não de detecção.
 \item SCRFD: redistribuição de amostras e computação; variantes 0.5--34 GFLOPs \citep{scrfd}.
   \begin{itemize}
   \item O pacote \texttt{buffalo\_l} do InsightFace traz SCRFD-10GF com keypoints (\texttt{det\_10g}), não RetinaFace \citep{insightface}.
@@ -61,7 +61,7 @@
 \item Blur e mosaico: removem identidade e comportamento; reversíveis ou atacáveis em rostos pequenos \citep{fantomas}.
 \item DeepPrivacy: o gerador nunca vê o rosto original \citep{deepprivacy}; DeepPrivacy2: corpo inteiro \citep{deeprivacy2}.
 \item CIAGAN: landmarks (contorno, boca, nariz), fundo mascarado, código de identidade \emph{one-hot} \citep{ciagan}.
-\item GANonymization: 478 landmarks (MediaPipe) re-sintetizados por pix2pix \citep{hellmann,facemesh,pix2pix}.
+\item GANonymization: 478 landmarks (MediaPipe FaceMesh, 468 pontos mais íris) re-sintetizados por pix2pix \citep{hellmann,facemesh,pix2pix}.
 \item PP-GAN: verificador contrastivo mais SSIM \citep{yifan-wu}; G$^2$Face: priors generativo e geométrico, reversível \citep{h-yang}.
 \item FALCO: otimização no latente do StyleGAN2 \citep{falco}.
 \item Fantômas: 11 de 15 anonimizadores são parcialmente reversíveis; DeepPrivacy e CIAGAN entre os não reversíveis \citep{fantomas}.
@@ -77,12 +77,15 @@
   \item Não é treinado em crianças: o viés infantil vinha do prompt.
   \end{itemize}
 \item FAMS: ReferenceNet; distância controlada por $(1-d)Z$ \citep{kung}.
-\item NullFace: embedding ArcFace negado via IP-Adapter, sem treino \citep{nullface}.
+\item NullFace: embedding ArcFace negado via IP-Adapter \citep{ipadapter}, sem treino \citep{nullface}.
 \item Reverse Personalization: CFG negativa na identidade \citep{revpers}.
 \item LDFA: inpainting por difusão latente \citep{klemp}.
 \item Zhu et al.: média ArcFace da identidade real de um vídeo de uma pessoa, perturbada com ruído \citep{zhu-bmsb}.
 \item DiffAIM: injeção de gradiente para personificação \citep{wang}.
 \item MPGD: orientação no $\hat{x}_0$ previsto, sem retropropagar pela UNet \citep{mpgd}.
+\item Diff-Privacy: funções de energia de identidade aplicadas durante a remoção de ruído para anonimizar \citep{diffprivacy}; o P1 deste trabalho segue o mesmo desenho, sem treino.
+\item FIVA: anonimização em vídeo por troca de rosto condicionada em ArcFace, com rastreamento de identidade (a mesma identidade falsa por pessoa ao longo dos quadros) e identidade falsa amostrada a uma margem de cosseno da real; aponta que afastar ao máximo ($-z_{\mathrm{id}}$) é recuperável \citep{fiva}. É o precedente mais próximo do C2 e do P2.
+\item Trocadores de rosto como anonimizadores em vídeo, com rostos sintéticos como fonte: SimSwap, FaceDancer, REFace e E4S comparados a anonimizadores dedicados no FaceForensics++; a recuperação de identidade varia muito entre trocadores \citep{mustu,simswap}.
 \item Pseudonimização só por texto (atributos $\to$ template $\to$ gerador) \citep{lee2026}.
 \item Trocadores de rosto vazam a identidade do alvo \citep{bondalakunta}.
 \end{itemize}
@@ -103,7 +106,7 @@
 
 \section{O que nenhum trabalho cobre (lacuna)}
 \begin{itemize}
-\item Vídeo multipessoa de sala de aula com uma identidade estável por pessoa.
+\item Vídeo multipessoa de sala de aula, com rostos pequenos, medido no vídeo publicado (identidade estável por pessoa em vídeo já existe: \citealp{fiva}).
 \item Avaliação no vídeo final, com o que falha contando como vazamento ou como oculto.
 \item Onde, num pipeline híbrido difusão + troca, um empurrão de identidade sobrevive até o vídeo.
 \end{itemize}

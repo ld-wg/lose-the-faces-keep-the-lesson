@@ -23,7 +23,7 @@ from _common import SERIES, Experiment, holm, obs_ci  # noqa: E402
 from _generation import (_done, anonymize, by_run, cell, detect, eval_ctx_args, evaluate,  # noqa: E402
                          metric_keys, paired_rows, strata_rows)
 
-PARTS = [p for p in os.environ.get("E3_PARTS", "e3a,e3b,e3c,e3d,e3e,e3f,e3g").split(",") if p]
+PARTS = [p for p in os.environ.get("E3_PARTS", "e3a,e3b,e3c,e3d,e3e,e3f,e3g,e3h").split(",") if p]
 GEN = lambda rows: [r for r in rows if r["anonymized"]]  # noqa: E731
 KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet_final.rank1", "facenet_final.verified",
         "anonymized", "expression", "pose_err", "emotion_agree", "emotion_kappa", "age_err", "gender_agree",
@@ -33,6 +33,10 @@ KEYS = ["facenet.rank1", "facenet.rank5", "arcface.rank1", "facenet_final.rank1"
         # one decision per track (the pseudonym is stable)
         "shown", "facenet_shown.rank1", "facenet_inv.rank1", "arcface_inv.rank1", "facenet_track.rank1",
         "facenet_track_inv.rank1", "arcface_track.rank1", "arcface_track_inv.rank1"]
+# The keys above are over every detected face (a face that was not replaced counts with its
+# real embedding). The same metrics among the replaced faces only go under <arm>/generated/,
+# as in E2; the tables and the P2 curve already use that subset.
+GEN_KEYS = ["facenet.rank1", "arcface.rank1", "facenet_inv.rank1", "arcface_inv.rank1"]
 SIZE_EDGES = [0, 48, 96, 1e9]   # face size strata in px (sqrt of the box area), as E2
 
 
@@ -57,6 +61,10 @@ with Experiment(__file__) as exp:
         n_tracks = len(json.loads((det_dir / "tracks.json").read_text())["identities"])
         exp.metric(f"e3/{video.name}/tracks", n_tracks)
         exp.metric(f"e3/{video.name}/chance-rank1", round(1 / n_tracks, 4))
+        # detector faces: the weights of the pooled values and of derived.py's leave-one-video-out choice
+        with (det_dir / "detections.jsonl").open() as fh:
+            n_faces = sum(f.get("source", "detector") == "detector" for line in fh for f in json.loads(line)["tracks"])
+        exp.metric(f"e3/{video.name}/faces", n_faces)
         cache = exp.cache / video.name / "blanket"
         done: dict[tuple, Path] = {}
 
@@ -80,6 +88,7 @@ with Experiment(__file__) as exp:
                 for label, d in arms.items():
                     if d == name:
                         metric_keys(exp, f"{part}/{video.name}/{label}", run_rows, KEYS, ev)
+                        metric_keys(exp, f"{part}/{video.name}/{label}/generated", GEN(run_rows), GEN_KEYS, ev)
 
         if "e3a" in PARTS:
             a = cfg["e3a"]
@@ -137,6 +146,19 @@ with Experiment(__file__) as exp:
                 name = p2_name(e["beta"], e["aggregation"]) if not extra else f"e-{arm['name']}-{e['aggregation']}"
                 arms[arm["name"]] = run({**p2(e["beta"], e["aggregation"], extra), "name": name})
             part_eval("e3e", arms)
+
+        if "e3h" in PARTS:
+            h = cfg["e3h"]
+            arms = {"inswapper native": run({**base, "name": "c-native", "swap_mode": "native",
+                                             "aggregation": h["aggregation"]}),
+                    "inswapper P2": run({**p2(h["beta"], h["aggregation"]), "name": p2_name(h["beta"], h["aggregation"])})}
+            for model in h["models"]:
+                short = model.split("_")[0]
+                arms[f"{short} native"] = run({**base, "name": f"h-{short}-native", "swap_mode": "native",
+                                               "aggregation": h["aggregation"], "swap_model": model})
+                arms[f"{short} P2"] = run({**p2(h["beta"], h["aggregation"], {"swap_model": model}),
+                                           "name": f"h-{short}-{p2_name(h['beta'], h['aggregation'])}"})
+            part_eval("e3h", arms)
 
         if "e3g" in PARTS:
             g = cfg["e3g"]
@@ -203,6 +225,7 @@ with Experiment(__file__) as exp:
     for part in parts:
         for label, rows in rows_of(part).items():
             metric_keys(exp, f"{part}/pooled/{label}", rows, KEYS, ev)
+            metric_keys(exp, f"{part}/pooled/{label}/generated", GEN(rows), GEN_KEYS, ev)
 
     if "e3b" in parts:
         exp.table("coverage", ["Arm", "Coverage", "Identity unusable", "Swap no face", "R1 final", "Expr.", "Emotion κ"], [
@@ -281,6 +304,9 @@ with Experiment(__file__) as exp:
 
     if "e3g" in parts:
         strength_table("e3g", "p1", "P2")
+
+    if "e3h" in parts:
+        strength_table("e3h", "swapper", cfg["e3h"]["reference"])
 
     def mean(xs):
         return round(sum(xs) / len(xs), 3) if xs else None

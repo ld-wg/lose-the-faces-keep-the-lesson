@@ -9,42 +9,42 @@
 \definecolor{lftl7}{HTML}{E34948}
 
 \begin{tikzpicture}
-\begin{groupplot}[group style={group size=4 by 1, horizontal sep=0.35cm, yticklabels at=edge left}, width=0.255\linewidth, height=6cm, scaled x ticks=false, xticklabel style={/pgf/number format/fixed, /pgf/number format/precision=2}, /pgf/number format/use comma, /pgf/number format/1000 sep={}, tick label style={font=\footnotesize}, label style={font=\footnotesize}, title style={font=\footnotesize}, axis lines*=left, grid=major, grid style={draw=black!10}, y dir=reverse, symbolic y coords={armref,armenh96,armenhoff,armevery2,armevery3,armadapt005,armfast,armadapt008}, ytick={armref,armenh96,armenhoff,armevery2,armevery3,armadapt005,armfast,armadapt008}, yticklabels={{referência},{GFPGAN $\geq$ 96 px},{sem GFPGAN},{1 a cada 2},{1 a cada 3},{adaptativa 0,05},{rápida},{adaptativa 0,08}}, enlarge y limits=0.06]
+\begin{groupplot}[group style={group size=4 by 1, horizontal sep=0.35cm, yticklabels at=edge left}, width=0.255\linewidth, height=6cm, scaled x ticks=false, xticklabel style={/pgf/number format/fixed, /pgf/number format/precision=2}, /pgf/number format/use comma, /pgf/number format/1000 sep={}, tick label style={font=\footnotesize}, label style={font=\footnotesize}, title style={font=\footnotesize}, axis lines*=left, grid=major, grid style={draw=black!10}, y dir=reverse, symbolic y coords={armref,armenh96,armevery2,armenhoff,armevery3,armadapt005,armadapt008,armfast}, ytick={armref,armenh96,armevery2,armenhoff,armevery3,armadapt005,armadapt008,armfast}, yticklabels={{referência},{GFPGAN $\geq$ 96 px},{1 a cada 2},{sem GFPGAN},{1 a cada 3},{adaptativa 0,05},{adaptativa 0,08},{rápida}}, enlarge y limits=0.06]
 \nextgroupplot[title={GPU-h / hora de aula}, xmin=0]
-\addplot[xbar, bar width=4pt, fill=lftl0, draw=none] coordinates {(127.62,armref)};
-\addplot[xbar, bar width=4pt, fill=lftl1, draw=none] coordinates {(90.38,armenh96)};
-\addplot[xbar, bar width=4pt, fill=lftl1, draw=none] coordinates {(86.25,armenhoff)};
-\addplot[xbar, bar width=4pt, fill=lftl2, draw=none] coordinates {(79.79,armevery2)};
-\addplot[xbar, bar width=4pt, fill=lftl2, draw=none] coordinates {(61.29,armevery3)};
-\addplot[xbar, bar width=4pt, fill=lftl3, draw=none] coordinates {(53.30,armadapt005)};
-\addplot[xbar, bar width=4pt, fill=lftl4, draw=none] coordinates {(52.70,armfast)};
-\addplot[xbar, bar width=4pt, fill=lftl3, draw=none] coordinates {(51.34,armadapt008)};
+\addplot[xbar, bar width=4pt, fill=lftl0, draw=none] coordinates {(196.52,armref)};
+\addplot[xbar, bar width=4pt, fill=lftl1, draw=none] coordinates {(123.60,armenh96)};
+\addplot[xbar, bar width=4pt, fill=lftl2, draw=none] coordinates {(121.77,armevery2)};
+\addplot[xbar, bar width=4pt, fill=lftl1, draw=none] coordinates {(111.20,armenhoff)};
+\addplot[xbar, bar width=4pt, fill=lftl2, draw=none] coordinates {(95.53,armevery3)};
+\addplot[xbar, bar width=4pt, fill=lftl3, draw=none] coordinates {(82.83,armadapt005)};
+\addplot[xbar, bar width=4pt, fill=lftl3, draw=none] coordinates {(76.67,armadapt008)};
+\addplot[xbar, bar width=4pt, fill=lftl4, draw=none] coordinates {(67.47,armfast)};
 \nextgroupplot[title={FaceNet rank-1}]
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl0, error bars/.cd, x dir=both, x explicit] coordinates {(0.3456,armref) +- (0.0889,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.3933,armenh96) +- (0.0892,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.3779,armenhoff) +- (0.0800,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.3583,armevery2) +- (0.0886,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.3534,armevery3) +- (0.0843,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.3633,armadapt005) +- (0.0870,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl4, error bars/.cd, x dir=both, x explicit] coordinates {(0.3814,armfast) +- (0.0872,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.3560,armadapt008) +- (0.0877,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl0, error bars/.cd, x dir=both, x explicit] coordinates {(0.2680,armref) +- (0.0981,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.3128,armenh96) +- (0.0984,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.2802,armevery2) +- (0.0985,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.3186,armenhoff) +- (0.1031,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.2830,armevery3) +- (0.0957,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.2819,armadapt005) +- (0.0946,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.2761,armadapt008) +- (0.0963,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl4, error bars/.cd, x dir=both, x explicit] coordinates {(0.3121,armfast) +- (0.0993,0)};
 \nextgroupplot[title={$\kappa$ emoção}]
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl0, error bars/.cd, x dir=both, x explicit] coordinates {(0.1618,armref) +- (0.1047,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.4126,armenh96) +- (0.1621,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.4309,armenhoff) +- (0.1134,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.1730,armevery2) +- (0.1107,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.1821,armevery3) +- (0.1159,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.2006,armadapt005) +- (0.1165,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl4, error bars/.cd, x dir=both, x explicit] coordinates {(0.4065,armfast) +- (0.1578,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.1887,armadapt008) +- (0.1183,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl0, error bars/.cd, x dir=both, x explicit] coordinates {(0.1958,armref) +- (0.1022,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.3520,armenh96) +- (0.1608,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.2236,armevery2) +- (0.1133,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.3693,armenhoff) +- (0.1630,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.2246,armevery3) +- (0.1126,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.2253,armadapt005) +- (0.1192,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.2278,armadapt008) +- (0.1189,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl4, error bars/.cd, x dir=both, x explicit] coordinates {(0.3407,armfast) +- (0.1678,0)};
 \nextgroupplot[title={erro de movimento}]
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl0, error bars/.cd, x dir=both, x explicit] coordinates {(0.0392,armref) +- (0.0079,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.0303,armenh96) +- (0.0086,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.0301,armenhoff) +- (0.0085,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.0395,armevery2) +- (0.0078,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.0379,armevery3) +- (0.0081,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.0339,armadapt005) +- (0.0076,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl4, error bars/.cd, x dir=both, x explicit] coordinates {(0.0275,armfast) +- (0.0087,0)};
-\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.0331,armadapt008) +- (0.0075,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl0, error bars/.cd, x dir=both, x explicit] coordinates {(0.0316,armref) +- (0.0069,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.0216,armenh96) +- (0.0055,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.0316,armevery2) +- (0.0069,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl1, error bars/.cd, x dir=both, x explicit] coordinates {(0.0212,armenhoff) +- (0.0047,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl2, error bars/.cd, x dir=both, x explicit] coordinates {(0.0299,armevery3) +- (0.0065,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.0263,armadapt005) +- (0.0060,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl3, error bars/.cd, x dir=both, x explicit] coordinates {(0.0260,armadapt008) +- (0.0057,0)};
+\addplot[only marks, mark=*, mark size=1.6pt, color=lftl4, error bars/.cd, x dir=both, x explicit] coordinates {(0.0179,armfast) +- (0.0051,0)};
 \end{groupplot}
 \end{tikzpicture}

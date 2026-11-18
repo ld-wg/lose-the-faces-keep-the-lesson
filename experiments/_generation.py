@@ -31,6 +31,7 @@ ARM_FLAGS = {
     "p1_scale": "--blanket-p1-scale", "p1_tau": "--blanket-p1-tau", "p1_window": "--blanket-p1-window",
     "generate_every": "--generate-every", "generate_adaptive": "--generate-adaptive",
     "generate_max_gap": "--generate-max-gap", "enhancer": "--blanket-enhancer",
+    "swap_model": "--blanket-swap-model",
 }
 NOT_FLAGS = {"name", "backend", "label", "identity_cache", "main_gpu", "profile"}
 
