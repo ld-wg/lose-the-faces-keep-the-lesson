@@ -280,7 +280,7 @@ with Experiment(__file__) as exp:
         real = [{**r, "facenet_rank": r.get("real_facenet_rank")} for r in orig]   # every detector face
         series = [("Real face (ceiling)", "real", real), ("BLANKET, released flow", "original", GEN(orig)),
                   ("Stage 1 detection, native mix", "native", GEN(native)),
-                  (f"P2 $\\beta$ {cfg['e3e']['beta']}", "p2", GEN(p2_rows)),
+                  (f"P2 β {cfg['e3e']['beta']}", "p2", GEN(p2_rows)),
                   ("Privacy gate, shown faces", "gate", [{**r, "facenet_rank": r.get("facenet_shown_rank")}
                                                          for r in gate if r.get("shown")])]
         videos = sorted({r["video"] for r in orig})
