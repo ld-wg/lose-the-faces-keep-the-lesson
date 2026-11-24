@@ -1,85 +1,55 @@
 \chapter{Introdução}
 \label{cap:intro}
 
-% Rascunho em tópicos. 2026-11-17: números da campanha da constantine (demo2 + demo4),
-% contribuições reduzidas a três, P2 sem significância após Holm.
+% Revisão de 2026-11-18: prosa; contribuições a partir dos mesmos rostos e do E3m; demo4 primeiro.
 
 \section{Problema}
-\begin{itemize}
-\item Gravações de aula são evidência para pesquisa educacional: interação, afeto, turnos de fala.
-\item As mesmas gravações identificam alunos (muitos menores) e professores.
-\item Rosto é dado biométrico; origem racial ou étnica é dado sensível \citep[art.~5, II; art.~11]{lgpd}.
-\item Dados de crianças devem ser tratados no seu melhor interesse; o consentimento de um dos pais é uma das bases previstas \citep[art.~14]{lgpd}.
-\item Dado anonimizado deixa de ser pessoal, salvo se a anonimização puder ser revertida com esforços razoáveis \citep[art.~12]{lgpd}.
-\item Blur e mosaico removem a identidade e também o comportamento (expressão, pose, emoção).
-\end{itemize}
+
+Gravações de aula são evidência para a pesquisa educacional: mostram interação, afeto e turnos de fala. As mesmas gravações identificam alunos, muitos deles menores, e professores. Para a LGPD, o rosto processado para identificação é dado biométrico, e a origem racial ou étnica é dado sensível \citep[art.~5, II; art.~11]{lgpd}. Dados de crianças devem ser tratados no seu melhor interesse e, como regra, com o consentimento de pelo menos um dos pais ou responsável \citep[art.~14]{lgpd}. Dado anonimizado deixa de ser pessoal, salvo se a anonimização puder ser revertida com esforços razoáveis \citep[art.~12]{lgpd}.
+
+O blur e o mosaico removem a identidade, mas removem também o comportamento que a pesquisa quer estudar: expressão, pose e emoção. Trocar o rosto por um rosto sintético promete o contrário, remover a identidade e manter o comportamento.
 
 \section{Pergunta}
-\begin{itemize}
-\item Substituir cada rosto por um rosto sintético reduz a reidentificação facial automática e mantém o sinal comportamental?
-\item Medido no vídeo que o espectador vê, contando os rostos que o método não consegue substituir.
-\end{itemize}
+
+Substituir cada rosto por um rosto sintético reduz a reidentificação facial automática e mantém o sinal comportamental? A resposta deve ser medida no vídeo que o espectador vê, contando os rostos que o método não consegue substituir.
 
 \section{Objetivos}
 \label{sec:objetivos}
-\begin{itemize}
-\item Geral: desidentificar rostos em vídeo de sala de aula por substituição sintética, preservando expressão, pose e emoção, e medir o compromisso no vídeo final.
-\item Específicos (proposta do TCC1), com experimento e situação:
-  \begin{itemize}
-  \item O1, detecção com recall alto em sala de aula (E1): parcial; todo rosto detectado é substituído ou ocultado, mas a taxa de rostos nunca detectados não foi medida, e um segundo detector acha de 1,4 a 2 vezes mais caixas.
-  \item O2, supressão da identidade (E2, E3, E5): parcial; reidentificação entre os rostos mostrados cai de \result{derived/frontier/e2-blanket/rank1} (BLANKET liberado) para \result{derived/frontier/e5-ref/rank1}, ainda 4 a 9 vezes o acaso; acima do blur.
-  \item O3, preservação de expressão, olhar e afeto (E2, E3, E5): parcial; expressão e pose melhores que censura e GANs; emoção não preservada; olhar e avaliação humana não medidos.
-  \item O4, custo computacional baixo (E5): não atingido; \result{e5/pooled/adapt-0.08/class-hours} a \result{e5/pooled/ref/class-hours} GPU-horas por hora de aula numa GTX 1080.
-  \end{itemize}
-\end{itemize}
+
+O objetivo geral é desidentificar rostos em vídeo de sala de aula por substituição sintética, preservando expressão, pose e emoção, e medir o compromisso no vídeo final. A proposta do TCC1 definiu quatro objetivos específicos, cada um ligado a experimentos.
+
+O primeiro, detecção com recall alto em sala de aula (E1), foi atingido em parte: todo rosto detectado é substituído ou ocultado, mas a taxa de rostos nunca detectados não foi medida, e um segundo detector acha de 1,2 a 1,7 vez mais caixas que o pipeline. O segundo, supressão da identidade (E2, E3, E5), também foi atingido em parte: no vídeo novo, o FaceNet reidentifica \result{e5/demo4/adapt-0.08/facenet_video_shown.rank1} dos rostos mostrados, cerca de 9 vezes o acaso, acima do blur. O terceiro, preservação de expressão, olhar e afeto (E2, E3, E5), foi atingido em parte: expressão e pose ficam melhores que com censura e GANs, a emoção não é preservada, e olhar e avaliação humana não foram medidos. O quarto, custo computacional baixo (E5), não foi atingido: são \result{e5/pooled/adapt-0.08/class-hours} GPU-horas por hora de aula numa GTX 1080.
 
 \section{Hipótese e o que os dados mostraram}
-\begin{itemize}
-\item Hipótese da proposta: substituição por difusão, demograficamente similar, (a) reduz a similaridade de identidade abaixo de um limiar estrito e (b) preserva emoção e expressão dentro de uma margem aceitável.
-\item O que foi construído: substituição híbrida, como no BLANKET \citep{blanket}. A difusão (SDXL) gera só a identidade-fonte de cada track; os pixels mostrados vêm da troca de rosto (\texttt{inswapper\_128}) e do GFPGAN.
-\item (a) Não confirmada: a reidentificação cai, mas fica acima do acaso e do blur. O vazamento está na troca, que mantém a forma do rosto real, e não na identidade gerada pela difusão (Seção~\ref{cap:resultados}).
-\item (b) Parcial: expressão e pose preservadas melhor que por censura e GANs, com erro cerca de cinco vezes o piso de ruído; emoção não preservada por nenhum método.
-\item Ordem do estudo: piloto exploratório em três vídeos (entre eles o demo2) até 2026-09-29, quando foram fixados os critérios; escolha do pipeline final em outubro; avaliação final em novembro, com o pipeline congelado, no demo2 e num vídeo novo (demo4), que serve de teste fora da amostra.
-\end{itemize}
+
+A hipótese da proposta era que a substituição por difusão, demograficamente similar, (a) reduziria a similaridade de identidade abaixo de um limiar estrito e (b) preservaria emoção e expressão dentro de uma margem aceitável. O que se construiu foi uma substituição híbrida, como no BLANKET \citep{blanket}: a difusão (SDXL) gera só a identidade-fonte de cada track, e os pixels mostrados vêm da troca de rosto (\texttt{inswapper\_128}) e do GFPGAN.
+
+A parte (a) não se confirmou. A reidentificação cai, mas fica acima do acaso e acima do blur. Com galeria da mesma sessão, a maior parte da identidade que sobra está no que a troca não substitui: cabelo, testa, orelhas, contorno e fundo (Seção~\ref{sec:r-onde}). A parte (b) se confirmou em parte: expressão e pose são preservadas melhor que por censura e GANs, com erro de expressão cerca de cinco vezes o piso de ruído, e a emoção não é preservada por nenhum método.
+
+O estudo teve três fases. Um piloto exploratório em três vídeos, entre eles o demo2, terminou em 2026-09-29, quando os critérios foram fixados. O pipeline final foi escolhido em outubro. A avaliação final, em novembro, usou o pipeline congelado no demo2 e num vídeo novo, o demo4, que serve de teste fora da amostra.
 
 \section{Contribuições}
-\begin{enumerate}
-\item \textbf{Medição no vídeo final.} Os métodos são comparados pelo par (rostos com face sintética, reidentificação entre eles) e por um atacante que decide uma vez por aluno. A ordem dos métodos muda conforme o que se mede: ocultar rostos baixa a reidentificação do vídeo sem proteger quem aparece (Figura~\ref{fig:derived-frontier}).
-\item \textbf{Pipeline \emph{fail-closed} para sala de aula.} Com a detecção do Estágio~1 dentro da troca e a ocultação do que falha, a parcela de rostos com face sintética vai de \result{derived/frontier/e2-blanket/share} (BLANKET liberado) para \result{derived/frontier/e5-ref/share}, e nenhum rosto detectado sai real.
-\item \textbf{Onde a identidade vaza.} Empurrar o embedding da troca para longe da identidade real do track (P2) baixa a reidentificação entre os rostos trocados de \result{e3c/pooled/native/generated/facenet.rank1} para \result{e3c/pooled/b-1.2/generated/facenet.rank1}, sem custo de utilidade, mas sem significância após correção para comparações múltiplas. Remover toda a componente real da identidade sintética, orientar a difusão (P1) ou o código do CIAGAN (P3) quase não muda nada: o vazamento está no trocador, e o SimSwap no lugar do \texttt{inswapper} não vaza menos.
-\end{enumerate}
-Precedentes: identidade estável por pessoa e afastamento da identidade real em vídeo \citep{fiva}; condicionamento negativo de identidade \citep{nullface,kung,revpers}; orientação por identidade na difusão \citep{diffprivacy}. As contribuições são empíricas e de sistema.
+
+\textbf{Medição no vídeo final e nos mesmos rostos.} Os métodos são comparados pelo par (rostos com face sintética, reidentificação entre eles) e por um atacante que decide uma vez por aluno. Esconder rostos baixa a reidentificação do vídeo sem proteger quem aparece, e aumentar a cobertura com rostos difíceis baixa a média sem que cada rosto vaze menos (Figura~\ref{fig:derived-frontier}, Tabela~\ref{tab:e3-matched}). Comparações justas exigem os mesmos rostos.
+
+\textbf{Pipeline \emph{fail-closed} por rosto para sala de aula.} Com a detecção do Estágio~1 dentro da troca e a ocultação do que falha, a parcela de rostos com face sintética vai de \result{derived/frontier/e2-blanket/share} (BLANKET liberado) para \result{e5/pooled/adapt-0.08/video_shown}, e nenhum rosto detectado sai real. O artigo do BLANKET oculta o quadro inteiro quando a detecção falha; aqui, a ocultação é por rosto. Nos mesmos rostos, o vazamento cai de \result{e3/matched/pooled/original/covered/facenet.rank1} para \result{e3/matched/pooled/gate/covered/facenet.rank1}, graças ao empurrão P2 e ao \emph{gate}.
+
+\textbf{Onde a identidade vaza.} Com uma máscara que separa o miolo do rosto do contexto, o contexto que a troca não substitui reidentifica a troca tanto quanto a imagem inteira (\result{e3m-context/pooled/native/generated/facenet.rank1}), e o miolo trocado vaza menos (\result{e3m-core/pooled/native/generated/facenet.rank1}). O empurrão P2 reduz o vazamento do miolo, sobretudo no ArcFace, mas seu efeito no reconhecedor independente não se confirma no vídeo novo. Orientar a difusão (P1), otimizar o código do CIAGAN (P3) e trocar o \texttt{inswapper} pelo SimSwap não mudam o quadro.
+
+Há precedentes para a identidade estável por pessoa e para o afastamento da identidade real em vídeo \citep{fiva}, para o condicionamento negativo de identidade \citep{nullface,kung,revpers} e para a orientação por identidade na difusão \citep{diffprivacy}. As contribuições deste trabalho são empíricas e de sistema.
 
 \section{Escopo}
-\begin{itemize}
-\item Gravações de aula, câmera fixa, processamento \emph{offline}.
-\item Só rosto (não corpo inteiro); áudio fora do escopo.
-\item Alegação: desidentificação facial (redução da identificabilidade biométrica do rosto), não anonimização no sentido da LGPD art.~12; modelo de ameaça na Seção~\ref{sec:ameaca}.
-\item Sem garantia formal de privacidade; atacante ingênuo (sem retreino) \citep{hanisch}.
-\item Dois vídeos de demonstração públicos na internet (22\,s, 41 tracks); não é um conjunto consentido de crianças.
-\end{itemize}
+
+O trabalho trata de gravações de aula com câmera fixa, processadas \emph{offline}. Considera só o rosto, não o corpo inteiro, e deixa o áudio de fora. A alegação é de desidentificação facial, isto é, redução da identificabilidade biométrica do rosto, e não de anonimização no sentido do art.~12 da LGPD; o modelo de ameaça está na Seção~\ref{sec:ameaca}. Não há garantia formal de privacidade, e o atacante é ingênuo, sem retreino \citep{hanisch}. A avaliação usa dois vídeos de demonstração públicos na internet, com 22\,s e 41 tracks; não é um conjunto consentido de crianças.
 
 \section{Classificação da pesquisa}
-\begin{itemize}
-\item Natureza: aplicada.
-\item Abordagem: quantitativa.
-\item Procedimento: experimental (braços comparados nos mesmos rostos).
-\item Objetivo: explicativa (efeito de cada componente sobre privacidade, utilidade e custo).
-\end{itemize}
+
+A pesquisa é aplicada, de abordagem quantitativa e procedimento experimental, com braços comparados nos mesmos rostos. Seu objetivo é explicativo: medir o efeito de cada componente sobre privacidade, utilidade e custo.
 
 \section{Desvios em relação à proposta}
-\begin{itemize}
-\item Pareamento demográfico, equidade, coleta consentida na UFPR, estágio temporal dedicado, APIs comerciais de reconhecimento, avaliação humana: não realizados.
-\item Planejado $\times$ realizado $\times$ motivo: Quadro~\ref{qua:desvios} (Seção~\ref{cap:metodo}).
-\end{itemize}
+
+Não foram realizados o pareamento demográfico, a análise de equidade, a coleta consentida na UFPR, um estágio temporal dedicado, o uso de APIs comerciais de reconhecimento e a avaliação humana. O Quadro~\ref{qua:desvios}, no Capítulo~\ref{cap:metodo}, lista o que foi planejado, o que foi realizado e o motivo de cada desvio.
 
 \section{Organização}
-\begin{itemize}
-\item Seção~\ref{cap:fundam}: fundamentação e trabalhos relacionados.
-\item Seção~\ref{cap:metodo}: pipeline, componentes, modelo de ameaça, desvios.
-\item Seção~\ref{cap:experimentos}: configuração experimental (E0--E5).
-\item Seção~\ref{cap:resultados}: resultados.
-\item Seção~\ref{cap:discussao}: pipeline final, discussão, ameaças à validade.
-\item Seção~\ref{cap:conclusao}: limitações, ética, trabalhos futuros.
-\item Apêndices: licenças, registro de decisões, reprodução, correções do parecer de orientação.
-\end{itemize}
+
+O Capítulo~\ref{cap:fundam} apresenta a fundamentação e os trabalhos relacionados. O Capítulo~\ref{cap:metodo} descreve o pipeline, seus componentes, o modelo de ameaça e os desvios. O Capítulo~\ref{cap:experimentos} apresenta a configuração experimental (E0 a E5), e o Capítulo~\ref{cap:resultados}, os resultados. O Capítulo~\ref{cap:discussao} discute o pipeline final e as ameaças à validade, e o Capítulo~\ref{cap:conclusao} trata de limitações, ética e trabalhos futuros. Os apêndices trazem as licenças, o registro de decisões e as instruções de reprodução.

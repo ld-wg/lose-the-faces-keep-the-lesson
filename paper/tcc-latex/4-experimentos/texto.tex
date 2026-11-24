@@ -1,115 +1,59 @@
 \chapter{Configuração experimental}
 \label{cap:experimentos}
 
-% Rascunho em tópicos (2026-10-22). Desenho completo: experiments/README.md e
-% experiments/*/README.md; decisões: experiments/DECISIONS.md.
-% 2026-10-29 (parecer de orientação): dados e ética, re-detecção, proxy de orientação,
-% Holm, macro-média, acaso, LOVO, escopo das métricas de custo.
+% Desenho completo: experiments/README.md e experiments/*/README.md; decisões:
+% experiments/DECISIONS.md. Revisão de 2026-11-18: prosa; teste confirmatório no demo4;
+% mesmos rostos; E3m; metas originais e mudança da medida primária.
 
 \section{Dados}
-\begin{itemize}
-\item WIDER FACE val, protocolo oficial (E1) \citep{widerface}.
-\item Dois vídeos de sala de aula (demo2, demo4):
-  \begin{itemize}
-  \item 244 e 410 quadros; 8,0 e 13,9\,s (21,9\,s no total);
-  \item \result{derived/demo2/tracks} e \result{derived/demo4/tracks} tracks com o Estágio~1 do pipeline (41 no total);
-  \item \result{e3/demo2/faces} e \result{e3/demo4/faces} rostos-quadro detectados (10.119); demo4 tem 56\% dos rostos.
-  \end{itemize}
-\item Acaso do rank-1 $= 1/N$: \result{derived/demo2/chance-rank1} e \result{derived/demo4/chance-rank1}.
-\item Papel de cada vídeo: o demo2 foi usado no piloto, quando $\beta$, o \emph{gate} e a amostragem foram fixados; o demo4 só entrou depois, com o pipeline já congelado. Ele é o único teste fora da amostra.
-\item Origem: vídeos públicos na internet. Fonte, licença e termos de cada vídeo: pendente de registro. Não é conjunto consentido de crianças.
-\item Ética: consulta ao CEP da UFPR pendente (regulamento do TCC: aprovação, se necessária, na matrícula). Plano B: 2 ou 3 gravações próprias com adultos voluntários e termo de uso de imagem, repetindo E3e e E5.
-\item Todos os números deste texto vêm de uma única campanha, rodada na constantine (UFPR, GTX 1080) em novembro de 2026 (Apêndice~\ref{ap:reproducao}); números do piloto não são reportados.
-\end{itemize}
+
+O E1 usa o conjunto de validação do WIDER FACE, com o protocolo oficial \citep{widerface}. Os demais experimentos usam dois vídeos de sala de aula, demo2 e demo4, com 244 e 410 quadros (8,0 e 13,9\,s; 21,9\,s no total). O Estágio~1 do pipeline acha \result{derived/demo2/tracks} e \result{derived/demo4/tracks} tracks (41 no total) e \result{e3/demo2/faces} e \result{e3/demo4/faces} rostos-quadro (10.119); o demo4 tem 56\% dos rostos. O rank-1 ao acaso é $1/N$: \result{derived/demo2/chance-rank1} e \result{derived/demo4/chance-rank1}.
+
+Os dois vídeos têm papéis diferentes. O demo2 foi usado no piloto, quando $\beta$, o \emph{gate} e a amostragem foram fixados; o demo4 só entrou depois, com o pipeline congelado, e é o único teste fora da amostra. Ambos são públicos na internet e não formam um conjunto consentido de crianças. O registro de fonte e licença de cada vídeo e a consulta ao CEP da UFPR estão em andamento (Seção~\ref{cap:conclusao}); o plano alternativo são duas ou três gravações próprias com adultos voluntários e termo de uso de imagem, repetindo E3e e E5. Todos os números do texto vêm de uma única campanha, numa GTX 1080 (Apêndice~\ref{ap:reproducao}); números do piloto não são reportados.
 
 \section{Privacidade}
-\begin{itemize}
-\item FaceNet (InceptionResnetV1, VGGFace2): avaliador não usado na otimização \citep{facenet,vggface2}.
-\item ArcFace \texttt{w600k\_r50}: o espaço em que P1--P3 empurram \citep{arcface}.
-\item Limiar por vídeo a FAR 1\%:
-  \begin{itemize}
-  \item pares genuínos: quadros do mesmo track com $\ge 5$ quadros de distância;
-  \item pares impostores: tracks visíveis no mesmo quadro.
-  \end{itemize}
-\item Reidentificação em conjunto fechado: cada rosto contra o embedding médio de cada track (o próprio quadro fora); rank-1 e rank-5.
-\item Verificação: cosseno $\ge$ limiar.
-\item Redução relativa de rank-1: $1 - R_{\mathrm{anon}}/R_{\mathrm{real}}$ (o \emph{Privacy Gain} de \citealp{meden} é a diferença absoluta). Coluna renomeada de ``PG final'' para ``Red. rel. R1'' (2026-10-29).
-\item Visões:
-  \begin{itemize}
-  \item rostos gerados;
-  \item todos os rostos, passthrough como vazamento (como publicado);
-  \item vídeo final, após o \emph{fail-safe} (\texttt{compose.jsonl}): oculto nunca reidentificado; reaproveitado com o embedding do rosto de origem;
-  \item vídeo composto (E5): probes nos pixels do \texttt{output.mp4}, reaproveitados como aparecem.
-  \end{itemize}
-\item Visão de vídeo final e vídeo composto concordam para o mesmo pipeline (\result{e3e/pooled/gate/facenet_final.rank1} contra \result{e5/pooled/ref/facenet_video.rank1}).
-\item Rosto oculto conta como não reidentificado: ocultar baixa o rank-1 do vídeo final sem proteger ninguém que apareça. O BLANKET liberado, sem face sintética em 78\% dos rostos (ocultos pelo nosso \emph{fail-safe}), tem rank-1 menor que o do pipeline nessa visão.
-\item Medida primária: o par (FaceNet rank-1 entre os rostos com face sintética, parcela de rostos com face sintética), lido como fronteira (Figura~\ref{fig:derived-frontier}); o rank-1 do vídeo final fica como visão secundária. E2/E3: rostos gerados; pipeline final: rostos mostrados (\texttt{facenet\_shown}; caixa preenchida não entra).
-\item Atacante por aluno: média dos embeddings mostrados de cada track contra a galeria, uma decisão por track (rank-1 por track). Atacante ciente do empurrão: ordena a galeria pelo cosseno mais baixo (rank inverso).
-\item Galeria: quadros reais do mesmo clipe de 8 a 12\,s (alunos parados: track mediano de 232 dos 244 quadros no demo2); rank-1 dos rostos reais $\approx 0{,}9$. Atacante com foto de outra sessão: não medido.
-\item Avaliador fraco nesses rostos: TAR a FAR 1\% nos próprios rostos reais de \result{e0/demo2/facenet.tar} (demo2) e \result{e0/demo4/facenet.tar} (demo4) no FaceNet. A taxa de verificação dos rostos substituídos tem esse teto, não 100\%.
-\end{itemize}
+
+Dois reconhecedores medem a privacidade. O FaceNet (InceptionResnetV1 treinado no VGGFace2) é o juiz independente \citep{facenet,vggface2}: não entra em nenhum gradiente nem no \emph{gate}, mas foi usado para escolher $\beta$ no piloto. O ArcFace \texttt{w600k\_r50} é o espaço em que P1, P2 e P3 atuam \citep{arcface}. O limiar de cada vídeo a FAR 1\% vem de pares genuínos (quadros do mesmo track com pelo menos 5 quadros de distância) e impostores (tracks visíveis no mesmo quadro).
+
+A reidentificação é medida em conjunto fechado: cada rosto é comparado com o embedding médio de cada track, sem o próprio quadro, e conta-se o rank-1 e o rank-5. A verificação conta os rostos com cosseno acima do limiar. A redução relativa do rank-1 é $1 - R_{\mathrm{anon}}/R_{\mathrm{real}}$; o \emph{Privacy Gain} de \citet{meden} é a diferença absoluta. A galeria são quadros reais do mesmo clipe, de 8 a 14\,s, com alunos parados (track mediano de 232 dos 244 quadros no demo2); o rank-1 dos rostos reais fica perto de 0,9. O ataque medido é, portanto, intra-sessão, e um atacante com foto de outra sessão não foi medido. O reconhecedor independente é fraco na verificação desses rostos: a TAR a FAR 1\% nos próprios rostos reais é de \result{e0/demo2/facenet.tar} no demo2 e \result{e0/demo4/facenet.tar} no demo4, e a verificação dos rostos substituídos tem esse teto.
+
+Há quatro visões. A de rostos gerados avalia só os rostos que o método substituiu. A de todos os rostos conta como vazamento os que passam reais, como no método publicado. A do vídeo final aplica o \emph{fail-safe}: o rosto oculto nunca é reidentificado, e o reaproveitado é avaliado com o embedding do rosto de origem. A do vídeo composto (E5) roda as sondas nos pixels do \texttt{output.mp4}. No vídeo final, esconder baixa o rank-1 sem proteger quem aparece; o acaso dessa visão é a fração mostrada dividida por $N$, não $1/N$. Por isso as comparações entre políticas usam os rostos mostrados.
+
+A medida primária é o par formado pela parcela de rostos com face sintética e pelo rank-1 do FaceNet entre eles (Figura~\ref{fig:derived-frontier}). Comparações entre braços com coberturas diferentes são feitas nos mesmos rostos (Tabela~\ref{tab:e3-matched}), porque os braços que cobrem mais rostos acrescentam rostos pequenos, difíceis de reconhecer mesmo quando reais. Dois atacantes completam a medida: o que decide uma vez por aluno, com a média dos embeddings mostrados de cada track, e o que conhece o empurrão e ordena a galeria pelo cosseno mais baixo.
 
 \section{Utilidade}
-\begin{itemize}
-\item Expressão: 106 landmarks (\texttt{2d106det}) após alinhamento por similaridade, em unidades de IOD.
-\item Pose: erro absoluto médio de pitch, yaw, roll (\texttt{1k3d68}).
-\item Idade e gênero: \texttt{genderage} \citep{insightface}.
-\item Emoção: HSEmotion, 8 classes, $\kappa$ de Cohen \citep{hsemotion,cohen}. Concordância bruta descartada: 73\% dos rostos reais são neutros.
-\item Orientação (proxy de tarefa): rosto ``voltado para a frente'' se $|\mathrm{yaw}| < 30^\circ$ e $|\mathrm{pitch}| < 30^\circ$; $\kappa$ entre real e mostrado.
-\item Re-detecção: SCRFD no rosto gerado, entrada 320\,px, corte 0,5 (não os 640\,px e 0,1 do Estágio~1).
-\item Viés da métrica de expressão: a troca mantém por construção a geometria do rosto alvo; o erro dos 106 landmarks (detector da mesma família InsightFace) favorece métodos de troca contra geradores (CIAGAN, GANonymization), sem medir expressão percebida.
-\item Movimento (E5): $|\Delta_{\mathrm{mostrado}} - \Delta_{\mathrm{real}}|$ dos 106 landmarks entre quadros consecutivos; pega rosto congelado e rosto tremido.
-\item Piso de ruído: a mesma métrica entre quadros reais consecutivos.
-\item Olhar (\emph{gaze}): não medido (sem estimador validado em rostos tão pequenos).
-\item Probes não validados neste material (rostos de 30--80\,px); ``sem custo de utilidade'' = sem diferença significativa, não equivalência.
-\end{itemize}
+
+O erro de expressão compara os 106 \emph{landmarks} do \texttt{2d106det} após alinhamento por similaridade, em distâncias interoculares. O erro de pose é a média absoluta de \emph{pitch}, \emph{yaw} e \emph{roll} (\texttt{1k3d68}); idade e gênero vêm do \texttt{genderage} \citep{insightface}. A emoção usa o HSEmotion, com 8 classes, comparadas por $\kappa$ de Cohen \citep{hsemotion,cohen}; a concordância bruta foi descartada porque 73\% dos rostos reais são neutros. A orientação é um \emph{proxy} de tarefa: o rosto está ``voltado para a frente'' se $|\mathrm{yaw}|$ e $|\mathrm{pitch}|$ ficam abaixo de 30\textdegree, com $\kappa$ entre o real e o mostrado. A re-detecção roda o SCRFD no rosto gerado, com entrada de 320\,px e corte 0,5. No E5, o erro de movimento é $|\Delta_{\mathrm{mostrado}} - \Delta_{\mathrm{real}}|$ dos 106 \emph{landmarks} entre quadros consecutivos, que pega tanto rosto congelado quanto rosto tremido. Cada métrica tem um piso de ruído, medido entre quadros reais consecutivos.
+
+A métrica de expressão favorece a troca, que mantém por construção a geometria do rosto alvo, e não mede expressão percebida. O olhar não foi medido, por falta de estimador validado em rostos tão pequenos, e as sondas não foram validadas em rostos de 30 a 80\,px. ``Sem custo de utilidade'' significa sem diferença significativa, não equivalência.
 
 \section{Estatística}
-\begin{itemize}
-\item Intervalos de 95\%: bootstrap percentil reamostrando tracks inteiros (2000 reamostras) \citep{efron}.
-\item Braços comparados nos mesmos rostos: diferença pareada (vídeo, quadro, track) com intervalo; ``exclui zero'' como critério.
-\item Teste de inversão de sinal por track (10000), ponderado por rosto.
-\item Comparações múltiplas: $p$ ajustado por Holm--Bonferroni dentro de cada família (E3c: braços contra o nativo; E5: braços contra \emph{ref}, por métrica). Os intervalos das tabelas pareadas não são corrigidos; a significância é lida pelo $p$ de Holm.
-\item Agregado ponderado por rosto (demo4 = 56\%); ao lado: valores por vídeo e múltiplo do acaso ($R \times N$). Com dois vídeos, o resultado por vídeo é o que importa: demo2 visto no piloto, demo4 novo.
-\item Estratos: tamanho do rosto (0--48, 48--96, $\ge 96$\,px), $|$yaw$|$, confiança de detecção.
-\item Testes de equivalência (TOST) com margem no piso de ruído: não feitos (trabalho futuro).
-\item Critérios fixados em 2026-09-29, antes da campanha E0--E5 e depois de um piloto exploratório que incluía o demo2 (P2 visto em 2026-09-26): melhora de privacidade = rank-1 cai e o intervalo pareado exclui zero; utilidade preservada = dentro do intervalo do braço de referência, lido contra o piso de ruído.
-\item Integridade: chaves \texttt{\textbackslash result} que colidem após a conversão para ASCII abortam a exportação; estatística, composição, pós-passe e rastreador com testes unitários (\texttt{tests/}, 62 testes).
-\end{itemize}
+
+Os intervalos de 95\% vêm de \emph{bootstrap} percentil sobre tracks inteiros, com 2000 reamostras \citep{efron}. Os braços são comparados nos mesmos rostos (vídeo, quadro, track), com a diferença pareada, seu intervalo e um teste de inversão de sinal por track (10.000 sorteios), ponderado por rosto. Os intervalos cobrem a variação dentro de dois clipes, não a variação entre vídeos. Por isso os resultados são reportados por vídeo, com o demo4 primeiro; o agregado, ponderado por rosto, é secundário.
+
+O teste confirmatório foi declarado antes de processar o vídeo novo: P2 com $\beta = 1{,}2$ contra o mix nativo, pareado por track, no demo4. Seu $p$ é reportado sozinho, sem correção. Os demais valores de $\beta$ formam uma dose-resposta exploratória, com correção de Holm--Bonferroni dentro da família; o E5 usa a mesma correção, por métrica, contra o braço \emph{ref}. Os estratos são o tamanho do rosto (0--48, 48--96 e 96\,px ou mais), o $|$yaw$|$ e a confiança de detecção. Testes de equivalência (TOST) não foram feitos.
+
+Os critérios foram fixados em 2026-09-29, depois de um piloto exploratório que incluía o demo2 e antes da campanha. A privacidade melhora quando o rank-1 cai e o intervalo pareado exclui zero; a utilidade é preservada quando fica dentro do intervalo do braço de referência, lida contra o piso de ruído. Os critérios incluíam uma meta de supressão: verificação a FAR 1\% de no máximo 5\% e rank-1 de no máximo duas vezes o acaso. Em 2026-10-30, depois de os baselines vencerem no rank-1 do vídeo final, em que um rosto oculto conta como nunca reidentificado, a medida primária passou a ser o par descrito acima. Essa mudança foi feita depois de ver os dados.
+
+As chaves \texttt{\textbackslash result} que colidem após a conversão para ASCII interrompem a exportação, e estatística, composição, pós-passe, rastreador e avaliador têm testes unitários (\texttt{tests/}, 69 testes).
 
 \section{Custo}
-\begin{itemize}
-\item E2, quadros/s: quadros do vídeo / tempo total do Estágio~2 (carga dos modelos, pré-passe de identidade e geração das identidades incluídos).
-\item E5, ms por rosto: laço por rosto em regime (após o primeiro rosto gerado).
-\item GPU-horas por hora de aula: projeção do laço por rosto em regime para 30\,fps e 20 rostos por quadro, a partir de 22\,s de vídeo, numa GTX 1080 (8\,GB). Fora da conta: detecção, pré-passe de identidade, geração das identidades ($\approx$3,3\,min por track na GTX 1080) e composição.
-\end{itemize}
+
+No E2, a taxa de quadros é o número de quadros do vídeo dividido pelo tempo total do Estágio~2, incluindo carga dos modelos, pré-passe e geração das identidades. No E5, o custo é o laço por rosto em regime, em milissegundos por rosto, depois do primeiro rosto gerado. As GPU-horas por hora de aula projetam esse laço para 30 quadros por segundo e 20 rostos por quadro, a partir de 22\,s de vídeo, numa GTX 1080 de 8\,GB. Ficam fora da conta a detecção, o pré-passe, a geração das identidades (cerca de 3,3 minutos por track) e a composição.
 
 \section{Experimentos}
+
+O E0 valida os instrumentos: TAR dos reconhecedores, mecanismo do mix nativo e pisos de ruído. O E1 compara SCRFD-10GF, SCRFD-34GF e YOLO-FaceV2-s no WIDER FACE (AP, recall a FPPI fixo, latência) e nos vídeos (rostos por quadro e estatísticas de tracks, no limiar 0,3). O E2 roda os geradores na forma publicada (blur, mosaico, CIAGAN, GANonymization e BLANKET) sobre as mesmas detecções. O E3 mede as contribuições, no BLANKET e, para o P3, no CIAGAN:
 \begin{itemize}
-\item E0, instrumentos: TAR dos reconhecedores, mecanismo do mix nativo, pisos de ruído.
-\item E1, detecção: SCRFD-10GF, SCRFD-34GF, YOLO-FaceV2-s; AP, recall a FPPI, latência; estatísticas de tracks nos vídeos (limiar 0,3).
-\item Recall nos vídeos sem anotação: o YOLO-FaceV2-s acha mais caixas por quadro que o SCRFD-10GF (demo2 \result{e1/demo2/yolo-facev2-s/faces-per-frame} contra \result{e1/demo2/scrfd-10gf/faces-per-frame}; demo4 \result{e1/demo4/yolo-facev2-s/faces-per-frame} contra \result{e1/demo4/scrfd-10gf/faces-per-frame}); as caixas extras que forem rostos saem reais no vídeo final. Conferência visual das caixas extras: pendente.
-\item E2, geradores na forma publicada: blur, mosaico, CIAGAN, GANonymization, BLANKET; mesmas detecções.
-\item E3, contribuição (BLANKET; CIAGAN em P3):
-  \begin{itemize}
-  \item E3a, C2: modos de agregação; ajuste na primeira metade do track, avaliação na segunda ($\ge 5$ quadros depois);
-  \item E3b, cobertura: original, \emph{seed candidates}, detecção do Estágio~1;
-  \item E3c, força do P2: $\beta \in \{0{,}2;\, 0{,}35;\, 0{,}5;\, 0{,}8;\, 1{,}2;\, 1{,}6\}$, contra o mix nativo e sem mix;
-  \item E3d, alvo do P2: cada modo do C2 em $\beta = 1{,}2$, contra o primeiro quadro;
-  \item E3e, políticas: \emph{hide-low} e \emph{gate} sobre P2 $\beta = 1{,}2$;
-  \item E3f, P3: $\tau_h \in \{0, -0{,}2\}$, contra CIAGAN puro;
-  \item E3g, P1: escala 0,1 sobre P2 $\beta = 1{,}2$, contra P2;
-  \item E3h, trocador: \texttt{inswapper\_128} e \texttt{simswap\_256}, cada um nativo e com P2 $\beta = 1{,}2$, nas mesmas identidades SDXL e com a mesma detecção; referência: \texttt{inswapper} com P2.
-  \end{itemize}
-\item E5, custo: pipeline final com um fator de custo por braço:
-  \begin{itemize}
-  \item \emph{ref}: processo principal na GPU, todo quadro, GFPGAN ligado;
-  \item GFPGAN desligado; GFPGAN só em rostos $\ge 96$\,px;
-  \item amostragem fixa a cada 2 e 3 quadros;
-  \item adaptativa com $\tau_a = 0{,}05$ e $0{,}08$ (máximo de 6 quadros);
-  \item \emph{fast}: GFPGAN $\ge 96$\,px mais adaptativa 0,05.
-  \end{itemize}
-\item E5 reutiliza o cache de identidades do E3 e aborta se ele não existir.
-\item E3g (P1) troca o rosto na CPU: a orientação por gradiente não cabe na GTX 1080 ao lado do servidor de troca; o resultado só muda por ruído numérico, o tempo desse braço não é comparável.
-\item E4 (identidade só por texto): proposto, não executado (Seção~\ref{cap:conclusao}).
+\item E3a, C2: modos de agregação, ajustados na primeira metade do track e avaliados na segunda;
+\item E3b, cobertura: fluxo original, \emph{seed candidates} e detecção do Estágio~1;
+\item E3c, força do P2: $\beta \in \{0{,}2;\, 0{,}35;\, 0{,}5;\, 0{,}8;\, 1{,}2;\, 1{,}6\}$, contra o mix nativo e sem mix;
+\item E3d, alvo do P2: cada modo do C2 em $\beta = 1{,}2$, contra o primeiro quadro;
+\item E3e, políticas: \emph{hide-low} e \emph{gate} sobre o P2 com $\beta = 1{,}2$;
+\item E3f, P3: $\tau_h \in \{0, -0{,}2\}$, contra o CIAGAN puro;
+\item E3g, P1: escala 0,1 sobre o P2 com $\beta = 1{,}2$; neste braço a troca roda na CPU, porque a orientação não cabe na GTX 1080 ao lado do servidor de troca, e o tempo não é comparável;
+\item E3h, trocador: \texttt{inswapper\_128} e \texttt{simswap\_256}, cada um nativo e com P2, nas mesmas identidades;
+\item E3m, onde está a identidade: os braços nativo e P2 do E3c reavaliados com a máscara de rosto, só rosto e só contexto, no rosto real e no anonimizado, sem nova geração.
 \end{itemize}
+
+O E5 mede o custo do pipeline final, mudando um fator por braço. O braço \emph{ref} gera todo quadro com o GFPGAN ligado e serve de base de custo; o pipeline final é o braço com amostragem adaptativa $\tau_a = 0{,}08$. Os demais braços desligam o GFPGAN, aplicam-no só a rostos de 96\,px ou mais, amostram a cada 2 ou 3 quadros, usam a adaptativa com $\tau_a = 0{,}05$, ou combinam GFPGAN em rostos grandes com a adaptativa 0,05 (\emph{fast}). O E5 reutiliza o cache de identidades do E3. O E4, identidade só por texto, foi proposto e não executado (Seção~\ref{cap:conclusao}).

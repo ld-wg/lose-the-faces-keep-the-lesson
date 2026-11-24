@@ -72,6 +72,14 @@
 \item Avaliação final com o pipeline congelado, no demo2 e num vídeo novo, demo4, numa GTX 1080 (DECISIONS 70).
 \item O P1 não cabe na GPU de 8\,GB ao lado do servidor de troca: o E3g troca o rosto na CPU (DECISIONS 71).
 \item Revisão final: as chaves do E3 usadas como ``rostos gerados'' contavam todos os rostos; corrigido (\texttt{<braço>/generated}). O braço do E5 com o processo principal na CPU rodou, por engano, na GPU e saiu.
-\item E3h: comparação de trocadores de rosto (\texttt{inswapper} e SimSwap), depois de a campanha mostrar que o vazamento está na troca. Resultado: o SimSwap não vaza menos; o \texttt{inswapper} fica.
+\item E3h: comparação de trocadores de rosto (\texttt{inswapper} e SimSwap). Resultado: o SimSwap não vaza menos; o \texttt{inswapper} fica.
+\end{itemize}
+
+\section{Revisão crítica (2026-11-18)}
+\begin{itemize}
+\item Avaliador: o rosto anonimizado passa a ser avaliado no quadro de origem, com o recorte colado de volta; os recortes com pouca margem (blur, mosaico, CIAGAN) recebiam bordas pretas. E2 e E3f reavaliados; BLANKET e GANonymization não mudaram (DECISIONS 74).
+\item Mesmos rostos: braços com coberturas diferentes comparados nos rostos que o BLANKET original troca e nos que só o Estágio~1 acrescenta (DECISIONS 75).
+\item Onde está a identidade: máscara de rosto no avaliador e parte E3m, sem nova geração (DECISIONS 76).
+\item Pipeline final = amostragem adaptativa 0,08; teste confirmatório do P2 no demo4; estratos de tamanho entre os rostos mostrados, com número de tracks; texto em prosa (DECISIONS 77).
 \end{itemize}
 

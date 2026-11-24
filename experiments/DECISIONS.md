@@ -249,3 +249,37 @@ face, and frames before a track was confirmed.
     - Result: SimSwap leaks more natively (FaceNet rank-1 among swapped faces
       0.58 vs 0.50) and ties with P2 (0.42 vs 0.39, Holm p 0.66). inswapper
       stays.
+
+## Review fixes (2026-11-18)
+
+Source: `research/next-steps/avaliacao-banca-2026-11-18.md` and its response plan.
+
+74. **Anonymized faces are scored on the frame.**
+    - **Bug.** The evaluator embedded and probed the anonymized crop alone, while the real face was
+      scored on the full frame. Censor crops (10% margin) and CIAGAN crops (15%) are smaller than the
+      InsightFace probes' 1.5×-box window and the FaceNet template, so those arms got black borders
+      the real face never has.
+    - **Fix.** The crop is pasted back into the source frame (in place, restored after scoring) and
+      scored in frame coordinates; re-detection still runs on the crop. Regression tests in
+      `tests/test_evaluate.py`.
+    - **Effect.** Final-video rank-1: blur 0.09 → 0.14, mosaic 0.11 → 0.17, CIAGAN 0.12 → 0.14. Blur's
+      pose error 18.3° → 16.0°, gender agreement 0.53 → 0.77. BLANKET and GANonymization (margin 0.8)
+      unchanged, as the tests predict. E2 and E3f re-evaluated; E5 (BLANKET only) not.
+75. **The same faces.** Arms with different coverage are compared on the faces the released flow
+    swaps and on the faces only Stage 1 detection adds (`e3/matched/…`, `tab-e3-matched`). On the
+    2,432 covered faces: released flow 0.646, Stage 1 native 0.754 (+0.108, p = 0.004), P2 0.436,
+    gate (shown) 0.408. The faces Stage 1 adds are harder even when real (0.91 vs 0.99). The drop of
+    "rank-1 among swapped faces" with more coverage is a selection effect.
+76. **Where the identity is (E3m).** `--face-mask core|context` grays out, in every aligned crop, the
+    outside or the inside of a fixed ellipse (brows to chin; `align.face_core_mask`). Real faces:
+    FaceNet rank-1 0.83 with the core only, 0.82 with the context only. Swapped faces: context only
+    0.49 (the whole swap is 0.50) and unchanged by P2; core only 0.34 native, 0.28 with P2 (ArcFace
+    0.48 → 0.20). With a same-session gallery, most of what is left of the identity is what the swap
+    does not replace. The thesis's "the swapper keeps the face shape" is withdrawn.
+77. **Reporting.**
+    - The final pipeline is the adaptive-sampling arm (`adapt-0.08`); `ref` is the cost baseline.
+    - The confirmatory test, declared before demo4: P2 β 1.2 vs native on demo4. Δ −0.091 ± 0.135,
+      p = 0.26: not confirmed. The other β are an exploratory dose-response with Holm.
+    - Size strata among the shown faces, with tracks per bin (28 / 14 / 4): the ≥ 96 px bin is too
+      small for claims about large faces (the "teacher" policy is dropped).
+    - The thesis text is prose; appendix A4 (internal review) is left out of the defense version.
