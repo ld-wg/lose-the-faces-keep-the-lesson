@@ -7,7 +7,9 @@ reduces automatic face re-identification while keeping behavioral signal
 with tracking; one synthetic identity per track, generated with Stable Diffusion
 XL and swapped onto the face in every frame by \texttt{inswapper} with GFPGAN
 restoration, as in BLANKET; and a composition that hides every detected face
-without a valid replacement. The evaluation uses two short videos (22\,s, 41
+without a valid replacement. 
+
+The evaluation uses two short videos (22\,s, 41
 tracks), one of them seen only after the pipeline was frozen. The released
 BLANKET code swaps \resulten{derived/frontier/e2-blanket/share} of the faces and
 leaves the rest real; the pipeline shows a synthetic face for
