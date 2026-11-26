@@ -1,458 +1,285 @@
 # Experiment design decisions
 
-Decided on 2026-09-29, after reviewing the planned experiments against the
-research question (`research/stages/10-problem.md`), the method and evaluation
-notes, and what `paper/main.tex` currently promises. Each entry says what was
-decided and why. Changes to the paper text that follow from these decisions are
-listed at the end; the paper is not edited in this PR.
+The versioned decision record. Each entry says what was decided and why.
+Entry numbers are stable: the thesis (`paper/tcc-latex`) and the code cite
+them. Superseded entries stay, with a note.
 
-## Scope
+Every number in the thesis comes from the final campaign on constantine
+(2026-11, demo2 + demo4, GTX 1080). Older numbers below explain why a decision
+was taken; they are not results.
 
-1. **Three experiment families plus instrument validation.** Detectors (E1),
-   generators in their original form (E2), and generators with vs without our
-   ideas (E3). E0 validates the instruments that every other experiment relies
-   on. These map one-to-one onto the paper's research question, objectives and
-   hypotheses (see the table in `README.md`).
-2. **Only the ideas already implemented enter the paper:** C2 (track-level
-   real identity), seed candidates with Phase 1 boxes, and P2 (identity push in
-   the swap embedding). P3 (CIAGAN identity-code optimization) and P1 (SDXL
-   guidance) become future work. The paper reports measured contributions, not
-   planned ones. *Superseded by 43–44 (2026-10-01): P1 and P3 were implemented and
-   measured in E3f/E3g; both are reported as negative results.*
-3. **E1 uses WIDER FACE val plus our videos.** Our classroom videos have no
-   face annotations, so on their own they only give operational statistics.
-   WIDER FACE gives AP, precision / recall / F1 and recall at fixed false
-   positives under the standard protocol. Annotating classroom frames was
-   considered and not adopted (cost, and it means handling more real faces).
-4. **GANonymization is not part of E3.** It has no identity input, so our
-   ideas do not apply to it. It stays in E2 as a baseline.
-5. **A censorship baseline (blur, mosaic) joins E2.** The chronogram promised
-   it, and it is the utility floor every generator must beat.
+## Scope (2026-09-29)
+
+1. **E0–E3.** E0 validates the instruments. E1 compares detectors, E2 the
+   generators in their published form, E3 the generators with and without our
+   ideas. E5 (cost) was added later (50).
+2. **Only implemented ideas are reported.** C2 (track-level real identity),
+   Phase 1 detection in the swap, and P2 (identity push in the swap embedding).
+   *Superseded by 43–44:* P1 and P3 were implemented and are reported as
+   negative results.
+3. **E1 uses WIDER FACE val plus our videos.** The videos have no face
+   annotations, so they only give operational statistics. Annotating classroom
+   frames was not adopted (cost, and more handling of real faces).
+4. **GANonymization stays out of E3.** It has no identity input. It is an E2
+   baseline.
+5. **Blur and mosaic join E2** as the censorship baseline and the utility
+   floor.
 
 ## Metrics
 
-6. **The primary privacy measure is closed-set rank-1 by FaceNet**, a
-   recognizer never used to build or tune the pipeline. ArcFace, the space the
-   P2 push is computed in, is always reported next to it: a gap between them
-   means the method fools only its own model. This is the held-out verifier
-   the paper promised.
-7. **Rank-5 and Privacy Gain are added.** The paper promised Rank-N
-   identification; Privacy Gain is derived from rank-1 at no cost.
-8. **Emotion agreement joins the utility metrics.** Hypothesis (b) and
-   objective 3 are about affect; the landmark-based expression error alone is a
-   proxy. An off-the-shelf facial-expression classifier will be chosen by
-   license and accuracy.
-9. **Head-pose error joins the utility metrics.** The paper promises pose
-   preservation. It uses buffalo_l's 3D-68 model, already in the pipeline, with
-   no new dependency.
-10. **Gaze error joins the utility metrics if a permissively licensed gaze
-    estimator runs reliably.** Gaze is named in the research question.
-    Otherwise it is declared a limitation.
-11. **Attribute preservation (age error, gender agreement) joins the utility
-    metrics.** The research question requires a demographically similar
-    surrogate, and the paper promises a check for demographic distortion. It
-    uses buffalo_l's age/gender model, with no new dependency. It also measures
-    the infant-face bias found in BLANKET's original prompt.
-12. **Every utility metric gets a noise floor** (E0): the same metric between
-    consecutive real frames of a track. A generator's drift is read against
-    what the probe itself fluctuates.
-13. **PSNR and SSIM are dropped.** They reward pixel similarity, which a method
-    that replaces the face on purpose should not have. Re-detection stands for
-    analyzability; face image-quality assessment stays optional.
-14. **Statistics:** per-video and pooled values with 95% bootstrap confidence
-    intervals over tracks; paired comparisons between arms that share faces
-    and identities (paired bootstrap; McNemar for per-face rank-1).
-15. **Robustness is stratified by face size and head pose**, the hard
-    conditions of a classroom camera, because demographic stratification is not
-    possible (next section).
+6. **Primary privacy recognizer: FaceNet closed-set rank-1.** FaceNet is never
+   used to build or tune the pipeline. ArcFace, the space P2 works in, is
+   always reported next to it. A gap between them means the method only fools
+   its own model.
+7. **Rank-5 and Privacy Gain** are reported as well.
+8. **Emotion agreement** is a utility metric, because the hypothesis is about
+   affect.
+9. **Head-pose error** is a utility metric (buffalo_l 3D-68).
+10. **Gaze is a stated limitation.** No permissive estimator was validated on
+    faces this small.
+11. **Age error and gender agreement** (buffalo_l genderage) check demographic
+    drift.
+12. **Every utility metric has a noise floor** (E0): the same metric between
+    consecutive real frames of a track.
+13. **PSNR and SSIM are dropped.** They reward pixel similarity, which a
+    method that replaces the face should not have.
+14. **Statistics.** Per-video and pooled values with 95% bootstrap intervals
+    over tracks. Paired comparisons between arms that share faces and
+    identities.
+15. **Strata.** Face size and head pose (and detection confidence, 41).
+    Demographic strata are not possible (20).
 
-## Declared limitations (what the paper promised and will not measure)
+## Declared limitations
 
-16. **Parrot / imitation attack**, a matcher retrained on anonymized footage.
-    It needs an anonymized gallery and its own protocol, outside this work's
-    time budget. Declared as a limitation; held-out rank-1 is the attack model
-    used.
-17. **Commercial face-recognition APIs are dropped** on ethical and LGPD
-    grounds: sending minors' faces to third-party services is not acceptable.
-    The paper will say so.
-18. **ID-switch rate is not measured.** It needs ground-truth tracks. A
-    fragmentation proxy (share of tracks shorter than 10 frames) is reported
-    instead.
-19. **Human-rated pedagogical analyzability is out of scope.** There are no
-    raters or protocol. It becomes future work.
-20. **No demographic fairness analysis.** There are no demographic labels and
-    no consented children's footage. The adult-trained models are a stated
-    limitation.
+16. **No parrot attack** (a recognizer retrained on anonymized faces). The
+    attacker is naive.
+17. **No commercial face-recognition APIs.** Sending minors' faces to third
+    parties is not acceptable under the LGPD.
+18. **No ID-switch rate.** It needs ground-truth tracks.
+19. **No human rating** of pedagogical analyzability.
+20. **No demographic fairness analysis.** There are no labels and no consented
+    children's footage.
 
-## Conclusion criteria (fixed before running)
+## Conclusion criteria (fixed on 2026-09-29, before the campaign)
 
-21. **Privacy improves** when held-out rank-1 drops and the paired confidence
-    interval against the reference arm excludes zero.
-22. **Suppression target** (aspirational, to confirm with the advisor):
-    verification at FAR 1% ≤ 5% and rank-1 ≤ 2× chance. Exploratory runs show
-    BLANKET + P2 at rank-1 ≈ 0.3, above this. If that holds, the paper reports
-    it as it is.
-23. **Utility is preserved** when emotion agreement and the expression / pose
-    / gaze errors stay within the reference arm's confidence interval, read
-    against the E0 noise floor.
-24. **The final pipeline is chosen after the experiments:** the best
+21. **Privacy improves** when FaceNet rank-1 drops and the paired interval
+    against the reference arm excludes zero.
+22. **Suppression target** (aspirational): verification at FAR 1% ≤ 5% and
+    rank-1 ≤ 2× chance. Not met; reported as it is.
+23. **Utility is preserved** when the utility metrics stay within the
+    reference arm's interval, read against the noise floor. This means no
+    significant difference, not equivalence.
+24. **The final pipeline is chosen after the experiments**, by the
     privacy–utility trade-off, with coverage as a constraint.
 
 ## Structure and outputs
 
-25. **Self-contained experiment folders.** Each has `README.md`,
-    `config.toml` and `run.py`. `run.py` deletes `results/` and regenerates it,
-    recording every command (`commands.sh`) and the provenance
-    (`provenance.json`).
-26. **Results stay out of git.** They contain component outputs with real
-    backgrounds. The aggregate LaTeX artifacts the paper cites are exported to
-    `paper/generated/`, which is versioned as part of the paper.
-27. **Paper formats match `paper/main.tex`.**
-    - Tables are booktabs tabulars only, with the caption and label kept in the
-      paper.
-    - Figures are vector PDF with the plotted data as CSV.
-    - Numbers cited in the text go through `\result{key}`, which stops the
-      compilation if the key is missing.
-28. **Example frames are never generated automatically.** They show real
-    people in the background, so their use is a manual, consent-checked
-    decision.
-29. **Frozen SDXL identities are cached outside `results/`**, keyed by video
-    hash and settings, so every arm of an experiment compares the same
-    identities. `--fresh` clears the cache.
-30. **`bin/` gives short single-step commands** for exploration. The
-    experiments do not depend on it.
-31. **No renaming of the pipeline code now.** The components are used as they
-    are. Naming and the choice of the default pipeline come after the
-    experiments.
+25. **One folder per experiment** with `README.md`, `config.toml` and `run.py`.
+    Each run regenerates `results/` and records the commands and provenance.
+26. **Results stay out of git.** They contain real backgrounds. Only aggregate
+    LaTeX keys, tables and figures go to `paper/generated/`.
+27. **Paper formats.** Booktabs tables, vector figures with their data as CSV.
+    Numbers in the text go through `\result{key}`, which fails the build if the
+    key is missing.
+28. **Example frames are never generated automatically.** Using one is a
+    manual, consent-checked decision.
+29. **Frozen SDXL identities are cached**, keyed by video and settings, so
+    every arm of an experiment compares the same identities.
+30. **`bin/`** has short commands for exploration. The experiments do not
+    depend on it.
+31. **No renaming of pipeline code** before the defense.
 
 ## Recall and fail-safe (2026-09-30)
 
-Measured on `video-demo-3.mov` with BLANKET + P2 at β 1.2. **59% of the
-faces Phase 1 knew about were shown real in the output**
-(`research/next-steps/exposure-audit-2026-09-30.md`):
-- 2587 generation failures;
-- 519 frames where a track lost the face;
-- about 64 frames before each track was confirmed.
+An audit of one pilot video found that 59% of the faces Phase 1 knew about were
+shown real in the output: generation failures, frames where the track lost the
+face, and frames before a track was confirmed.
 
-The literature review is in `research/stages/identification-occlusion.md`.
-
-32. **Fail closed: a face the pipeline knows about is never shown real.**
-    - The final video (`compose_video.py`) hides every face box that was not
-      generated. It uses the track's last generated face if that face is at
-      most 10 frames old, and a neutral gray ellipse otherwise.
-    - Blur and pixelation are not used, because both are reversible or
-      attackable.
-    - `--failsafe off` exists only for diagnosis.
+32. **Fail closed.** A face the pipeline knows about is never shown real.
+    Composition hides every face box without a valid replacement. It uses the
+    track's last generated face if it is at most 10 frames old, and a gray
+    ellipse otherwise. Blur and mosaic are not used as fill (reversible).
 33. **Only the pixels the generator changed are pasted back.** Pasting the
-    whole context crop let a later crop's real background overwrite part of
-    an earlier neighbour's generated face. That affected 432 of 2139 generated
-    faces (20%), 125 of them over at least half the box.
-34. **Phase 1 recall post-pass, on by default (`phase1_detect/fill.py`).**
-    - Tracks are emitted from their first detection.
-    - Gaps inside a track, up to 30 frames (the tracker's `max_missed`), get
-      interpolated boxes.
-    - Confirmed tracks are dilated by 3 frames at each end.
-    - Tracks with fewer than 3 detections are hidden but get no synthetic
-      identity.
-    - Every box records its `source`. Only `detector` boxes reach the
-      generator and the privacy and utility metrics.
-    - `--no-fill` turns the pass off.
-35. **SCRFD-10GF now honors its threshold.**
-    - Until 2026-09-30 it silently cut at 0.5, because
-      `FaceAnalysis.prepare()` defaults `det_thresh` to 0.5 and it was not
-      passed. SCRFD-34GF always passed it. **Every earlier number, including
-      the first E0 run, used 0.5.**
-    - The pipeline default is now `conf = 0.1`, feeding ByteTrack's
-      low-confidence association. New tracks still start only at ≥ 0.5.
-    - On demo3 this brought 2066 more matched faces and cut the gaps from 586
-      to 47 frames. Tracks stopped fragmenting: 22 tracks instead of 32.
-    - E0, E2 and E3 use 0.1. E1 keeps its own operating points.
-36. **BLANKET swaps the face Phase 1 found.**
-    - The bridge builds the target face from Phase 1's box and 5 points with
-      FaceFusion's own `create_faces()`. It no longer re-detects with
-      `yolo_face` at 0.5, which had missed 1417 faces, and it drops the IoU
-      filter, which had rejected 38.
-    - Identity images that `yolo_face` rejects are retried with FaceFusion's
-      `many` detector at 0.25. That recovered all 13 of the 32 identities
-      rejected on demo3; they are small images, 58–269 px.
-    - `--blanket-detection upstream` keeps BLANKET's own flow. It becomes a
-      reference arm in E3b.
-37. **Exposure metrics.**
-    - The final video reports the share of face boxes that were generated,
-      reused and filled (`compose.jsonl`, `evaluate.py` → `composition`,
-      `bin/audit`).
-    - With the fail-safe, the exposure of known faces is zero by construction.
-      The residual is faces Phase 1 never found, which needs ground truth:
-      annotated sampled frames, in the next PR.
-    - The privacy metrics keep measuring the generator on detector faces, so
-      they stay comparable across arms.
-38. **Known issue: identity seeds derive from the video's path string**
-    (`derive_seed(video_source, track_id)`). The same video under another path
-    gets other seeds and misses the identity cache. This is to be fixed, with
-    a content hash, when the caches are next rebuilt.
+    whole crop let a neighbour's real background overwrite 20% of generated
+    faces.
+34. **Phase 1 recall post-pass, on by default.** It fills gaps inside a track
+    (up to 30 frames), dilates tracks by 3 frames, and hides short tracks
+    without giving them an identity. Only `detector` boxes reach the generator
+    and the metrics.
+35. **SCRFD-10GF threshold bug fixed.** It cut at 0.5 regardless of the
+    setting. The pipeline now runs at 0.1, with ByteTrack's low-confidence
+    association; new tracks still start at ≥ 0.5.
+36. **BLANKET swaps the face Phase 1 found.** The bridge builds the target from
+    Phase 1's box and 5 landmarks, instead of re-detecting with `yolo_face` at
+    0.5, which missed small faces. `--blanket-detection upstream` keeps the
+    published flow as a reference arm (E3b).
+37. **Exposure metrics.** The share of face boxes generated, reused and filled
+    (`compose.jsonl`). Faces Phase 1 never found are not measured (no
+    annotation).
+38. **Known issue:** identity seeds derive from the video's path. Not changed.
 
-## Results campaign (2026-10-01)
+## Results campaign design (2026-10-01)
 
-39. **Utility probes.** Every one is compared real vs anonymized and read
-    against its E0 noise floor (consecutive real frames):
-    - head-pose MAE over pitch, yaw and roll (buffalo_l `1k3d68`);
-    - age error and gender agreement (buffalo_l `genderage`);
-    - emotion agreement over 8 AffectNet classes, from HSEmotion
-      `enet_b0_8_best_vgaf`. The code is Apache-2.0; the weights are trained
-      on AffectNet, which is research use only;
-    - the 106-landmark expression error.
-
-    **Gaze is a stated limitation**: no permissive estimator was validated on
-    faces this small.
-40. **Three privacy views.**
+39. **Utility probes:** head pose, age and gender (buffalo_l), emotion over 8
+    AffectNet classes (HSEmotion; weights for research use only), 106-landmark
+    expression error.
+40. **Privacy views.**
     - *Generated only* isolates the generator.
     - *All faces, passthrough as a leak* is the method as published.
-    - *Final video* scores what the viewer sees after the fail-safe: reused =
-      the track's last generated face; filled = no face, never re-identified.
-    - The paper's main privacy number is FaceNet rank-1 on the final video.
-41. **Strata.** Face size, |yaw| and detection confidence. The confidence
-    split 0.1–0.5 vs ≥ 0.5 answers open point 1: low-confidence faces are hard
-    for the recognizers even when real.
-42. **The two policies of the fail-closed pipeline are E3e arms.**
-    - `hide-low`: detections below 0.5 are hidden, not swapped.
-    - `gate`: a swap is rejected when ArcFace cos(real, swapped) is at least
-      the video's in-domain ArcFace threshold at FAR 1%. The gate uses only
-      ArcFace, the guidance space, so FaceNet stays held out.
-43. **P3 (D9) is implemented** (`--ciagan-push track`).
-    - Softmax logits over the 1200 identities, initialized at the seed
-      (p ≈ 0.9).
-    - Loss: hinge on ArcFace cos to the track identity, plus
-      λ‖p − one-hot‖². 10 Adam steps, warm start per track.
-    - The ArcFace is differentiable, from onnx2torch of the same
-      `w600k_r50.onnx`. Its parity with ONNX (cos ≥ 0.999) is checked before
-      any result.
-44. **P1 (D8) is implemented behind a go/no-go spike** (bridge branch
-    `p1-guidance`, `tools/p1_spike.py`).
-    - A wrapper around SDXL's `scheduler.step` guides the predicted clean
-      latent, decoded by an fp32 VAE copy.
-    - It covers the last 3 of the 7 base UNet steps, at scale 0.1. The
-      refiner is not guided; its effect is measured.
-    - Guided identities get their own frozen cache.
-45. **One evaluator call per video (E2) or per part (E3)**, so arms share the
-    real embeddings, the calibration and the faces. It runs on the GPU
-    (`EVAL_CTX_ID`).
-46. **Exposure ground truth (open point 4).**
-    - `src/eval/miss_sheet.py` samples every 15th frame with every box drawn,
-      and the author counts the visible faces with no box.
-    - The residual miss rate is reported with a bootstrap interval over
-      frames.
-    - The sheets show real people: local only, deleted after annotation.
+    - *Final video* scores what the viewer sees: reused faces as shown, filled
+      faces as never re-identified.
+41. **Detection-confidence strata** (0.1–0.5 vs ≥ 0.5).
+42. **Policies are E3e arms.** `hide-low` hides detections below 0.5. `gate`
+    rejects a swap whose ArcFace cosine with the real face reaches the video's
+    FAR 1% threshold. The gate uses only ArcFace, so FaceNet stays held out.
+43. **P3 implemented** (CIAGAN identity-code optimization against ArcFace).
+44. **P1 implemented** (gradient guidance of SDXL's predicted clean latent).
+45. **One evaluator call per video or per part**, so arms share the real
+    embeddings, the calibration and the faces.
+46. **Miss sheets** for annotating faces Phase 1 never found
+    (`src/eval/miss_sheet.py`). Not done before the deadline.
 
 ## Final pipeline and cost (2026-10-07 to 10-21)
 
-47. **BLANKET's main process ran on CPU in E2 and E3** (`CTX_ID=-1`, `78d9a4d`),
-    to leave the shared GPU to its two servers after an OOM caused by another
-    user. The fail-closed composite's head segmentation then took 412 ms per
-    face (24 ms on the GPU, profile of 2026-10-20). E2's BLANKET fps is
-    therefore pessimistic. Privacy and utility do not depend on the device.
-48. **The final pipeline** (2026-10-15) is the measured E3e `gate` arm:
-    - Phase 1 with the post-pass;
-    - BLANKET with Phase 1 detection, C2 `quality_mean` and P2 β 1.2;
-    - the privacy gate;
-    - fail-closed composition.
-
-    β 1.2 rather than 1.6: ArcFace saturates there, and the policies were
-    measured on it. The gate rather than hide-low: same rank-1 with half the
-    hidden faces. P1 and P3 are left out (negative, with diagnostics).
-49. **Diagnostics are `\result` keys**, not hand-copied numbers:
-    - P3 push scalars from the ledger;
-    - P1 per-step cosines, from the identity cache (`last_guidance` RPC,
-      bridge `f376d0b`) or recovered from the run log for the existing cache;
-    - the identity-image cosine (`src/eval/identity_images.py`);
-    - E2 fps.
-50. **E5, the cost study.** Arms of the final pipeline change one cost factor
-    each: main-process device, GFPGAN (off, ≥ 96 px), fixed sampling (every 2 or
-    3 frames) and adaptive sampling (regenerate when the 106-landmark error vs the
-    last generated frame reaches τ, or after 6 frames).
-    - Scored on the composed video itself (`--video-view`): a reused face is
-      measured as shown.
-    - Adds a motion error: |change of the shown face's landmarks − change of the
-      real face's| between consecutive frames.
-    - The E5 smoke test (30 frames of demo1) showed that GFPGAN-off raises
-      FaceNet verification (0.47 vs 0.03 with GFPGAN): the enhancer is part of the
-      privacy, not only of the looks. E5 measures it with intervals.
-51. **Data protection fixes found during profiling.**
-    - The bridge kept every swapped crop (6,864, real background) and every
-      identity image, mask and ControlNet debug map. All deleted on 2026-10-20/21
-      with the author's go-ahead.
-    - Each swapped crop is now deleted once read (`5550812`). The identity server
-      deletes the mask and ControlNet maps once used, and the bridge's copy of an
-      identity image once cached (bridge `16cf02d`).
-
-52. **E5 results (2026-10-21) change the final pipeline.**
-    - The main process runs on the GPU: 3.3× faster, no paired difference.
-    - Adaptive sampling at τ 0.08 with a max gap of 6 is added: 2.5× faster;
-      motion and κ slightly better; rank-1 +0.01, not significant.
-    - GFPGAN stays on for the privacy-first pipeline. Turning it off is the
-      documented behavior-first variant: κ +0.29, but 24% of faces hidden by the
-      gate.
-    - The E5 re-run used the audited code: steady-state timing, κ over every
-      shown face, the speed-up on common videos.
+47. **BLANKET's main process ran on CPU in the pilot's E2 and E3**, to leave
+    the shared GPU to the bridge servers. Privacy and utility do not depend on
+    the device. In the final campaign it runs on the GPU in every experiment
+    (`CTX_ID=0`), which is why E5's CPU arm was dropped (72).
+48. **Final pipeline** (the E3e `gate` arm): Phase 1 with the post-pass;
+    BLANKET with Phase 1 detection, C2 `quality_mean` and P2 β 1.2; the privacy
+    gate; fail-closed composition. P1 and P3 are left out.
+49. **Diagnostics are `\result` keys**, not hand-copied numbers.
+50. **E5, the cost study.** Each arm changes one cost factor of the final
+    pipeline: main-process device, GFPGAN (off, ≥ 96 px), fixed sampling, and
+    adaptive sampling (regenerate when the landmark error against the last
+    generated frame reaches τ, or after 6 frames). Scored on the composed video.
+51. **Data protection.** The bridge kept every swapped crop and identity
+    debug image. They were deleted, and the bridge now deletes them once read.
+52. **E5 changes the final pipeline.** The main process runs on the GPU.
+    Adaptive sampling at τ 0.08 is added (about 2.5× faster, no privacy cost,
+    smoother motion). GFPGAN stays on: without it, emotion improves but
+    verification rises and the gate hides many more faces.
 
 ## Wrap-up after the advisor-style review (2026-10-29)
 
-Review: `research/next-steps/parecer-orientador-2026-10-29.md`. Branch
-`feature/wrap-up-review`. Every item is also listed in the thesis
-(`paper/tcc-latex`, appendix "Correções do parecer").
-
-53. **Fail-open path closed.** With an empty paste mask, `poisson_composite`
-    returns the real crop, and the backends reported it as `ok`; composition then
-    logged it as `generated`. Now a face whose output changes less than 1% of the
-    detection box (`MIN_CHANGED_FRACTION`, `contracts.py`) is `failsafe` with
-    reason `unchanged` in Phase 2, and is hidden in composition as well. Privacy
-    metrics were not affected (they score the crop, so these faces already counted
-    as leaks). Coverage and `generated` counts of arms without the gate were. The
-    frequency in existing runs is not measured yet: serra1 is locked.
-54. **No crop of a non-replaced face is written.** Passthrough, gated, hide-low and
-    `unchanged` faces have no PNG and `output_path` is null; the scratch directory
-    is also removed on SIGTERM and SIGHUP. `experiments/purge.sh` lists and, with
-    `--yes`, deletes what still shows real people after export (generated crops,
-    composed videos, SDXL identity images, orphan scratch; `--obs` adds obs.csv).
-55. **One definition per shared rule.** `align.landmark_error` serves both the
-    expression metric and adaptive sampling. `policies.should_generate` holds the
-    sampling decision. `REUSE_FRAMES` (10) is declared once, and Phase 2's forced
-    regeneration (11) is derived from it.
-56. **Statistics.** Holm–Bonferroni adjusted p per family (E3c arms against
-    native; E5 arms against ref, per metric) are exported next to the raw p.
-    `result_key` collisions abort the export. The unused `bootstrap_ci`,
-    `paired_bootstrap` and `mcnemar_p` are removed.
-57. **Derived analyses need no data.** `experiments/derived.py` reads the exported
-    keys. It gives per-video rank-1, the multiple of chance (R × N), macro means
-    and a leave-one-video-out choice of β (direction holds; magnitude and best β
-    depend on the video). `experiments/tables_pt.py` writes Portuguese copies of
-    every table for the thesis.
-58. **New measures, pending a serra1 run.** A task proxy: a face counts as
-    "facing" when |yaw| < 30° and |pitch| < 30°, compared real against shown with
-    κ (`orient_kappa`). Face-size strata for E3e and E5. E3 exports track counts
-    per video. E5 aborts without E3's identity cache.
-59. **Provenance.** `SOURCES.md` records the bridge commit (and whether it is
-    dirty), Python and torch versions and the `uv.lock` hash. Phase 1's
-    `tracks.json` now stores the real fps; before, it read the property after
-    releasing the capture and got −1. Nothing consumed it.
-60. **Structure.** The empty `phase3_temporal` package is removed. Composition
-    stays in `phase2_generate/compose_video.py` and is called Stage 3 in docs.
-    Repackaging to `src/lftl/` is deferred until after the defense. Unit tests
-    live in `tests/` and use only synthetic arrays: fail-closed composition,
-    policies, tracker, recall post-pass, statistics and keys (45 tests, run on
-    macalan).
-    - Known and documented, not changed: E3a's EMA mode uses α_f 0.95 (the
-      function default), while the pipeline uses 0.8 (CLI). The re-detector runs at
-      det_size 320 with threshold 0.5. E1 runs at conf 0.3. The BLANKET context
-      margin of 0.8 is not calibrated. The seed and the identity cache depend on
-      the video path.
+53. **Fail-open path closed.** A swap that changed less than 1% of the box was
+    reported as generated. It is now `failsafe` (`unchanged`) and hidden.
+    Measured in the final campaign: 8.9% of swaps with Phase 1 detection
+    (902 of 10,119).
+54. **No crop of a non-replaced face is written.** `experiments/purge.sh`
+    deletes what still shows real people after export.
+55. **One definition per shared rule** (landmark error, sampling decision,
+    reuse window).
+56. **Holm–Bonferroni** adjusted p per family, exported next to the raw p.
+57. **Derived analyses from exported keys only** (`experiments/derived.py`).
+    `experiments/tables_pt.py` writes the Portuguese tables.
+58. **New measures:** orientation proxy κ (`orient_kappa`), face-size strata
+    for E3e and E5, track counts per video.
+59. **Provenance.** `SOURCES.md` records the bridge commit, host, GPU and
+    library versions.
+60. **Structure.** Composition stays in `phase2_generate/compose_video.py`
+    (Stage 3). Unit tests in `tests/` use only synthetic arrays.
 
 ## Critical review (2026-10-30)
 
-Source: `research/next-steps/analise-critica-banca-2026-10-29.md`. These are the
-points an examining committee could use against the thesis.
+61. **Primary measure: the privacy × coverage pair.** For each method, the
+    share of faces with a synthetic face and FaceNet rank-1 among them.
+    Final-video rank-1 alone rewards hiding faces: blur and the released
+    BLANKET (most faces hidden) beat the pipeline on it.
+62. **New attacks in the evaluator.**
+    - `inv_rank`: ranks the least similar identity first, for an attacker who
+      knows P2 pushes away.
+    - `track_rank`: one decision per student, from the mean shown embedding.
+    - `shown_rank`: rank-1 among shown faces; hiding cannot lower it.
+    - `identity_audit`: flags pairs of tracks that may be one person.
+63. **Framing.** "Expression-preserving" is dropped. The pipeline is described
+    as hybrid: diffusion makes the source identity once per track; the pixels
+    shown come from inswapper and GFPGAN.
+64. **P2 geometry.** At β ≈ c (cosine between the SDXL identity and the real
+    person, ≈ 0.35), P2 only removes the real component the identity
+    inherited. Above it, the target points toward the real identity's
+    antipode, which `inv_rank` measures.
+65. **Thesis figures** are pgfplots written by `derived.py`.
+66. **Study order, stated in the thesis.** P2 was seen working on 2026-09-26 in
+    an exploratory pilot that included demo2. The criteria were fixed on
+    2026-09-29. The final pipeline was chosen in October and frozen before
+    demo4 was processed.
+67. **The swap source is the inpainted face.** The identity image is a context
+    crop with real neighbours in it, and BLANKET swapped from the highest-scoring
+    face. The swap server now takes the face overlapping `identity_box`
+    (IoU ≥ 0.3), else the identity is unusable. Measured: about 2% of identity
+    loads used another face before the fix, and about 1% have no overlapping
+    face (track hidden).
+68. **The diffusion must change the face.** An identity image that changes
+    less than 5% of the face box is rejected.
+69. **Identity-server placement flags** (`--offload`, attention slicing).
+    Same weights, different placement. On the 8 GB GPU only sequential offload
+    fits.
 
-61. **The primary measure is now the privacy × coverage pair.**
-    - **What it is:** for each method, the share of faces that get a synthetic face,
-      and FaceNet rank-1 among those faces.
-    - **Why the old measure failed.** The old primary measure was final-video rank-1.
-      It counts a gray fill as never re-identified, so a method rewards itself for
-      hiding faces. On that measure the released BLANKET (0.147, with 72% of faces
-      filled), blur, mosaic, CIAGAN and GANonymization all beat the final pipeline
-      (0.303).
-    - **The text compared mismatched views.** It said the pipeline "halves
-      re-identification" against BLANKET, but set the pipeline's final-video number
-      against BLANKET's passthrough-as-leak view.
-    - **What the pair shows.** The pipeline covers 0.935 of faces at rank-1 0.370
-      (E5, shown faces). The released BLANKET covers 0.277 at 0.475.
-    - **Where it lives:** `experiments/derived.py` builds the frontier table and
-      figure.
-62. **New attacks in the evaluator** (`src/eval/evaluate.py`). All are tested on
-    synthetic embeddings.
-    - **`inv_rank`.** An attacker who knows P2 pushes away from the real identity
-      ranks the least similar track first. Above β ≈ c (c = cos(e_synth, e_real)
-      ≈ 0.33), the swap target points to the real identity's antipode.
-    - **`track_rank`.** The pseudonym is stable, so an attacker can follow it and
-      decide once per student: the mean embedding shown for a track against the full
-      gallery. One value per track, on its first row.
-    - **`shown_rank` / `shown`.** The final view restricted to boxes that show a
-      face; hiding cannot lower it.
-    - **`identity_audit`.** The evaluation's identities are tracker tracks. This
-      flags pairs of tracks that are never visible together and whose real centroids
-      are within the FAR-1% threshold, as candidates for one person split in two.
-    - **Status.** E2, E3 and E5 export the new keys. Producing them needs the evals
-      re-run on serra1; generation is reused.
-63. **Title and framing.**
-    - "Expression-Preserving" is dropped. Expression error is 4.6× the noise floor
-      and ties GANonymization (0.142 against 0.143).
-    - The pipeline is described as hybrid. Diffusion makes the source identity once
-      per track. The pixels shown come from `inswapper_128` and GFPGAN.
-    - The new title is "Face De-Identification of Classroom Video by Synthetic
-      Identity Swap". The choice of language is still open with the advisor.
-64. **P2 geometry.** The target normalize(e_synth − β e_real) has cosine (1 − βc)/n
-    with the synthetic identity and (c − β)/n with the real one, where
-    n = √(1 + β² − 2βc).
-    - At β 1.2 these are 0.47 and −0.68.
-    - β ≈ 0.35 ≈ c only removes the real component that the SDXL identity
-      inherited; its rank-1 is 0.424, against 0.472 for native.
-    - Below that point, P2 mostly undoes a leak the pipeline created. Above it,
-      P2 moves the target toward the antipode.
-    - **Plan.** If the inverse rank shows reversibility, operate at β ≈ c. Then E4-lite
-      (identities that never see the real crop) becomes the next experiment.
-65. **Portuguese figures without the server.** `derived.py` writes pgfplots
-    versions of the E3 P2 curve and the E5 trade-off from their exported CSVs, plus
-    the frontier figure. The thesis now uses these; the English PDFs stay for the
-    SBC draft.
-66. **Study order, stated honestly.**
-    - P2 was seen working on 2026-09-26, in an exploratory pilot on the same three
-      videos.
-    - The criteria were fixed on 2026-09-29, before the E0–E5 campaign.
-    - The final pipeline was chosen after the campaign.
-    - The thesis states all of this and mitigates it with LOVO.
-    - **Other corrections that go with this:**
-      - the verification target reads as undecided in both views (both 95%
-        intervals contain 5%);
-      - "every β ≥ 0.35 excludes zero" becomes β ≥ 0.5;
-      - the abstract uses the operating point (β 1.2), not the strongest arm, and
-        states P2's κ drop.
+## Final campaign (2026-11)
 
-67. **The swap source must be the inpainted face (2026-10-30).** The identity image is the candidate's context crop with only the face inpainted, so real neighbours stay in it. BLANKET swaps from `source_faces[0]`, the highest-scoring detection.
-    - **Fix.** The backend sends `identity_box`. The swap server takes the face with the largest IoU with that box (bridge `fix/source-face-selection`). If none reaches IoU 0.3, the identity is unusable.
-    - **Why the metrics missed it.** E3g embeds the largest face. The privacy metrics compare against the track's own identity, so a neighbour's identity would have looked private.
-    - **To do on serra1.** Count `source_index != 0` over the cached identities. Re-run the affected arms if the count is not zero.
-68. **The diffusion must change the face.** An identity image that changes less than 5% of the face box, beyond JPEG noise (12 levels), is rejected as `identity_unchanged`.
-69. **Identity-server placement flags.**
-    - **Flags.** `--offload model|none`, `--attention-slicing off`, `--keep-landmarker` and `--openpose-device` replace BLANKET's `enable_sequential_cpu_offload()` + `attention_slicing(1)`. They change only where the same fp16 weights run.
-    - **Defaults.** Unchanged until benchmarked on serra1. The protocol is in `research/next-steps/diffusion-speed-2026-10-30.md`.
-    - **IPC files.** These scratch PNGs, passed between processes, are now written at compression 1. They stay lossless.
-70. **Compute moves to constantine (2026-11-11).** serra1 was locked by its admins on 2026-10-21 and did not come back.
-    - **Machine.** One GTX 1080, 8 GB (Pascal), 31 GB RAM, instead of 2× RTX A5000, 24 GB, and 125 GB RAM. Access notes stay local-only (`docs/constantine-ssh.md`).
-    - **Videos.** `demo2` is serra1's file (same sha256). `demo4` is new. serra1's demo1 and demo3 are not available. Every experiment config now lists `demo2` and `demo4`.
-    - **Bridge.** serra1's three server-only commits are rewritten from the backend's protocol (bridge `276970a`, which also merges P1).
-    - **No mixing.** Results of the two machines are not compared or pooled with each other. `SOURCES.md` gains a host and GPU column.
-    - **Derived counts.** E3 exports `e3/<video>/faces`. `derived.py` takes its video list from E3's keys, not from a fixed list.
-71. **P1 on the 8 GB GPU: E3g swaps on the CPU (2026-11-12).**
-    - **Failure.** P1 backpropagates through the VAE decoder and ArcFace and needs more than 4.4 GB on the GPU. That does not fit next to the swap server (3 GB) and the main process on the GTX 1080. The second identity of `g-p1-c0.1-quality_mean` failed with CUDA OOM; the first had been generated before the swap server started.
-    - **Fix.** E3g alone runs with `SWAP_GPU=-1`, so FaceFusion's ONNX sessions fall back to the CPU. The identity server and every other arm keep the GTX 1080.
-    - **What changes.** The swap computes the same thing on another device, so only floating-point noise differs. The E3g arm's wall-clock time is not comparable with the other arms', and E5 measures cost without P1.
-    - **How it runs.** `E3_PARTS` runs E3 in three steps: every other part, then E3g, then all parts from the cache.
+70. **Compute moves to constantine (2026-11-11).** The previous server was
+    locked and did not come back.
+    - One GTX 1080, 8 GB. Access notes are local-only.
+    - Videos: demo2 (same file as in the pilot) and demo4, new. demo4 is the
+      only out-of-sample video.
+    - Results of the two machines are never compared or pooled.
+71. **E3g (P1) swaps on the CPU.** P1 backpropagates through the VAE and
+    ArcFace and does not fit next to the swap server on 8 GB. The swap computes
+    the same thing on another device; E3g's time is not comparable. `E3_PARTS`
+    runs E3 in three steps.
+72. **Final review (2026-11-17).**
+    - **Mislabelled keys fixed.** Tables labelled "generated faces" used
+      all-face rank-1. E3 now exports `<arm>/generated/...`, and `derived.py`
+      uses it.
+    - **E5 `ref-cpu` dropped.** On constantine it ran on the GPU.
+    - **β stays 1.2.** With the new data, FaceNet's drop stops at β 0.8; 1.2 was
+      kept so that no hyperparameter is chosen after seeing demo4. No P2 arm is
+      significant after Holm.
+    - **No GFPGAN skipping in the final pipeline.** Running it only on faces
+      ≥ 96 px raises rank-1 among shown faces from about 0.34 to 0.50.
+      Frame-to-frame reuse is already adaptive sampling.
+    - **The thesis cites only this campaign.**
+73. **E3h, swapper comparison (2026-11-17).** The campaign located the leak in
+    the swap, so the swapper was varied with everything else fixed.
+    - `--blanket-swap-model` reaches the bridge's `--face-swapper-model` (bridge
+      `2116af2`). The swap server checks the model it loaded, because BLANKET
+      silently falls back to inswapper for models outside its whitelist.
+    - Arms: inswapper and simswap_256, each native and with P2 β 1.2.
+    - Result: SimSwap leaks more natively (FaceNet rank-1 among swapped faces
+      0.58 vs 0.50) and ties with P2 (0.42 vs 0.39, Holm p 0.66). inswapper
+      stays.
 
-## Paper text to revise (not done here; `paper/main.tex` has uncommitted edits)
+## Review fixes (2026-11-18)
 
-- **Methodology, Stage 3.** Replace gradient injection on a canonical latent
-  with what was built and measured: C2 (track-level real identity) and P2
-  (identity push in the swap embedding), with the identity fixed per track.
-- **Remove Reverse Personalization's attribute conditioning**, which was
-  dropped on 2026-09-23. Attribute preservation is now measured instead.
-- **Remove commercial FR APIs** (decision 17).
-- **State parrot attack, ID-switch rate, human rating and demographic fairness
-  as limitations** (decisions 16, 18–20).
-- **Update the compute statement.** "16GB RAM, no GPU cluster" no longer
-  holds: experiments run on a shared GPU server.
-- **Add the conclusion criteria** (decisions 21–24) to the evaluation section.
-- **Add `\input{generated/results}` to the preamble**, and use the generated
-  tables and figures.
-- **Methodology, Stage 1 and composition.**
-  - Add the recall post-pass (decision 34) and the fail-closed composition
-    (decisions 32–33).
-  - State that the detector threshold is 0.1 with ByteTrack's low-confidence
-    association (decision 35).
+Source: `research/next-steps/avaliacao-banca-2026-11-18.md` and its response plan.
+
+74. **Anonymized faces are scored on the frame.**
+    - **Bug.** The evaluator embedded and probed the anonymized crop alone, while the real face was
+      scored on the full frame. Censor crops (10% margin) and CIAGAN crops (15%) are smaller than the
+      InsightFace probes' 1.5×-box window and the FaceNet template, so those arms got black borders
+      the real face never has.
+    - **Fix.** The crop is pasted back into the source frame (in place, restored after scoring) and
+      scored in frame coordinates; re-detection still runs on the crop. Regression tests in
+      `tests/test_evaluate.py`.
+    - **Effect.** Final-video rank-1: blur 0.09 → 0.14, mosaic 0.11 → 0.17, CIAGAN 0.12 → 0.14. Blur's
+      pose error 18.3° → 16.0°, gender agreement 0.53 → 0.77. BLANKET and GANonymization (margin 0.8)
+      unchanged, as the tests predict. E2 and E3f re-evaluated; E5 (BLANKET only) not.
+75. **The same faces.** Arms with different coverage are compared on the faces the released flow
+    swaps and on the faces only Stage 1 detection adds (`e3/matched/…`, `tab-e3-matched`). On the
+    2,432 covered faces: released flow 0.646, Stage 1 native 0.754 (+0.108, p = 0.004), P2 0.436,
+    gate (shown) 0.408. The faces Stage 1 adds are harder even when real (0.91 vs 0.99). The drop of
+    "rank-1 among swapped faces" with more coverage is a selection effect.
+76. **Where the identity is (E3m).** `--face-mask core|context` grays out, in every aligned crop, the
+    outside or the inside of a fixed ellipse (brows to chin; `align.face_core_mask`). Real faces:
+    FaceNet rank-1 0.83 with the core only, 0.82 with the context only. Swapped faces: context only
+    0.49 (the whole swap is 0.50) and unchanged by P2; core only 0.34 native, 0.28 with P2 (ArcFace
+    0.48 → 0.20). With a same-session gallery, most of what is left of the identity is what the swap
+    does not replace. The thesis's "the swapper keeps the face shape" is withdrawn.
+77. **Reporting.**
+    - The final pipeline is the adaptive-sampling arm (`adapt-0.08`); `ref` is the cost baseline.
+    - The confirmatory test, declared before demo4: P2 β 1.2 vs native on demo4. Δ −0.091 ± 0.135,
+      p = 0.26: not confirmed. The other β are an exploratory dose-response with Holm.
+    - Size strata among the shown faces, with tracks per bin (28 / 14 / 4): the ≥ 96 px bin is too
+      small for claims about large faces (the "teacher" policy is dropped).
+    - The thesis text is prose; appendix A4 (internal review) is left out of the defense version.

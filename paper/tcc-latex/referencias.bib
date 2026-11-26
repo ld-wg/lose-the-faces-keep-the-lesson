@@ -191,7 +191,11 @@
   author  = {Hellmann, Fabio and Mertes, Silvan and Benouis, Mohamed and Hustinx, Alexander and Hsieh, Tzung-Chien and Conati, Cristina and Krawitz, Peter and Andr{\'e}, Elisabeth},
   title   = {{GANonymization}: A {GAN}-Based Face Anonymization Framework for Preserving Emotional Expressions},
   journal = {ACM Transactions on Multimedia Computing, Communications, and Applications},
-  year    = {2024}
+  volume  = {21},
+  number  = {1},
+  pages   = {1--27},
+  year    = {2025},
+  doi     = {10.1145/3641107}
 }
 
 @inproceedings{deepprivacy,
@@ -268,7 +272,8 @@
   title     = {{NullFace}: Training-Free Localized Face Anonymization},
   booktitle = {IEEE International Conference on Automatic Face and Gesture Recognition (FG)},
   year      = {2026},
-  note      = {arXiv:2503.08478}
+  pages     = {1--10},
+  doi       = {10.1109/FG67764.2026.11557070}
 }
 
 @inproceedings{revpers,
@@ -276,14 +281,17 @@
   title     = {Reverse Personalization},
   booktitle = {IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)},
   year      = {2026},
-  note      = {arXiv:2512.22984}
+  pages     = {988--999},
+  doi       = {10.1109/WACV61042.2026.00103}
 }
 
-@article{klemp,
-  author  = {Klemp, Marvin and R{\"o}sch, Kevin and Wagner, Royden and Quehl, Jannik and Lauer, Martin},
-  title   = {{LDFA}: Latent Diffusion Face Anonymization for Self-driving Applications},
-  journal = {arXiv:2302.08931},
-  year    = {2023}
+@inproceedings{klemp,
+  author    = {Klemp, Marvin and R{\"o}sch, Kevin and Wagner, Royden and Quehl, Jannik and Lauer, Martin},
+  title     = {{LDFA}: Latent Diffusion Face Anonymization for Self-driving Applications},
+  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW)},
+  year      = {2023},
+  pages     = {3199--3205},
+  doi       = {10.1109/CVPRW59228.2023.00322}
 }
 
 @inproceedings{zhu-bmsb,
@@ -311,11 +319,11 @@
   doi     = {10.3390/a19030176}
 }
 
-@article{bondalakunta,
-  author  = {Bondalakunta, Vishnu and Zareian Jahromi, Arman and Wei, Shuangqing and Amariucai, George},
-  title   = {Toward Interpretable Privacy Guarantees in Face-Swapping Anonymization},
-  journal = {arXiv:2608.25750},
-  year    = {2026}
+@misc{bondalakunta,
+  author = {Bondalakunta, Vishnu and Zareian Jahromi, Arman and Wei, Shuangqing and Amariucai, George},
+  title  = {Toward Interpretable Privacy Guarantees in Face-Swapping Anonymization},
+  year   = {2026},
+  note   = {Preprint, arXiv:2608.25750}
 }
 
 % ---------------------------------------------------------------- difusão e restauração
@@ -360,20 +368,6 @@
   title     = {Towards Real-World Blind Face Restoration with Generative Facial Prior},
   booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
   year      = {2021}
-}
-
-@misc{lcmlora,
-  author = {Luo, Simian and Tan, Yiqin and Patil, Suraj and Gu, Daniel and von Platen, Patrick and Passos, Apolin{\'a}rio and Huang, Longbo and Li, Jian and Zhao, Hang},
-  title  = {{LCM-LoRA}: A Universal Stable-Diffusion Acceleration Module},
-  year   = {2023},
-  note   = {arXiv:2311.05556}
-}
-
-@inproceedings{deepcache,
-  author    = {Ma, Xinyin and Fang, Gongfan and Wang, Xinchao},
-  title     = {{DeepCache}: Accelerating Diffusion Models for Free},
-  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year      = {2024}
 }
 
 @misc{facefusion,
@@ -453,13 +447,6 @@
 
 % ---------------------------------------------------------------- dados de face
 
-@inproceedings{celebahq,
-  author    = {Karras, Tero and Aila, Timo and Laine, Samuli and Lehtinen, Jaakko},
-  title     = {Progressive Growing of {GAN}s for Improved Quality, Stability, and Variation},
-  booktitle = {International Conference on Learning Representations (ICLR)},
-  year      = {2018}
-}
-
 @article{ffhq,
   author  = {Karras, Tero and Laine, Samuli and Aila, Timo},
   title   = {A Style-Based Generator Architecture for Generative Adversarial Networks},
@@ -468,15 +455,6 @@
   number  = {12},
   pages   = {4217--4228},
   year    = {2021}
-}
-
-@inproceedings{ladn,
-  author    = {Gu, Qiao and Wang, Guanzhi and Chiu, Mang Tik and Tai, Yu-Wing and Tang, Chi-Keung},
-  title     = {{LADN}: Local Adversarial Disentangling Network for Facial Makeup and De-Makeup},
-  booktitle = {IEEE/CVF International Conference on Computer Vision (ICCV)},
-  year      = {2019},
-  pages     = {10480--10489},
-  doi       = {10.1109/ICCV.2019.01058}
 }
 
 % ---------------------------------------------------------------- avaliação de privacidade
@@ -570,11 +548,15 @@
   doi       = {10.1109/ICCVW60793.2023.00043}
 }
 
-@misc{diffprivacy,
-  author = {He, Xiao and Zhu, Mingrui and Chen, Dongxin and Wang, Nannan and Gao, Xinbo},
-  title  = {{Diff-Privacy}: Diffusion-based Face Privacy Protection},
-  year   = {2023},
-  note   = {arXiv:2309.05330}
+@article{diffprivacy,
+  author  = {He, Xiao and Zhu, Mingrui and Chen, Dongxin and Wang, Nannan and Gao, Xinbo},
+  title   = {{Diff-Privacy}: Diffusion-based Face Privacy Protection},
+  journal = {IEEE Transactions on Circuits and Systems for Video Technology},
+  volume  = {34},
+  number  = {12},
+  pages   = {13164--13176},
+  year    = {2024},
+  doi     = {10.1109/TCSVT.2024.3449290}
 }
 
 @inproceedings{mustu,
@@ -591,4 +573,11 @@
   booktitle = {ACM International Conference on Multimedia (ACM MM)},
   pages     = {2003--2011},
   year      = {2020}
+}
+
+@misc{anpd2023,
+  author = {{Autoridade Nacional de Proteção de Dados}},
+  title  = {Enunciado {CD/ANPD} nº 1, de 2023: tratamento de dados pessoais de crianças e adolescentes},
+  year   = {2023},
+  note   = {Disponível em: \url{https://bibliotecadigital.mj.gov.br/handle/1/10215}}
 }

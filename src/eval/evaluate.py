@@ -10,9 +10,18 @@ Pairing: the real face is embedded from the full source frame with Phase
 1's own 5-point landmarks. The anonymized face is the generated crop at
 `output_path`, aligned with landmarks re-detected on it by SCRFD (the
 detection whose box best overlaps the expected one); if nothing is
-re-detected, Phase 1's landmarks shifted into the crop are used and the
-observation is flagged — the re-detection rate is itself reported
-(post-anonymization detectability).
+re-detected, Phase 1's landmarks are used and the observation is flagged —
+the re-detection rate is itself reported (post-anonymization detectability).
+The anonymized face is embedded and probed on the source frame with the
+crop pasted back, in frame coordinates like the real one (2026-11-18
+review): a crop with a small context margin (censor 0.1, CIAGAN 0.15) used
+to reach the probes' 1.5x box window and the FaceNet template with black
+borders the real face does not have.
+
+--face-mask core|context grays out, in every aligned crop (real and
+anonymized alike), everything outside the face core (brows to chin) or the
+face core itself (`align.face_core_mask`): where a recognizer finds the
+identity, in the face or around it (hair, forehead, ears, background).
 
 Metrics, per run and per recognizer:
     coverage      — anonymized / total, plus status and `reason` counts
@@ -95,6 +104,7 @@ import json
 import logging
 import time
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -218,6 +228,26 @@ class Redetector:
             if iou >= best_iou and face.kps is not None:
                 best, best_iou = face, iou
         return (best.bbox, best.kps) if best is not None else None
+
+
+@contextmanager
+def pasted(frame: np.ndarray, crop: np.ndarray, x: int, y: int):
+    """`frame` with `crop` written at (x, y), restored on exit: in place, so scoring one face
+    does not copy the whole frame."""
+    region = frame[y:y + crop.shape[0], x:x + crop.shape[1]]
+    saved = region.copy()
+    region[...] = crop
+    try:
+        yield frame
+    finally:
+        region[...] = saved
+
+
+def to_frame(box, kps, dx: float, dy: float) -> tuple[tuple, list[tuple[float, float]]]:
+    """A box and its landmarks from a crop's coordinates into the frame's."""
+    x1, y1, x2, y2 = (float(v) for v in box[:4])
+    return ((x1 + dx, y1 + dy, x2 + dx, y2 + dy),
+            [(float(px) + dx, float(py) + dy) for px, py in np.asarray(kps, dtype=np.float64).reshape(-1, 2)])
 
 
 def _expression_error(real_106: np.ndarray, anon_106: np.ndarray, iod: float) -> float:
@@ -682,6 +712,9 @@ def main() -> None:
     p.add_argument("--emotion-model", default=None, help="HSEmotion ONNX (default: weights/fer/, downloaded)")
     p.add_argument("--noise-floor", action="store_true",
                    help=f"also score consecutive real frames of each track as the pseudo-run {NOISE_FLOOR}")
+    p.add_argument("--face-mask", choices=("none", "core", "context"), default="none",
+                   help="gray out everything but the face core (core) or the face core itself (context) in "
+                        "every aligned crop before embedding, real and anonymized alike")
     p.add_argument("--ctx-id", type=int, default=0)
     p.add_argument("--limit", type=int, default=None, help="stop after this many frames (testing)")
     args = p.parse_args()
@@ -709,7 +742,12 @@ def main() -> None:
     yaw_estimator = probes.pose or PoseEstimator(ctx_id=args.ctx_id)  # |yaw| is a stratification covariate
 
     def embed(image, landmarks) -> dict[str, np.ndarray]:
-        return {"arcface": normalize(arcface.embed(image, landmarks)), "facenet": facenet.embed(image, landmarks)}
+        a = align.warp(image, landmarks, align.ARCFACE_SIZE)   # what arcface.embed aligns
+        f = facenet.align(image, landmarks)
+        if args.face_mask != "none":
+            a = align.mask_aligned(a, 0.0, args.face_mask)
+            f = align.mask_aligned(f, facenet.margin, args.face_mask)
+        return {"arcface": normalize(arcface.embed_aligned(a)), "facenet": facenet.embed_aligned([f])[0]}
 
     video = args.video or manifest.video.source
     cap = cv2.VideoCapture(video)
@@ -786,15 +824,14 @@ def main() -> None:
                                                          anonymized=False, redetected=None, emb=real.emb))
                         continue
                     expected = (x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1)
-                    match = redetector.match(anon_img, expected)
-                    if match is not None:
-                        box_a, lm_a = match
-                    else:
-                        box_a, lm_a = expected, align.shift(face.landmarks, cx1, cy1)
+                    match = redetector.match(anon_img, expected)   # re-detectability of the crop itself
+                    box_a, lm_a = (to_frame(*match, cx1, cy1) if match is not None
+                                   else (face.box, face.landmarks))
+                    with pasted(frame, anon_img, cx1, cy1) as anon_frame:
+                        emb_a, probes_a = embed(anon_frame, lm_a), probes.run(anon_frame, box_a)
                     per_run[run.name].append(AnonObs(
                         face.track_id, frame_rec.frame_id, status, reason, anonymized=True,
-                        redetected=match is not None, emb=embed(anon_img, lm_a),
-                        utility=compare(real_probes, probes.run(anon_img, box_a), iod, offset=(cx1, cy1)),
+                        redetected=match is not None, emb=emb_a, utility=compare(real_probes, probes_a, iod),
                     ))
                 for name, cframe in composed.items():
                     run = run_by_name[name]
@@ -803,16 +840,14 @@ def main() -> None:
                         video_obs[name][key] = {"outcome": outcome}
                         continue
                     cx1, cy1, cx2, cy2 = crop_box(h, w, face.box, run.context_ratio)
-                    vimg = cframe[cy1:cy2, cx1:cx2]
                     expected = (x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1)
-                    match = redetector.match(vimg, expected)
-                    box_v, lm_v = match if match is not None else (expected, align.shift(face.landmarks, cx1, cy1))
-                    vprobes = probes.run(vimg, box_v)
+                    match = redetector.match(cframe[cy1:cy2, cx1:cx2], expected)
+                    box_v, lm_v = (to_frame(*match, cx1, cy1) if match is not None
+                                   else (face.box, face.landmarks))
+                    vprobes = probes.run(cframe, box_v)   # the composed frame, in frame coordinates
                     video_obs[name][key] = {
-                        "outcome": outcome, "emb": embed(vimg, lm_v), "redetected": match is not None,
-                        "utility": compare(real_probes, vprobes, iod, offset=(cx1, cy1)),
-                        "lmk106": (vprobes["lmk106"] + np.asarray((cx1, cy1), np.float32)
-                                   if "lmk106" in vprobes else None)}
+                        "outcome": outcome, "emb": embed(cframe, lm_v), "redetected": match is not None,
+                        "utility": compare(real_probes, vprobes, iod), "lmk106": vprobes.get("lmk106")}
             if num_frames % 50 == 0:
                 logger.info(f"evaluate: frame {num_frames}")
     cap.release()
@@ -834,7 +869,8 @@ def main() -> None:
         "phase1_dir": str(phase1_dir), "video": video, "num_frames": num_frames,
         "num_real_observations": len(reals),
         "evaluator": {"facenet_margin": facenet.margin, "redetect_det_size": redetector.det_size,
-                      "min_genuine_gap_frames": MIN_GENUINE_GAP, "utility": sorted(utility)},
+                      "min_genuine_gap_frames": MIN_GENUINE_GAP, "utility": sorted(utility),
+                      "face_mask": args.face_mask, "anonymized_scored_on": "source frame, crop pasted back"},
         "calibration": calibration,
         "real_baseline": baseline,
         "identity_audit": identity_audit(reals, gallery, calibration),

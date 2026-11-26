@@ -109,7 +109,7 @@
 
 \section{Auditoria de código (2026-10-30, noite)}
 \begin{itemize}
-\item Fonte da troca: o rosto de maior score na imagem de identidade, que contém vizinhos reais, podia ser usado como identidade-fonte. Corrigido na ponte (\texttt{identity\_box}, branch \texttt{fix/source-face-selection}) e no backend; teste do seletor. Pendente (servidor): quantas identidades usavam outro rosto.
+\item Fonte da troca: o rosto de maior score na imagem de identidade, que contém vizinhos reais, podia ser usado como identidade-fonte. Corrigido na ponte (\texttt{identity\_box}, branch \texttt{fix/source-face-selection}) e no backend; teste do seletor. Medido na campanha: a fonte não é o rosto de maior score em cerca de 2\% das cargas de identidade (Seção~\ref{cap:metodo}).
 \item Difusão sem efeito: imagem de identidade quase igual ao crop real agora é rejeitada.
 \item Desempenho da difusão: o BLANKET carrega SDXL, duas ControlNets e o refiner com \emph{sequential CPU offload} e \emph{attention slicing}; flags novas na ponte trocam só o posicionamento (mesmas imagens). Na GTX 1080 (8\,GB) só o \emph{offload} sequencial cabe; não medido.
 \item Tabela de políticas do E3e: ``Hidden'' passa a ser só preenchimento, como no E5; reutilizados à parte.

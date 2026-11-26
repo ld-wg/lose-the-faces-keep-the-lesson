@@ -12,7 +12,7 @@ compared with plain censorship? (Hypotheses (a) and (b); objectives 2–4.)
   - BLANKET (no identity pre-pass, native swap).
 - **Fixed:** Phase 1 with SCRFD-10GF (unless E1 says otherwise); the same
   detections for every arm of a video.
-- **Inputs:** `demo1`, `demo2`, `demo3`.
+- **Inputs:** `demo2`, `demo4`.
 
 **Metrics** (see `experiments/README.md`):
 - **coverage**, with passthrough causes;
@@ -44,9 +44,10 @@ Per video and pooled, with 95% bootstrap intervals over tracks.
 
 ## Status
 
-Run on serra1 2026-10-06 (three restarts on the shared machine, finished with
-`--resume`); exported to `paper/generated/e2_generation/`. BLANKET's main
-process ran on CPU, so its fps here is pessimistic (E5, DECISIONS.md 47).
+Final campaign on constantine (one GTX 1080), 2026-11-11; re-evaluated on
+2026-11-18 after the evaluator fix of DECISIONS.md 74 (blur, mosaic and CIAGAN
+were scored with black borders); exported to `paper/generated/e2_generation/`.
+The main table also has the per-student attacker (`R1 student`).
 
 Privacy is reported in three views (DECISIONS.md 40):
 - generated faces only;
@@ -54,6 +55,6 @@ Privacy is reported in three views (DECISIONS.md 40):
 - the final video after the fail-safe.
 
 Utility is read against the E0 noise floor, which also appears as a row of
-the utility table (*real, next frame*). **Cost:** ~8 h on serra1, most of it
-SDXL identities for BLANKET.
+the utility table (*real, next frame*). **Cost:** most of it is the SDXL
+identities for BLANKET (about 3 min per track on the GTX 1080).
 

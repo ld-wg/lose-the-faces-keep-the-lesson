@@ -8,8 +8,8 @@ utility?
 
 ## Design
 
-Seven parts (E3a–E3g; the table covers the first four, the Status section all),
-all on `demo1`, `demo2` and `demo3` with SCRFD-10GF detections.
+Nine parts (E3a–E3h and E3m; the table covers the first four, the Status section all),
+all on `demo2` and `demo4` with SCRFD-10GF detections.
 Arms within a part share faces and, for BLANKET, the same frozen SDXL
 identities, so they differ only in the factor under test and are compared
 pairwise.
@@ -34,14 +34,18 @@ apply to it.
 | `latex/tab-e3-p2-target.tex` | E3d |
 | `latex/fig-e3-p2-curve.pdf` (+ `.csv`) | FaceNet and ArcFace rank-1 vs β, with expression and emotion as guards |
 | `latex/tab-e3-policies.tex` | E3e: hide-low and the privacy gate on top of P2 β 1.2 |
+| `latex/tab-e3-policies-size.tex` | E3e by face size, among the shown faces, with tracks per size bin |
 | `latex/tab-e3-p3.tex`, `tab-e3-p1.tex` | E3f, E3g: P3 and P1 against their references |
+| `latex/tab-e3-swapper.tex` | E3h: inswapper vs SimSwap, native and with P2 |
+| `latex/tab-e3-where.tex` | E3m: rank-1 with only the face core, or only its context, kept in the aligned crop |
+| `latex/tab-e3-matched.tex` | the same faces: every arm on the faces the released flow swaps and on the faces only Stage 1 adds |
 | `latex/results.tex` | `\result{e3c/<video|pooled>/<arm>/<metric>}`, … |
 
 ## Status
 
-Run on serra1 2026-10-06 to 10-09 (~50 h); exported to `paper/generated/e3_contribution/`.
-Diagnostic keys (P3 push scalars, P1 guided-step and identity-image cosines)
-added 2026-10-20 with `--resume`. Parts:
+Final campaign on constantine (one GTX 1080), 2026-11-12 to 11-14 (about two days);
+E3h on 2026-11-17; E3f re-evaluated and E3m added on 2026-11-18 (DECISIONS.md 74–76);
+exported to `paper/generated/e3_contribution/`. Parts:
 - **e3a:** C2;
 - **e3b:** coverage;
 - **e3c, e3d:** P2 strength and target;
@@ -49,12 +53,17 @@ added 2026-10-20 with `--resume`. Parts:
   gate);
 - **e3f:** P3, CIAGAN's identity-code push;
 - **e3g:** P1, SDXL guidance. Run it only after the bridge's
-  `tools/p1_spike.py` says go.
+  `tools/p1_spike.py` says go. On the 8 GB GPU its swaps run on the CPU (DECISIONS.md 71);
+- **e3h:** the face swapper (inswapper vs SimSwap; bridge ≥ `2116af2`);
+- **e3m:** where the identity is: E3c's native and P2 folders re-evaluated with
+  `--face-mask core` and `--face-mask context` (no generation).
+
+With e3b, e3c and e3e in one run, the same-face table and its `e3/matched/…` keys
+compare the arms on the same faces (DECISIONS.md 75); paired tests are also exported
+per video (`<part>/<video>/<arm>/delta-…`).
 
 `E3_PARTS` selects a subset.
 
-**Validation:** the exploratory FaceNet rank-1 (demo2 0.597 / 0.284, demo3
-0.754 / 0.306 for `native` / β 1.2) is reproduced only with the pre-#11 Phase 1
-(`--no-fill --conf 0.5`) and `detection = upstream`. The paper's runs use the
-current pipeline, so their numbers differ by design.
+Re-runs keep the generated folders: `run.py --resume` reuses every step whose outputs
+exist (without `--resume`, `results/` is deleted).
 

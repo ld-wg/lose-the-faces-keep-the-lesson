@@ -7,29 +7,28 @@ reduz a reidentificação facial automática e mantém o sinal comportamental
 rastreamento; uma identidade sintética por track, gerada com Stable Diffusion XL
 e trocada no rosto de cada quadro por \texttt{inswapper} com restauração GFPGAN,
 como no BLANKET; e uma composição que oculta todo rosto detectado sem
-substituição válida. Em dois vídeos curtos (22\,s, 41 tracks), o código liberado
-do BLANKET troca \result{derived/frontier/e2-blanket/share} dos rostos e deixa os
+substituição válida. A avaliação usa dois vídeos curtos (22\,s, 41 tracks), um
+deles visto só depois de o pipeline estar congelado. O código liberado do
+BLANKET troca \result{derived/frontier/e2-blanket/share} dos rostos e deixa os
 demais reais; o pipeline mostra face sintética em
-\result{derived/frontier/e5-ref/share} dos rostos e oculta o restante. Rostos
-trocados continuam reconhecíveis: o FaceNet, reconhecedor não usado na
-otimização, reidentifica \result{e3c/pooled/native/generated/facenet.rank1} deles
-(acaso: \result{derived/demo2/chance-rank1}). Empurrar o embedding de identidade
-da troca para longe da identidade real do track baixa esse valor para
-\result{e3c/pooled/b-1.2/generated/facenet.rank1}, diferença que não é
-significativa após correção para comparações múltiplas; com a ocultação dos
-rostos ainda verificados como o aluno, o pipeline final fica em
-\result{derived/frontier/e5-ref/rank1} entre os rostos mostrados, e um atacante
-que decide uma vez por aluno acerta \result{e5/pooled/ref/facenet_video_track.rank1}.
-O borramento fica em \result{e2/pooled/blur/facenet_final.rank1}. O vazamento
-está na troca de rosto, que preserva a forma do rosto original, e não na
-identidade sintética; o SimSwap no lugar do \texttt{inswapper} não vaza menos. Expressão e pose são mais bem preservadas que por
-borramento e por redes adversariais generativas (erro de expressão de
-\result{e3e/pooled/gate/expression} unidades de distância interocular, cerca de
-cinco vezes o piso de ruído); a emoção não é preservada por nenhum método. O
-custo projetado é de \result{e5/pooled/adapt-0.08/class-hours} a
-\result{e5/pooled/ref/class-hours} horas de unidade de processamento gráfico por
-hora de aula. O resultado é desidentificação facial parcial, não anonimização: a
-troca de rosto avaliada não substitui o borramento quando a privacidade é o
-requisito.
+\result{e5/pooled/adapt-0.08/video_shown} dos rostos e oculta o restante. No
+vídeo novo, o FaceNet, reconhecedor que não entra na otimização, reidentifica
+\result{e5/demo4/adapt-0.08/facenet_video_shown.rank1} dos rostos mostrados
+(acaso: \result{derived/demo4/chance-rank1}), e um atacante que decide uma vez
+por aluno acerta \result{e5/demo4/adapt-0.08/facenet_video_track.rank1}; com
+borramento, esse atacante acerta \result{e2/pooled/blur/facenet_track.rank1}.
+Comparados nos mesmos rostos, o pipeline vaza menos que o BLANKET liberado
+(\result{e3/matched/pooled/gate/covered/facenet.rank1} contra
+\result{e3/matched/pooled/original/covered/facenet.rank1}), graças a um
+empurrão do embedding da troca para longe da identidade real e à ocultação dos
+rostos ainda reconhecíveis. Uma máscara que separa o miolo do rosto do contexto
+mostra onde a identidade sobra: o que a troca não substitui (cabelo, testa,
+orelhas, contorno, fundo) reidentifica tanto quanto a imagem inteira. Pose e
+expressão são mais bem preservadas que por borramento e por redes adversariais
+generativas; a emoção não é preservada por nenhum método. O custo projetado é de
+\result{e5/pooled/adapt-0.08/class-hours} horas de unidade de processamento
+gráfico por hora de aula. O resultado é desidentificação facial parcial, não
+anonimização: quando a privacidade é o requisito, ocultar o rosto continua
+sendo a escolha.
 
 \end{resumo}

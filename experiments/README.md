@@ -30,15 +30,17 @@ limitations it declares: [`DECISIONS.md`](DECISIONS.md).
 
 | ID | Folder | Question | Arms | Status |
 |---|---|---|---|---|
-| E0 | [`e0_instruments`](e0_instruments) | Do the recognizers and utility probes measure what we claim on this footage? | FaceNet, ArcFace; utility probes | run 2026-10-05 |
-| E1 | [`e1_detection`](e1_detection) | Which detector gives the best recall for its cost, and how does it behave in a classroom? | SCRFD-10GF, SCRFD-34GF, YOLO-FaceV2-s | run 2026-10-05 |
-| E2 | [`e2_generation`](e2_generation) | What is the privacy–utility trade-off of each generator family, against censorship? | blur, mosaic, CIAGAN, GANonymization, BLANKET (original) | run 2026-10-06 |
-| E3 | [`e3_contribution`](e3_contribution) | Do our ideas improve privacy without costing utility? | C2 modes; BLANKET ± seed candidates and Phase 1 detection; P2 strength and target; fail-closed policies; P3 (CIAGAN); P1 (SDXL, after its spike) | run 2026-10-06 to 10-09 |
-| E5 | [`e5_cost`](e5_cost) | How much cheaper can the final pipeline get, and what does each speed-up cost the viewer? | main process on GPU vs CPU; GFPGAN off / ≥ 96 px; fixed and adaptive frame sampling | running (2026-10-21) |
+| E0 | [`e0_instruments`](e0_instruments) | Do the recognizers and utility probes measure what we claim on this footage? | FaceNet, ArcFace; utility probes | 2026-11-11 |
+| E1 | [`e1_detection`](e1_detection) | Which detector gives the best recall for its cost, and how does it behave in a classroom? | SCRFD-10GF, SCRFD-34GF, YOLO-FaceV2-s | 2026-11-11 |
+| E2 | [`e2_generation`](e2_generation) | What is the privacy–utility trade-off of each generator family, against censorship? | blur, mosaic, CIAGAN, GANonymization, BLANKET (original) | 2026-11-11; re-evaluated 2026-11-18 |
+| E3 | [`e3_contribution`](e3_contribution) | Do our ideas improve privacy without costing utility, and where does the identity leak? | C2 modes; BLANKET ± seed candidates and Phase 1 detection; P2 strength and target; fail-closed policies; P3 (CIAGAN); P1 (SDXL); swapper; face-core masks | 2026-11-12 to 11-18 |
+| E5 | [`e5_cost`](e5_cost) | How much cheaper can the final pipeline get, and what does each speed-up cost the viewer? | GFPGAN off / ≥ 96 px; fixed and adaptive frame sampling | 2026-11-14 |
 
-Inputs: three classroom videos, `demo1` (239 frames, 16 tracks), `demo2` (244
-frames, 21 tracks) and `demo3` (355 frames, 22 tracks) under the pipeline's
-Phase 1 (conf 0.1 with the post-pass), plus WIDER FACE val for E1. Unless E1 says otherwise, E2 and E3 use SCRFD-10GF detections.
+All runs: constantine (one GTX 1080), one campaign. Inputs: two public classroom
+clips, `demo2` (244 frames, 8.0 s, 21 tracks; seen in the exploratory pilot) and
+`demo4` (410 frames, 13.9 s, 20 tracks; processed only after the pipeline was
+frozen) under the pipeline's Phase 1 (conf 0.1 with the post-pass), plus WIDER
+FACE val for E1. Unless E1 says otherwise, E2 and E3 use SCRFD-10GF detections.
 
 ## Metrics
 
@@ -78,7 +80,7 @@ replaced because faces of one track are not independent, `bb4a2d5`).
 
 ```bash
 uv sync --extra phase2-ciagan --extra phase2-ganonymization --extra eval --extra experiments
-experiments/smoke.sh                                # every component on 20 frames of demo1, first
+experiments/smoke.sh                                # every component on 20 frames of demo2, first
 uv run experiments/e0_instruments/run.py            # one experiment
 uv run experiments/e0_instruments/run.py --video demo2   # override its inputs
 experiments/run_all.sh                              # all, in order; stops at the first failure
@@ -86,14 +88,15 @@ experiments/run_all.sh --only e0,e2
 experiments/export_paper.sh                         # copy LaTeX artifacts into paper/generated/
 ```
 
-Each run **deletes `results/` and regenerates it**. Expensive artifacts that are
+Each run **deletes `results/` and regenerates it**, unless `--resume` is given: then every
+step whose outputs exist is reused and only the tables are recomputed. Expensive artifacts that are
 safe to reuse live outside it, in `cache/`: the frozen SDXL identities of
 BLANKET, keyed by video hash and settings. Reusing them also controls SDXL's
 run-to-run non-determinism. `--fresh` clears the experiment's cache too.
 
 Machine-specific settings come from the environment, never from `config.toml`:
 `BLANKET_REPO`, `IDENTITY_GPU`, `SWAP_GPU`, `CTX_ID` (on constantine: `1`, `1`, `0`, set by `~/.lftl_env`
-with `CUDA_DEVICE_ORDER=PCI_BUS_ID` and `CUDA_VISIBLE_DEVICES=1`; on serra1 they were `1`, `0`, `-1`).
+with `CUDA_DEVICE_ORDER=PCI_BUS_ID` and `CUDA_VISIBLE_DEVICES=1`).
 `IDENTITY_GPU`/`SWAP_GPU` are **physical** indices: the backend overwrites the servers'
 `CUDA_VISIBLE_DEVICES` with them, while `CTX_ID` is an index inside the main process's own
 `CUDA_VISIBLE_DEVICES`. And
@@ -156,17 +159,12 @@ and `graphicx`, no `pgfplots`/`siunitx`):
   show real people in the background, so they are a manual, consent-checked
   decision.
 
-## Cost on serra1 (2× RTX A5000, GPUs shared with another job; historical)
+## Cost (constantine, one GTX 1080)
 
-constantine (one GTX 1080, from 2026-11-11) is slower; its estimates come from
-the first smoke and identity timings and are logged in `DECISIONS.md`.
-
-| Experiment | Estimate |
-|---|---|
-| E0 | ~30 min |
-| E1 | ~1 h |
-| E2 | ~8 h (SDXL identities for three videos) |
-| E3 | ~15 h with one GPU per stream, plus ~2 h P3 and ~4 h P1 |
+E0 and E1 take minutes. E2, E3 and E5 are dominated by BLANKET: about 3 min of
+SDXL per track for the identity, then the swap and GFPGAN for every face. E3, the
+largest, took about two days for the 22 s of video. Re-evaluating a part with
+`--resume` takes minutes to an hour.
 
 ## Quick, single-step runs
 
@@ -174,7 +172,7 @@ Outside the experiments, `bin/` runs one step at a time with short commands.
 Useful for exploring and debugging; the experiments never depend on it.
 
 ```bash
-det=$(bin/detect demo3 | tail -1)
+det=$(bin/detect demo2 | tail -1)
 bin/anonymize "$det" blanket --blanket-swap-mode track --blanket-push-beta 1.2
 bin/video results/<anonymize-folder>
 bin/eval  results/<anonymize-folder> [more folders]

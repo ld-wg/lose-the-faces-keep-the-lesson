@@ -17,9 +17,9 @@ missed face is a leak.)
 - precision, recall and F1 at the operating threshold (0.3);
 - recall at fixed false positives per image (0.01, 0.1), the headline number
   for a privacy pipeline;
-- latency per image and peak GPU memory on serra1; parameters and GFLOPs.
+- latency per image and peak GPU memory (GTX 1080); parameters and GFLOPs.
 
-**On our three videos** (no annotations, so operational statistics only):
+**On our two videos** (no annotations, so operational statistics only):
 - faces per frame, number of tracks, median track length;
 - share of tracks shorter than 10 frames, a fragmentation proxy (ID-switch rate
   needs ground truth and is a declared limitation);
@@ -36,8 +36,11 @@ missed face is a leak.)
 
 ## Status
 
-Run on serra1 2026-10-05 (19 min); exported to `paper/generated/e1_detection/`.
-SCRFD-10GF hard AP 0.813, within 1.8 points of the published 83.05.
+Final campaign on constantine (one GTX 1080), 2026-11-11; exported to
+`paper/generated/e1_detection/`. SCRFD-10GF hard AP 0.813, within 1.8 points of
+the published 83.05; SCRFD-34GF 0.840, 1.3 points below its published 85.29.
+The faces the detector never finds are measured by hand with
+`src/eval/miss_sheet.py` (2026-11-18 review), since the videos have no annotations.
 - `src/eval/widerface.py` ports the official protocol. The ground-truth
   `.mat` files are fetched if missing.
 - `src/eval/detection_stats.py` gives the track statistics.

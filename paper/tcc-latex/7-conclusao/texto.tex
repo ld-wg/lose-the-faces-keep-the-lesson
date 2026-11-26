@@ -1,54 +1,35 @@
 \chapter{Limitações, ética e conclusão}
 \label{cap:conclusao}
 
-% 2026-11-17: reescrito sobre a campanha da constantine.
+% Revisão de 2026-11-18: escrito em prosa; LGPD art. 14 com o Enunciado CD/ANPD nº 1/2023;
+% leitura do E3m; parrot corrigido.
 
 \section{Limitações}
-\begin{itemize}
-\item Dois vídeos de demonstração públicos na internet (22\,s, 41 tracks); não é um conjunto consentido de crianças.
-\item Hiperparâmetros escolhidos no piloto, que incluía um dos dois vídeos (Seção~\ref{sec:ameacas-validade}).
-\item Atacante ingênuo: sem \emph{parrot attack} (reconhecedor retreinado nos rostos substituídos) \citep{hanisch}.
-\item Identificadores fora do rosto não tratados: cabelo, contorno da cabeça, orelhas, roupa, lugar na sala, corpo, voz.
-\item Sem avaliação humana de analisabilidade pedagógica; olhar (\emph{gaze}) não medido; sem análise de equidade demográfica.
-\item Rostos nunca detectados saem reais; taxa não medida (sem anotação).
-\item Dois reconhecedores; não é garantia formal.
-\item Custo: projeção só do laço por rosto; tempo ponta a ponta não medido; só \emph{offline}.
-\item Componentes apenas para pesquisa não comercial (Apêndice~\ref{ap:licencas}).
-\end{itemize}
+
+A avaliação usa dois vídeos de demonstração públicos na internet, com 22\,s e 41 tracks no total; não é um conjunto consentido de crianças. Os hiperparâmetros foram escolhidos num piloto que incluía um dos dois vídeos, e só o outro está fora da amostra (Seção~\ref{sec:ameacas-validade}). O atacante é ingênuo, sem reconhecedor retreinado em rostos anonimizados \citep{hanisch}, e a galeria é da mesma sessão, o que dá ao contexto ao redor do rosto um peso que ele não teria com fotos de outra ocasião.
+
+O pipeline não trata identificadores fora do rosto: cabelo, contorno da cabeça, orelhas, roupa, lugar na sala, corpo e voz. Os rostos que o detector nunca acha saem reais, e essa taxa não foi medida. Não houve avaliação humana da utilidade pedagógica, o olhar não foi medido e não há análise de equidade demográfica. A privacidade foi medida com dois reconhecedores e não tem garantia formal. O custo é projetado só para o laço por rosto, sem tempo ponta a ponta, e o processamento é \emph{offline}. Vários componentes são licenciados apenas para pesquisa não comercial (Apêndice~\ref{ap:licencas}).
 
 \section{Ética e LGPD}
-\begin{itemize}
-\item Rosto: dado biométrico; etnia: dado sensível; dados de crianças: melhor interesse \citep{lgpd}.
-\item Resultado: desidentificação facial, não dado anonimizado (art.~12); o vídeo processado continua dado pessoal.
-\item Embeddings reais só em memória; scratch da ponte apagado também em SIGTERM e SIGHUP; crops de rostos não substituídos não são gravados.
-\item Resíduos com fundo real (crops gerados, imagens de identidade, vídeos compostos): só no servidor, em diretórios restritos; removidos com \texttt{experiments/purge.sh} após a defesa.
-\item Nenhum quadro de pessoa real no texto; exemplos qualitativos só com rostos sintéticos ou adultos consentidos.
-\item Imagens de identidade do SDXL não contam como sintéticas para publicação (cosseno \result{e3g/pooled/identity-cos.plain} com a pessoa real).
-\item Vídeos: públicos na internet; fonte, licença e termos por vídeo pendentes de registro.
-\item Pendente: consulta ao CEP da UFPR (via orientador e coordenação). Plano B: gravações próprias com adultos voluntários e termo de uso de imagem.
-\item Base legal a validar com o orientador e o CEP (não afirmada): LGPD art.~7º, IV e art.~11, II, c, tratamento por órgão de pesquisa para estudos, garantida a anonimização sempre que possível \citep{lgpd}. Esta tese processou biometria de pessoas que não consentiram; o registro da fonte de cada vídeo e a consulta ao CEP são condição para publicar.
-\end{itemize}
+
+O rosto é tratado aqui como dado biométrico, porque é processado para identificar pessoas, e a origem racial ou étnica é dado sensível \citep[art.~5, II; art.~11]{lgpd}. Para crianças, a lei exige o tratamento no seu melhor interesse e, como regra, o consentimento específico de pelo menos um dos pais ou responsável \citep[art.~14, §1]{lgpd}; a ANPD admite as demais bases legais dos arts.~7º e 11 quando o melhor interesse prevalece \citep{anpd2023}. O resultado do pipeline é desidentificação facial, não dado anonimizado no sentido do art.~12: o vídeo processado continua sendo dado pessoal.
+
+No tratamento dos dados, os embeddings reais ficam só em memória, o \emph{scratch} da ponte é apagado também ao receber os sinais SIGTERM e SIGHUP, e os recortes de rostos não substituídos não são gravados. Os resíduos com fundo real (recortes gerados, imagens de identidade e vídeos compostos) ficam só no servidor, em diretórios restritos, e serão removidos com \texttt{experiments/purge.sh} após a defesa. Dados de uma campanha anterior ficaram num servidor que foi desativado e não pode mais ser acessado pelo autor; o expurgo foi solicitado aos administradores. Nenhum quadro de pessoa real aparece no texto. As imagens de identidade do SDXL não contam como sintéticas para publicação, porque herdam parte da pessoa real (cosseno de \result{e3g/pooled/identity-cos.plain}).
+
+Os vídeos são públicos na internet; o registro de fonte, licença e termos de cada um e a consulta ao Comitê de Ética em Pesquisa da UFPR estão em andamento, via orientador e coordenação. O plano alternativo são gravações próprias com adultos voluntários e termo de uso de imagem. A base legal pretendida, a validar com o orientador e o CEP, é o tratamento por órgão de pesquisa para estudos, garantida a anonimização sempre que possível \citep[art.~7º, IV; art.~11, II, c]{lgpd}. No caso de dado sensível, essa base exige que o tratamento seja indispensável, e o controlador seria a UFPR, não o aluno. Esta tese processou biometria de pessoas que não consentiram; o registro da fonte de cada vídeo e a consulta ao CEP são condição para publicar.
 
 \section{Trabalhos futuros}
-\begin{itemize}
-\item Trocador de rosto: é onde a identidade vaza, e o SimSwap não vaza menos que o \texttt{inswapper} (E3h). Testar trocadores de outras famílias (por exemplo, os que geram o rosto inteiro em vez de editar o alvo) e escolher pelo vazamento medido, não pela fidelidade \citep{mustu}.
-\item Recall: segundo detector ou entrada maior no SCRFD, com a ocultação já existente cobrindo os falsos positivos; anotar rostos perdidos.
-\item Política por tamanho do rosto: ocultar ou censurar rostos $\ge 96$\,px (professor), que vazam quase sempre.
-\item Identidade sem a imagem real: banco de identidades geradas por prompt genérico; tira o custo de difusão por track, sem perda esperada de privacidade, já que o vazamento está na troca.
-\item Atacante ciente simplificado (\emph{parrot}: galeria também substituída) \citep{hanisch}.
-\item Testes de equivalência (TOST) com margens no piso de ruído.
-\item Avaliação em vídeos novos, consentidos, com o pipeline congelado.
-\item Custo por rosto: GFPGAN só em rostos médios e grandes, lotes por quadro; tempo ponta a ponta por estágio.
-\item Equidade demográfica; avaliação humana com gravação consentida.
-\end{itemize}
+
+O resultado mais claro deste trabalho aponta o primeiro passo: com galeria da mesma sessão, o que sobra da identidade está sobretudo fora do rosto trocado. Substituir também a cabeça e o cabelo, ou ocultar o contexto, é o que pode mover a reidentificação. Em paralelo, falta medir um atacante com fotos de outra sessão, que tem menos contexto, e um atacante ciente do método, com reconhecedor treinado em rostos anonimizados (\emph{parrot}) \citep{hanisch}.
+
+Do lado da cobertura, falta anotar quadros amostrados para medir os rostos que o detector nunca acha, e testar a união do SCRFD com um segundo detector, com a ocultação absorvendo os falsos positivos. Outros trocadores, de famílias que geram o rosto inteiro em vez de editar o alvo, devem ser escolhidos pelo vazamento medido, não pela fidelidade \citep{mustu}. Uma identidade gerada só por texto, de um banco sem relação com a pessoa real, tiraria o custo de difusão por track sem perda esperada de privacidade. A validação deve usar vídeos novos e consentidos, com o pipeline congelado, testes de equivalência para a utilidade, análise de equidade e avaliação humana.
 
 \section{Conclusão}
-\begin{itemize}
-\item Trocar cada rosto por uma identidade sintética fixa por track desidentifica parcialmente o vídeo de aula: a reidentificação automática cai, mas fica de 4 a 9 vezes acima do acaso entre os rostos mostrados, acima do blur.
-\item O ganho sobre o método publicado é sobretudo de cobertura: com a detecção do Estágio~1 na troca e a ocultação do que falha, quase quatro vezes mais rostos recebem face sintética e nenhum rosto detectado sai real.
-\item O vazamento está na troca de rosto, não na identidade gerada por difusão; empurrar a identidade para longe da real ajuda pouco, orientar a difusão não ajuda e trocar o \texttt{inswapper} pelo SimSwap também não.
-\item Expressão e pose são mantidas melhor que por censura e GANs; emoção não é mantida por nenhum método.
-\item Num vídeo novo, o pipeline congelado protege menos que no vídeo do piloto.
-\item Custo de dezenas a centenas de GPU-horas por hora de aula: viável para estudos de poucas horas de vídeo, não para acervos.
-\item Quando a privacidade é o requisito, o blur continua sendo a escolha; a troca de rosto só se justifica quando o comportamento visível importa e o risco residual é aceito.
-\end{itemize}
+
+Trocar cada rosto por uma identidade sintética fixa por track desidentifica o vídeo de aula só em parte. Entre os rostos mostrados, a reidentificação automática fica de 5 a 9 vezes acima do acaso, e no vídeo que as escolhas nunca viram dois terços dos alunos são reidentificados por um atacante que decide uma vez por aluno. A censura protege mais.
+
+O ganho sobre o método publicado é de cobertura e vem de engenharia simples: usar a detecção do Estágio~1 dentro da troca e ocultar o que falha. Nos mesmos rostos, esse ganho tem um preço, e é o empurrão P2 com o \emph{gate} que reduz o vazamento. Comparar métodos com coberturas diferentes exige olhar os mesmos rostos.
+
+O que sobra da identidade está sobretudo no que a troca não substitui. Por isso empurrar a identidade sintética ajuda pouco no total, orientar a difusão não ajuda, e trocar o \texttt{inswapper} pelo SimSwap também não. Pose e expressão são mantidas melhor que por censura e GANs; a emoção não é mantida por nenhum método. O custo é de dezenas a centenas de GPU-horas por hora de aula, viável para estudos curtos, não para acervos.
+
+Quando a privacidade é o requisito, a escolha é ocultar o rosto, com uma máscara opaca como a que o pipeline já usa para os rostos que falham. A troca de rosto só se justifica quando o comportamento visível importa e o risco residual é aceito.

@@ -1,20 +1,13 @@
 \chapter{Método}
 \label{cap:metodo}
 
-% Rascunho em tópicos (2026-10-22). Valores conferidos no código (branch
-% feature/experiments-results) e em experiments/DECISIONS.md.
-% 2026-10-29 (parecer de orientação; branch feature/wrap-up-review): modelo de ameaça,
-% quadro de desvios, 10 divergências texto x código corrigidas, furo fail-open fechado,
-% tratamento de dados corrigido. Lista completa: Apêndice~\ref{ap:parecer}.
+% Valores conferidos no código e em experiments/DECISIONS.md. Revisão de 2026-11-18: prosa;
+% ataque intra-sessão; avaliação com o recorte colado de volta no quadro; máscara de rosto (E3m);
+% fail-closed sobre os rostos detectados; pipeline final com amostragem adaptativa.
 
 \section{Visão geral}
-\begin{itemize}
-\item Pipeline \emph{offline} em três estágios (Figura~\ref{fig:pipeline}): (1) detecção, rastreamento e recall; (2) substituição do rosto; (3) composição \emph{fail-closed}.
-\item Substituição híbrida: a difusão (SDXL) gera uma vez por track a identidade-fonte; o rosto mostrado em cada quadro é produzido pela troca (\texttt{inswapper\_128}) e pelo GFPGAN (Seção~\ref{sec:formulacao}).
-\item Uma identidade sintética fixa por track (seed determinística): o mesmo aluno mantém o mesmo pseudônimo no vídeo.
-\item Consistência temporal pela identidade fixa por track, sem rede de estabilização separada.
-\item Código: Estágio~1 em \texttt{phase1\_detect}; Estágios~2 e 3 em \texttt{phase2\_generate} (composição em \texttt{compose\_video.py}). Pacote vazio \texttt{phase3\_temporal} removido (2026-10-29).
-\end{itemize}
+
+O pipeline é \emph{offline} e tem três estágios (Figura~\ref{fig:pipeline}): (1) detecção, rastreamento e recall; (2) substituição do rosto; (3) composição \emph{fail-closed}. A substituição é híbrida. A difusão (SDXL) gera uma vez por track a identidade-fonte, e o rosto mostrado em cada quadro é produzido pela troca de rosto (\texttt{inswapper\_128}) e pelo GFPGAN (Seção~\ref{sec:formulacao}). Cada track recebe uma identidade sintética fixa, com \emph{seed} determinística, de modo que o mesmo aluno mantém o mesmo pseudônimo visual ao longo do vídeo. A consistência temporal vem dessa identidade fixa, sem rede de estabilização separada. No código, o Estágio~1 está em \texttt{phase1\_detect}, e os Estágios~2 e~3 em \texttt{phase2\_generate} (a composição em \texttt{compose\_video.py}).
 
 \begin{figure}[ht]\centering
 \caption{Pipeline: estágios, onde atuam C1 (P1, P2, P3) e C2, e onde cada visão de privacidade mede.}
@@ -53,132 +46,68 @@
 
 \section{Modelo de ameaça e alegação}
 \label{sec:ameaca}
-\begin{itemize}
-\item Atacante: conhece a turma; tem fotos de rosto das pessoas do vídeo (galeria); usa reconhecedor pronto (FaceNet, ArcFace), sem retreino nos rostos substituídos (ingênuo, \citealp{hanisch}).
-\item Vê: o vídeo final publicado.
-\item Medido: reidentificação do miolo do rosto em crop alinhado, galeria fechada do mesmo vídeo ($N$ = 21 e 20 tracks).
-\item Fora do modelo:
-  \begin{itemize}
-  \item cabelo, contorno da cabeça e orelhas: mantidos pela troca; BLANKET relata supressão percebida de 2,5/5 \citep{blanket};
-  \item roupa, lugar na sala, corpo, voz, contexto da aula;
-  \item atacante ciente (\emph{parrot}: reconhecedor ajustado em rostos substituídos) \citep{hanisch};
-  \item pessoa que conhece o aluno e assiste ao vídeo.
-  \end{itemize}
-\item Identidade sintética nasce do crop real (SDEdit 0,6 + ControlNets): cosseno ArcFace com a pessoa real \result{e3g/pooled/identity-cos.plain}, contra \result{e3a/pooled/cross-track-cos-mean} entre pessoas diferentes. Causas no código do BLANKET: força 0,6 (cerca de 40\% do sinal real mantido na máscara), ControlNet de Canny com as bordas do rosto real e máscara restrita ao casco convexo dos landmarks (testa, linha do cabelo e orelhas reais; o \texttt{padding: 96} da configuração não é usado pelo código).
-\item Atacantes adicionais:
-  \begin{itemize}
-  \item ciente do empurrão: o P2 leva o alvo da troca para longe da identidade real e, acima de $\beta \approx$ \result{derived/p2geom/orthogonal-beta}, para a antípoda dela (Tabela~\ref{tab:derived-p2geom}); um atacante que conhece o método ordena a galeria pelo cosseno \emph{mais baixo} (rank inverso). o rank-1 inverso fica em zero no FaceNet e em 2--3 vezes o acaso no ArcFace (Seção~\ref{cap:resultados}); a ideia e o risco já aparecem no FIVA \citep{fiva};
-  \item por pessoa: o pseudônimo é estável por desenho; o atacante segue o track e decide uma vez por aluno (média dos embeddings mostrados contra a galeria). Rank-1 por track ao lado do rank-1 por quadro.
-  \end{itemize}
-\item Identidade de referência da avaliação: o track do rastreador, não uma pessoa anotada. Um aluno dividido em dois tracks vira duas identidades na galeria, e acertar o outro track conta como privacidade. Auditoria: pares de tracks nunca visíveis juntos com centroides reais acima do limiar a FAR 1\% (candidatos a uma pessoa) exportados por vídeo; conferência visual no servidor (pendente).
-\item Alegação: desidentificação facial, redução da identificabilidade biométrica do rosto; com um pseudônimo visual estável por track. Não é pseudonimização no sentido da LGPD (art.~13, §4º, que exige informação adicional mantida em separado pelo controlador). Não é anonimização no sentido da LGPD art.~12 \citep{lgpd}.
-\end{itemize}
+
+O atacante conhece a turma, vê o vídeo final publicado e usa um reconhecedor pronto (FaceNet ou ArcFace), sem retreino nos rostos substituídos; é o atacante ingênuo de \citet{hanisch}. O ataque efetivamente medido é a reidentificação intra-sessão: a galeria do atacante são os rostos reais do próprio clipe, alguns segundos de vídeo com a mesma roupa, a mesma luz e o mesmo lugar na sala ($N$ = 21 e 20 tracks). Um atacante com fotos de outra sessão teria menos contexto e não foi medido. Ficam fora do modelo a roupa, o lugar na sala, o corpo, a voz, o contexto da aula, a pessoa que conhece o aluno e assiste ao vídeo, e o atacante ciente do método, com reconhecedor treinado e testado em rostos anonimizados (\emph{parrot}) \citep{hanisch}. Cabelo, contorno da cabeça e orelhas são mantidos pela troca; o BLANKET relata supressão percebida de 2,5 em 5 \citep{blanket}.
+
+O FaceNet é o juiz independente: não entra em nenhum gradiente nem no \emph{gate}. Ele foi, porém, usado para escolher $\beta$ no piloto, que incluía o vídeo demo2, e sua margem de entrada (10\%) foi ajustada para que o avaliador funcione nesse material. O ArcFace é o espaço em que o empurrão é calculado e é sempre reportado ao lado.
+
+O rosto real é avaliado no quadro de origem, com os 5 pontos do Estágio~1. O rosto anonimizado é avaliado no mesmo quadro com o recorte anonimizado colado de volta, em coordenadas do quadro, exatamente como o rosto real. Antes dessa correção, os recortes com pouca margem de contexto (blur e mosaico, 10\%; CIAGAN, 15\%) chegavam à janela das sondas, de 1,5 vez a caixa, e ao gabarito do FaceNet com bordas pretas que o rosto real não tem; as linhas de base foram reavaliadas.
+
+Para localizar onde está a identidade, a avaliação é repetida com uma elipse fixa no recorte alinhado, das sobrancelhas ao queixo e de uma bochecha à outra. A variante ``só rosto'' pinta de cinza tudo fora da elipse; a variante ``só contexto'' pinta a própria elipse, deixando cabelo, testa, orelhas, contorno e fundo. As duas valem para o rosto real e para o anonimizado; os resultados estão na Seção~\ref{sec:r-onde} (E3m).
+
+A identidade sintética nasce do recorte real (SDEdit com força 0,6 e ControlNets): seu cosseno ArcFace com a pessoa real é de \result{e3g/pooled/identity-cos.plain}, contra \result{e3a/pooled/cross-track-cos-mean} entre pessoas diferentes. No código do BLANKET, as causas são a força de 0,6 (cerca de 40\% do sinal real mantido na máscara), a ControlNet de Canny com as bordas do rosto real e a máscara restrita ao casco convexo dos \emph{landmarks}, que deixa testa, linha do cabelo e orelhas reais (o \texttt{padding: 96} da configuração não é usado pelo código).
+
+Dois atacantes adicionais são medidos. O primeiro conhece o empurrão: o P2 leva o alvo da troca para longe da identidade real e, acima de $\beta \approx$ \result{derived/p2geom/orthogonal-beta}, para a antípoda dela (Tabela~\ref{tab:derived-p2geom}). Esse atacante ordena a galeria pelo cosseno \emph{mais baixo}; a ideia e o risco já aparecem no FIVA \citep{fiva}. O segundo decide uma vez por aluno: como o pseudônimo é estável por desenho, ele segue o track e compara a média dos embeddings mostrados com a galeria.
+
+A identidade de referência da avaliação é o track do rastreador, não uma pessoa anotada. Um aluno dividido em dois tracks vira duas identidades na galeria, e acertar o outro track conta como privacidade. A auditoria exporta, por vídeo, os pares de tracks nunca visíveis juntos cujos centroides reais passam do limiar a FAR 1\% (candidatos a uma mesma pessoa).
+
+A alegação é de desidentificação facial: redução da identificabilidade biométrica do rosto, com um pseudônimo visual estável por track. Não é pseudonimização no sentido do art.~13, §4º, da LGPD, que exige informação adicional mantida em separado pelo controlador; essa definição é dada ``para os efeitos deste artigo'', isto é, para estudos em saúde pública, e é usada aqui só como referência de trabalho. Também não é anonimização no sentido do art.~12 \citep{lgpd}.
 
 \section{Estágio 1: detecção, rastreamento e recall}
-\begin{itemize}
-\item Detector: SCRFD-10GF (\texttt{buffalo\_l}), entrada 640\,px, só inferência \citep{scrfd,insightface}.
-\item Limiar de detecção 0,1 no pipeline (E2--E5). Até 2026-09-30 o InsightFace cortava em 0,5 independentemente do valor configurado; corrigido. E1 roda a 0,3 (\texttt{e1\_detection/config.toml}).
-\item Detectores alternativos implementados: SCRFD-34GF (convertido), YOLO-FaceV2-s \citep{yolofacev2}.
-\item Rastreador estilo ByteTrack \citep{bytetrack}:
-  \begin{itemize}
-  \item detecções $\ge 0{,}5$ são associadas primeiro e podem criar tracks;
-  \item detecções entre 0,1 e 0,5 só estendem tracks existentes;
-  \item associação gulosa por IoU $\ge 0{,}3$ (menor custo primeiro; não húngara);
-  \item sem modelo de movimento: a caixa prevista é a última observada (sem filtro de Kalman, diferente do ByteTrack);
-  \item track perdido após 30 quadros sem detecção.
-  \end{itemize}
-\item Pós-passe de recall (\emph{offline}, sobre o vídeo inteiro):
-  \begin{itemize}
-  \item tracks emitidos desde a primeira detecção (confirmação retroativa);
-  \item lacunas de até 30 quadros preenchidas por interpolação linear da caixa (30 = perda do track no rastreador);
-  \item dilatação de 3 quadros antes e depois de cada track confirmado ($\ge 3$ detecções); tracks não confirmados não são dilatados;
-  \item tracks com menos de 3 detecções: ocultados, sem identidade sintética.
-  \end{itemize}
-\item Cada caixa registra a origem:
-  \begin{itemize}
-  \item \texttt{detector}: detecção real, com landmarks; a única que vai ao gerador;
-  \item \texttt{interpolated}: lacuna preenchida;
-  \item \texttt{dilated}: extensão antes ou depois do track;
-  \item \texttt{unconfirmed}: track com menos de 3 detecções.
-  \end{itemize}
-\item Seed por track: hash BLAKE2b de (caminho do vídeo, id do track). O cache de identidades sintéticas é chaveado por essa seed: renomear ou mover o vídeo invalida o cache. Seed pelo hash do conteúdo: depois da defesa (recomputa as identidades).
-\item \texttt{tracks.json} registrava \texttt{fps} $= -1$ (lido após liberar o vídeo); corrigido em 2026-10-29. Nenhuma métrica usa esse campo.
-\end{itemize}
+
+O detector é o SCRFD-10GF do pacote \texttt{buffalo\_l}, com entrada de 640\,px, usado só em inferência \citep{scrfd,insightface}. No pipeline (E2 a E5), o limiar de detecção é 0,1; até 2026-09-30, o InsightFace cortava em 0,5 independentemente do valor configurado, o que foi corrigido. O E1 usa 0,3. O SCRFD-34GF (convertido) e o YOLO-FaceV2-s \citep{yolofacev2} estão implementados como alternativas.
+
+O rastreador segue o estilo do ByteTrack \citep{bytetrack}. Detecções com confiança de pelo menos 0,5 são associadas primeiro e podem criar tracks; detecções entre 0,1 e 0,5 só estendem tracks existentes. A associação é gulosa por IoU de pelo menos 0,3, com o menor custo primeiro, e não húngara. Não há modelo de movimento: a caixa prevista é a última observada, sem filtro de Kalman. Um track é perdido após 30 quadros sem detecção.
+
+O pós-passe de recall roda sobre o vídeo inteiro. Os tracks são emitidos desde a primeira detecção (confirmação retroativa). Lacunas de até 30 quadros são preenchidas por interpolação linear da caixa, e cada track confirmado (pelo menos 3 detecções) é dilatado em 3 quadros antes e depois. Tracks com menos de 3 detecções são ocultados, sem identidade sintética. Cada caixa registra sua origem: \texttt{detector} (detecção real, com \emph{landmarks}, a única que vai ao gerador), \texttt{interpolated}, \texttt{dilated} ou \texttt{unconfirmed}.
+
+A \emph{seed} de cada track é o hash BLAKE2b do caminho do vídeo e do id do track. O cache de identidades sintéticas é chaveado por essa \emph{seed}; por isso, renomear ou mover o vídeo invalida o cache.
 
 \section{Estágio 2: substituição do rosto}
 
 \subsection{Baselines}
-\begin{itemize}
-\item Censura: blur e mosaico da caixa detectada (mosaico: 8 células no lado menor).
-\item CIAGAN \citep{ciagan}: checkpoint liberado (1200 identidades), 128\,px, landmarks via dlib \citep{dlib}, margem de contexto 0,15, correção de rotação, composição Poisson.
-\item GANonymization \citep{hellmann}: checkpoint de 50 épocas, 512\,px, segmentação de cabeça inteira, FaceMesh a 0,3 (não 0,5), CLAHE só na entrada da detecção, alinhamento de rotação, margem 0,8 (calibrada no demo2).
-\item BLANKET \citep{blanket}, código liberado:
-  \begin{itemize}
-  \item identidade sintética uma vez por track: SDXL \emph{inpainting} 896$\times$896 \citep{sdxl}, ControlNets OpenPose e Canny (peso 1,0) \citep{controlnet}, refiner SDXL; 7 passos base (\emph{strength} 0,6 de 12) mais $\sim$5 de refiner; máscara pelo casco convexo de landmarks SPIGA \citep{spiga};
-  \item troca por quadro: FaceFusion \texttt{inswapper\_128} mais GFPGAN 1.4 \citep{facefusion,gfpgan};
-  \item composição final: segmentação de cabeça mais Poisson;
-  \item margem de contexto do crop 0,8: herdada do GANonymization, não calibrada para o BLANKET;
-  \item prompt sem ``baby face'' (o viés infantil vinha do prompt).
-  \end{itemize}
-\end{itemize}
+
+A censura aplica blur ou mosaico à caixa detectada (o mosaico usa 8 células no lado menor). O CIAGAN \citep{ciagan} usa o \emph{checkpoint} liberado, com 1200 identidades, a 128\,px, \emph{landmarks} via dlib \citep{dlib}, margem de contexto de 0,15, correção de rotação e composição Poisson. O GANonymization \citep{hellmann} usa o \emph{checkpoint} de 50 épocas a 512\,px, segmentação da cabeça inteira, FaceMesh no limiar 0,3, CLAHE só na entrada da detecção, alinhamento de rotação e margem de 0,8, calibrada no demo2.
+
+O BLANKET \citep{blanket}, no código liberado, gera a identidade sintética uma vez por track com SDXL \emph{inpainting} a 896$\times$896 \citep{sdxl}, ControlNets OpenPose e Canny com peso 1,0 \citep{controlnet} e o \emph{refiner} SDXL: 7 passos base (força 0,6 de 12) e cerca de 5 de \emph{refiner}, com máscara pelo casco convexo de \emph{landmarks} SPIGA \citep{spiga}. A troca por quadro usa o \texttt{inswapper\_128} do FaceFusion e o GFPGAN 1.4 \citep{facefusion,gfpgan}, e a composição final combina segmentação de cabeça e Poisson. A margem de contexto do recorte, 0,8, foi herdada do GANonymization e não foi calibrada para o BLANKET. O \emph{prompt} não usa ``baby face'', de onde vinha o viés infantil.
 
 \subsection{Integração do BLANKET}
-\begin{itemize}
-\item Código GPL-3.0 isolado em processos: dois servidores (identidade, troca) em venvs próprios, RPC JSON por socket Unix.
-\item Dez bugs do código original corrigidos na ponte (resolução, seed, falhas de composição).
-\item Troca usa o rosto do Estágio~1 (caixa e 5 pontos) via \texttt{create\_faces} do FaceFusion, em vez de redetectar; filtro de IoU removido.
-\item Imagem de identidade rejeitada pelo detector do FaceFusion: nova tentativa com detector permissivo (\texttt{many}, 0,25).
-\item Até 3 tentativas por identidade, sobre os 5 melhores quadros do track (\emph{seed candidates}).
-\item Identidades congeladas em cache por vídeo: todos os braços trocam as mesmas faces sintéticas.
-\item Fonte da troca (2026-10-30): o rosto da imagem de identidade que sobrepõe a caixa inpaintada (IoU $\ge 0{,}3$). Antes, o BLANKET usava o rosto de maior score do detector; como a imagem de identidade é o crop de contexto (margem 0,8), um vizinho real e intacto podia virar a fonte. Nas execuções exportadas, a fonte escolhida não é o rosto de maior score em cerca de 2\% das cargas de identidade, e nenhum rosto sobrepõe a caixa em cerca de 1\% (track ocultado).
-\item Verificação da difusão (2026-10-30): imagem de identidade que muda menos de 5\% da caixa do rosto (além do ruído do JPEG, 12 níveis) é rejeitada (\texttt{identity\_unchanged}).
-\item Cobertura: de \result{e3b/pooled/original/anonymized} para \result{e3b/pooled/phase1/anonymized} dos rostos.
-\item Modelo de troca: \texttt{inswapper\_128}, o do BLANKET; o E3h compara com o SimSwap \citep{simswap} nas mesmas identidades.
-\end{itemize}
+
+O código do BLANKET, sob GPL-3.0, roda isolado em processos: dois servidores, de identidade e de troca, em ambientes próprios, com RPC JSON por \emph{socket} Unix. A ponte corrige dez bugs do código original (resolução, \emph{seed} e falhas de composição). A troca usa o rosto do Estágio~1 (caixa e 5 pontos) pela função \texttt{create\_faces} do FaceFusion, em vez de redetectar, e o filtro de IoU foi removido. Quando o detector do FaceFusion rejeita a imagem de identidade, há uma nova tentativa com um detector permissivo (\texttt{many}, 0,25). Cada identidade tem até 3 tentativas, sobre os 5 melhores quadros do track (\emph{seed candidates}). As identidades ficam congeladas em cache por vídeo, de modo que todos os braços trocam as mesmas faces sintéticas.
+
+A fonte da troca é o rosto da imagem de identidade que sobrepõe a caixa inpintada (IoU de pelo menos 0,3). Antes, o BLANKET usava o rosto de maior \emph{score} do detector; como a imagem de identidade é o recorte de contexto, um vizinho real e intacto podia virar a fonte. Nas execuções exportadas, a fonte escolhida não é o rosto de maior \emph{score} em cerca de 2\% das cargas de identidade, e em cerca de 1\% nenhum rosto sobrepõe a caixa (o track é ocultado). Uma imagem de identidade que muda menos de 5\% da caixa do rosto, além do ruído do JPEG, é rejeitada (\texttt{identity\_unchanged}). Com essas mudanças, a cobertura vai de \result{e3b/pooled/original/anonymized} para \result{e3b/pooled/phase1/anonymized} dos rostos. O modelo de troca é o \texttt{inswapper\_128}, o do BLANKET; o E3h o compara com o SimSwap \citep{simswap} nas mesmas identidades.
 
 \subsection{Saída devolvida como sucesso sem trocar o rosto (\emph{fail-open})}
-\begin{itemize}
-\item Achado (parecer de 2026-10-29): com máscara de colagem vazia, a composição Poisson dos backends devolve o crop real; BLANKET, CIAGAN e GANonymization o registravam como \texttt{ok}; a composição o marcava \texttt{generated}.
-\item Correção: fração de pixels alterados dentro da caixa de detecção, por rosto.
-  \begin{itemize}
-  \item abaixo de 1\% no Estágio~2: \texttt{failsafe}, motivo \texttt{unchanged}; crop não gravado; contagem no manifesto;
-  \item abaixo de 1\% no Estágio~3: rosto tratado como falha (\emph{fail-safe}), nunca como gerado;
-  \item constante única: \texttt{MIN\_CHANGED\_FRACTION} = 0,01 (\texttt{contracts.py}).
-  \end{itemize}
-\item Frequência: com a detecção do Estágio~1 na troca, 8,9\% dos rostos (902 de 10.119) voltaram da troca sem alteração; no BLANKET original e no GANonymization, menos de 2\%. Antes da correção esses rostos reais eram contados como gerados; agora são ocultados.
-\end{itemize}
+
+Com máscara de colagem vazia, a composição Poisson dos \emph{backends} devolvia o recorte real; BLANKET, CIAGAN e GANonymization registravam isso como \texttt{ok}, e a composição marcava o rosto como gerado. A correção mede, por rosto, a fração de pixels alterados dentro da caixa de detecção. Abaixo de 1\%, o Estágio~2 marca o rosto como \texttt{failsafe}, com motivo \texttt{unchanged}, e não grava o recorte; o Estágio~3 o trata como falha. A constante é única (\texttt{MIN\_CHANGED\_FRACTION} = 0,01, em \texttt{contracts.py}). É um critério mínimo: um rosto com poucos pixels alterados ainda conta como substituído, embora as métricas de privacidade, que pontuam os pixels, ainda vejam esse vazamento. Com a detecção do Estágio~1 na troca, 8,9\% dos rostos (902 de 10.119) voltaram da troca sem alteração; no BLANKET original e no GANonymization, menos de 2\%. Antes da correção, esses rostos reais eram contados como gerados; agora são ocultados.
 
 \subsection{C2: identidade real por track}
-\begin{itemize}
-\item Embeddings ArcFace \texttt{w600k\_r50} de cada quadro, alinhados pelos 5 pontos \citep{arcface}.
-\item Qualidade por observação: $q = \mathrm{det}\cdot\mathrm{tamanho}\cdot\mathrm{pose}$.
-  \begin{itemize}
-  \item $\mathrm{det} = \mathrm{clip}((c - \sigma)/(1-\sigma))$, $\sigma = 0{,}3$ (detecções entre 0,1 e 0,3 recebem peso zero);
-  \item $\mathrm{tamanho} = \min(1, \sqrt{\text{área}}/112)$;
-  \item $\mathrm{pose} = \max(0, 1 - |\mathrm{yaw}|/60^\circ)$.
-  \end{itemize}
-\item Modos de agregação: primeiro quadro, melhor quadro, média, média ponderada por qualidade, EMA adaptativa (estilo Deep OC-SORT, \citealp{deepocsort}).
-\item EMA adaptativa: $\alpha_f = 0{,}8$ no pipeline (E3d); o modo EMA do E3a usa $\alpha_f = 0{,}95$ (valor do Deep OC-SORT), com varredura de $\alpha_f$ ao lado.
-\item Exclusão de outliers por cosseno (0,2).
-\item Usos: alvo do empurrão (P1--P3) e escolha dos quadros-semente da identidade sintética.
-\item Não é novo como mecanismo \citep{nan,qan,zhu-bmsb}; aqui: por track, multipessoa, como alvo do empurrão.
-\end{itemize}
+
+A identidade real do track é estimada a partir dos embeddings ArcFace \texttt{w600k\_r50} de cada quadro, alinhados pelos 5 pontos \citep{arcface}. Cada observação recebe uma qualidade $q = \mathrm{det}\cdot\mathrm{tamanho}\cdot\mathrm{pose}$, com $\mathrm{det} = \mathrm{clip}((c - \sigma)/(1-\sigma))$ e $\sigma = 0{,}3$ (detecções entre 0,1 e 0,3 recebem peso zero), $\mathrm{tamanho} = \min(1, \sqrt{\text{área}}/112)$ e $\mathrm{pose} = \max(0, 1 - |\mathrm{yaw}|/60^\circ)$. Os modos de agregação são o primeiro quadro, o melhor quadro, a média, a média ponderada por qualidade e uma EMA adaptativa no estilo do Deep OC-SORT \citep{deepocsort}; a EMA usa $\alpha_f = 0{,}8$ no pipeline e $0{,}95$ no E3a, com varredura de $\alpha_f$ ao lado. Observações com cosseno abaixo de 0,2 são excluídas como \emph{outliers}. A estimativa serve de alvo ao empurrão e escolhe os quadros-semente da identidade sintética. O pipeline usa a média ponderada por qualidade, que não difere da média simples nas medições. O mecanismo não é novo \citep{nan,qan,zhu-bmsb}; aqui ele é aplicado por track, a várias pessoas, como alvo do empurrão.
 
 \subsection{P2: empurrão na troca}
-\begin{itemize}
-\item $\hat{e} = \mathrm{normalize}(e_{\mathrm{synth}} - \beta\, e_{\mathrm{real}})$, no espaço ArcFace, antes da projeção do \texttt{inswapper}.
-\item Generaliza o mix do FaceFusion, que o BLANKET satura: $1{,}35\,e_{\mathrm{synth}} - 0{,}35\,e_{\mathrm{quadro}}$.
-\item Equivalência: após normalizar, o mix nativo corresponde a $\beta \approx 0{,}35/1{,}35 \approx 0{,}26$; o braço $\beta = 0{,}35$ não reproduz o nativo (alvo C2, não o quadro; sem o fator 1,35).
-\item Geometria (2026-10-30), com $c = \cos(e_{\mathrm{synth}}, e_{\mathrm{real}})$ = \result{derived/p2geom/c} e $n = \sqrt{1 + \beta^2 - 2\beta c}$:
-  \begin{equation}
-  \cos(\hat e, e_{\mathrm{synth}}) = \frac{1 - \beta c}{n},\qquad \cos(\hat e, e_{\mathrm{real}}) = \frac{c - \beta}{n};
-  \end{equation}
-  \begin{itemize}
-  \item $\beta = c$: remove só a componente real herdada da identidade SDXL (alvo ortogonal à identidade real);
-  \item $\beta > c$: o alvo passa a apontar para a antípoda da identidade real; em $\beta = 1{,}2$, cosseno \result{derived/p2geom/b-1.2/cos-synth} com a identidade sintética e \result{derived/p2geom/b-1.2/cos-real} com a real (Tabela~\ref{tab:derived-p2geom}, Figura~\ref{fig:p2geom});
-  \item consequência: no ponto de operação, o pseudônimo é mais ``anti-aluno'' que identidade sintética; a difusão por track pesa menos que o empurrão; risco de reversibilidade (Seção~\ref{sec:ameaca}).
-  \end{itemize}
-\item Valor aproximado: $c$ é o cosseno médio entre a imagem de identidade SDXL e a pessoa real (E3g); o $e_{\mathrm{real}}$ do P2 é a média do track (C2).
+
+O P2 substitui o embedding que entra na troca por
+\begin{equation}
+\hat{e} = \mathrm{normalize}(e_{\mathrm{synth}} - \beta\, e_{\mathrm{real}}),
+\end{equation}
+no espaço ArcFace, antes da projeção do \texttt{inswapper}. Ele generaliza o mix do FaceFusion, que o BLANKET satura em $1{,}35\,e_{\mathrm{synth}} - 0{,}35\,e_{\mathrm{quadro}}$; depois de normalizado, o mix nativo corresponde a $\beta \approx 0{,}26$, e o braço $\beta = 0{,}35$ não o reproduz (o alvo é a identidade do track, não o quadro, e não há o fator 1,35).
+
+Com $c = \cos(e_{\mathrm{synth}}, e_{\mathrm{real}})$ = \result{derived/p2geom/c} e $n = \sqrt{1 + \beta^2 - 2\beta c}$, a geometria do alvo é
+\begin{equation}
+\cos(\hat e, e_{\mathrm{synth}}) = \frac{1 - \beta c}{n},\qquad \cos(\hat e, e_{\mathrm{real}}) = \frac{c - \beta}{n}.
+\end{equation}
+Com $\beta = c$, o empurrão remove só a componente real que a identidade SDXL herdou, e o alvo fica ortogonal à identidade real. Com $\beta > c$, o alvo passa a apontar para a antípoda da identidade real; em $\beta = 1{,}2$, seu cosseno é \result{derived/p2geom/b-1.2/cos-synth} com a identidade sintética e \result{derived/p2geom/b-1.2/cos-real} com a real (Tabela~\ref{tab:derived-p2geom}, Figura~\ref{fig:p2geom}). No ponto de operação, portanto, o pseudônimo é mais ``anti-aluno'' que identidade sintética, o que cria o risco de reversibilidade medido pelo atacante inverso. A geometria vale no espaço ArcFace; o \texttt{inswapper} recebe o embedding pela própria projeção (\texttt{emap}), que não é ortogonal, e lá o argumento é aproximado. O valor de $c$ é o cosseno médio entre a imagem de identidade SDXL e a pessoa real (E3g), e $e_{\mathrm{real}}$ é a média do track (C2). O custo é uma operação vetorial por track.
 
 \begin{figure}[ht]\centering
 \caption{Geometria do P2 no plano de $e_{\mathrm{synth}}$ e $e_{\mathrm{real}}$: alvo da troca $\hat e$ para $\beta$ crescente.}
@@ -199,69 +128,41 @@
 \end{tikzpicture}
 \fonte{o autor (2026). $c$ = \result{derived/p2geom/c} (cosseno médio medido no E3g).}
 \end{figure}
-\item Custo: uma operação vetorial por track.
-\item Precedentes: FIVA amostra a identidade falsa a uma margem de cosseno da real, em vídeo \citep{fiva}; condicionamento negativo de identidade em NullFace \citep{nullface}, FAMS \citep{kung} e Reverse Personalization \citep{revpers}.
-\end{itemize}
+
+Há precedentes: o FIVA amostra a identidade falsa a uma margem de cosseno da real, em vídeo \citep{fiva}, e NullFace \citep{nullface}, FAMS \citep{kung} e Reverse Personalization \citep{revpers} usam condicionamento negativo de identidade.
 
 \subsection{P1: orientação no amostrador SDXL}
-\begin{itemize}
-\item Estilo MPGD \citep{mpgd}: gradiente da \emph{hinge} $\max(0, \cos(\mathrm{ArcFace}(x), e_{\mathrm{real}}) - \tau_h)$ no latente limpo previsto, pelo decodificador VAE, sem retropropagar pela UNet.
-\item Últimos 3 dos 7 passos base; passo 0,1 com gradiente de RMS unitário; $\tau_h = 0{,}2$; refiner sem orientação.
-\item ArcFace diferenciável: \texttt{w600k\_r50} convertido para PyTorch (paridade mínima: cosseno 0,99986) com \emph{warp} diferenciável.
-\item Custo medido no piloto: 0,2--0,5\,s e 2--5\,GB a mais por passo orientado.
-\item Precedente direto: Diff-Privacy usa funções de energia de identidade durante a remoção de ruído \citep{diffprivacy}.
-\item Na GTX 1080 (8\,GB), o P1 não cabe ao lado do servidor de troca; o E3g troca o rosto na CPU.
-\end{itemize}
+
+O P1 segue o estilo do MPGD \citep{mpgd}: aplica o gradiente da \emph{hinge} $\max(0, \cos(\mathrm{ArcFace}(x), e_{\mathrm{real}}) - \tau_h)$ ao latente limpo previsto, através do decodificador VAE, sem retropropagar pela UNet. Atua nos últimos 3 dos 7 passos base, com passo 0,1 e gradiente de RMS unitário, $\tau_h = 0{,}2$ e \emph{refiner} sem orientação. O ArcFace diferenciável é o \texttt{w600k\_r50} convertido para PyTorch (cosseno mínimo de paridade 0,99986), com \emph{warp} diferenciável. Cada passo orientado custa de 0,2 a 0,5\,s e de 2 a 5\,GB a mais. O Diff-Privacy usa funções de energia de identidade durante a remoção de ruído \citep{diffprivacy}, um desenho próximo. Na GTX 1080, de 8\,GB, o P1 não cabe ao lado do servidor de troca, e o E3g troca o rosto na CPU.
 
 \subsection{P3: código de identidade do CIAGAN}
-\begin{itemize}
-\item Softmax sobre as 1200 identidades (fica no casco convexo); início em $p \approx 0{,}9$ na identidade da seed ou no código do quadro anterior ($\le 5$ quadros).
-\item Perda: \emph{hinge} ArcFace mais $\lambda \lVert p - \mathrm{onehot}\rVert^2$, $\lambda = 1$.
-\item 10 passos Adam, taxa 0,5 nos logits; $\tau_h \in \{0, -0{,}2\}$ ($\tau_h = 0{,}2$ descartado no piloto).
-\end{itemize}
+
+O P3 otimiza um \emph{softmax} sobre as 1200 identidades do CIAGAN, que fica no casco convexo dos códigos, partindo de $p \approx 0{,}9$ na identidade da \emph{seed} ou no código do quadro anterior (até 5 quadros). A perda é a \emph{hinge} ArcFace mais $\lambda \lVert p - \mathrm{onehot}\rVert^2$, com $\lambda = 1$, em 10 passos de Adam com taxa 0,5 nos \emph{logits} e $\tau_h \in \{0, -0{,}2\}$.
 
 \subsection{Políticas de liberação}
-\begin{itemize}
-\item \emph{Hide-low}: detecções com confiança $< 0{,}5$ não são geradas; o \emph{fail-safe} as oculta.
-\item \emph{Privacy gate}: rosto gerado oculto se o cosseno ArcFace com o rosto real do mesmo quadro for $\ge$ o limiar do vídeo a FAR 1\%. Embeddings comparados em memória e descartados.
-\end{itemize}
+
+O \emph{hide-low} não gera detecções com confiança abaixo de 0,5, e o \emph{fail-safe} as oculta. O \emph{privacy gate} oculta o rosto gerado quando o cosseno ArcFace com o rosto real do mesmo quadro passa do limiar do vídeo a FAR 1\%; os embeddings são comparados em memória e descartados.
 
 \subsection{Amostragem de quadros}
-\begin{itemize}
-\item Fixa: gera o rosto de um track em 1 de cada $N$ quadros.
-\item Adaptativa: regenera quando os 106 landmarks reais (alinhamento por similaridade, unidades de IOD) mudam $\ge \tau_a$ desde o último quadro gerado, ou após 6 quadros.
-\item Erro de landmarks: a mesma função do avaliador de expressão (\texttt{landmark\_error}, módulo \texttt{align}).
-\item Decisão de amostragem isolada em \texttt{should\_generate} (módulo \texttt{policies}), com testes (2026-10-29).
-\item Entre gerações: reaproveitamento pelo Estágio~3. Janela de reaproveitamento: 10 quadros; o Estágio~2 força nova geração após 11 quadros (constante única \texttt{REUSE\_FRAMES}, \texttt{contracts.py}).
-\end{itemize}
+
+A amostragem fixa gera o rosto de um track em 1 de cada $N$ quadros. A adaptativa, usada no pipeline final com $\tau_a = 0{,}08$, regenera quando os 106 \emph{landmarks} reais, alinhados por similaridade e medidos em distâncias interoculares, mudam pelo menos $\tau_a$ desde o último quadro gerado, ou após 6 quadros. O erro de \emph{landmarks} é a mesma função do avaliador de expressão. Entre gerações, o Estágio~3 reaproveita o último rosto gerado, numa janela de 10 quadros; o Estágio~2 força uma nova geração após 11 quadros.
 
 \section{Estágio 3: composição fail-closed}
-\begin{itemize}
-\item Rosto gerado: colados só os pixels que o gerador mudou (a colagem do crop inteiro sobrescrevia 20\% dos rostos gerados com fundo real de vizinhos).
-\item Rosto \texttt{ok} com menos de 1\% da caixa alterada: tratado como falha (2026-10-29).
-\item Qualquer outra caixa (falha, pós-passe, \emph{gate}, \emph{hide-low}, amostragem): último rosto gerado do mesmo track, se tiver $\le 10$ quadros, redimensionado para a caixa atual.
-\item Senão: elipse cinza neutra (128), inscrita na caixa expandida 1,5$\times$, borda suavizada.
-\item Blur e pixelização não são usados como \emph{fallback}: reversíveis ou atacáveis \citep{fantomas}.
-\item Registro por caixa: \texttt{generated}, \texttt{reused}, \texttt{filled}, e a fração alterada.
-\item Invariante testado em quadros sintéticos: com o \emph{fail-safe} ligado, toda caixa conhecida muda $\ge 1\%$ (\texttt{tests/test\_compose.py}).
-\item Rostos nunca detectados: não cobertos (taxa residual não medida; Seção~\ref{cap:conclusao}).
-\end{itemize}
+
+A composição é \emph{fail-closed} sobre os rostos detectados. Do rosto gerado, só os pixels que o gerador mudou são colados; colar o recorte inteiro sobrescrevia 20\% dos rostos gerados com fundo real de vizinhos. Um rosto \texttt{ok} com menos de 1\% da caixa alterada é tratado como falha. Qualquer outra caixa (falha, pós-passe, \emph{gate}, \emph{hide-low} ou amostragem) recebe o último rosto gerado do mesmo track, se tiver até 10 quadros, redimensionado para a caixa atual; senão, uma elipse cinza neutra, inscrita na caixa expandida 1,5 vez, com borda suavizada. Blur e pixelização não são usados como alternativa, porque são em parte reversíveis \citep{fantomas}. Cada caixa registra o desfecho (\texttt{generated}, \texttt{reused} ou \texttt{filled}) e a fração alterada. Um teste em quadros sintéticos garante que, com o \emph{fail-safe} ligado, toda caixa conhecida muda pelo menos 1\%.
+
+Os rostos que o Estágio~1 nunca detecta saem reais e ficam fora de todas as métricas. Um segundo detector, o YOLO-FaceV2-s, acha mais caixas por quadro (Capítulo~\ref{cap:resultados}), e por isso esse resíduo não é desprezível; sua taxa não foi medida.
 
 \section{Tratamento de dados (LGPD)}
-% 2026-10-29: corrigido; o texto anterior dizia "crops com fundo real apagados assim
-% que usados" e "dados só no servidor", o que não valia para todos os caminhos.
-\begin{itemize}
-\item Embeddings reais só em memória; vão aos servidores por socket local; nunca em disco ou log.
-\item Scratch da ponte (entrada e saída da troca, máscaras, mapas das ControlNets): apagado por chamada e na saída do processo, inclusive em SIGTERM e SIGHUP (desde 2026-10-29); sobrevive a SIGKILL.
-\item Crops gerados (rosto sintético sobre o crop de contexto real): gravados para a composição. Desde 2026-10-29 só os \texttt{ok}; passthrough, \emph{gate}, \emph{hide-low} e \texttt{unchanged} não são gravados (antes: 72\% das detecções no BLANKET do E2).
-\item Cache de identidades sintéticas (imagens SDXL com fundo real): mantido entre braços; removido por \texttt{experiments/purge.sh}.
-\item \texttt{purge.sh}: lista por padrão; apaga crops gerados, vídeos compostos, imagens de identidade e scratch órfão; \texttt{--obs} apaga também \texttt{obs.csv} (rótulo de emoção do rosto real). Mantém métricas, ledgers e proveniência.
-\item Artefatos do texto: só agregados (\texttt{paper/generated/}); nenhum quadro de pessoa real.
-\item Resultados com imagens, caches e vídeos: fora do git, só no servidor (diretórios com permissão 700, cópia de segurança em disco do mesmo servidor). No computador do autor ficam só métricas e tabelas agregadas.
-\item Vídeo de auditoria (\texttt{audit.mp4}): desenhado sobre o vídeo fonte; só no servidor, para inspeção.
-\end{itemize}
+
+Os embeddings reais ficam só em memória: vão aos servidores por \emph{socket} local e nunca são gravados em disco ou em \emph{log}. O \emph{scratch} da ponte (entrada e saída da troca, máscaras, mapas das ControlNets) é apagado a cada chamada e na saída do processo, inclusive ao receber SIGTERM e SIGHUP; sobrevive apenas a SIGKILL. Os recortes gerados, com o rosto sintético sobre o fundo real, são gravados para a composição, mas só os \texttt{ok}; os de \emph{passthrough}, \emph{gate}, \emph{hide-low} e \texttt{unchanged} não são gravados. O cache de identidades sintéticas, com imagens SDXL sobre fundo real, é mantido entre braços.
+
+O \emph{script} \texttt{experiments/purge.sh} lista, e com confirmação apaga, os recortes gerados, os vídeos compostos, as imagens de identidade e o \emph{scratch} órfão; com \texttt{--obs}, apaga também as tabelas por rosto, que contêm o rótulo de emoção do rosto real. Métricas, registros e proveniência são mantidos. O texto usa só agregados (\texttt{paper/generated/}), sem nenhum quadro de pessoa real. Imagens, caches e vídeos ficam fora do git, só no servidor, em diretórios com permissão 700; no computador do autor ficam só métricas e tabelas agregadas.
 
 \section{Planejado, realizado e motivo}
+
+O Quadro~\ref{qua:desvios} compara a proposta do TCC1 com o que foi entregue.
+
 \begin{quadro}[ht]\centering
 \caption{Proposta (TCC1) $\times$ entrega.}
 \label{qua:desvios}
@@ -270,13 +171,13 @@
 \toprule
 Planejado & Realizado & Motivo \\
 \midrule
-O1: recall alto, nenhum rosto passa & pós-passe de recall e \emph{fail-closed}; residual não medido & anotação de rostos perdidos não feita (prazo) \\
-O2: supressão da identidade & dois reconhecedores, três visões & APIs comerciais removidas (ética, LGPD); \emph{parrot} não feito (prazo) \\
+O1: recall alto, nenhum rosto passa & pós-passe de recall e \emph{fail-closed} sobre os rostos detectados; residual não medido & anotação de rostos perdidos não feita (prazo) \\
+O2: supressão da identidade & dois reconhecedores, visões por rosto, por aluno e com máscara de rosto & APIs comerciais removidas (ética, LGPD); \emph{parrot} não feito (prazo) \\
 O3: emoção, olhar, avaliação humana & expressão, pose, $\kappa$ de emoção, proxy de orientação & sem estimador de olhar validado em rostos de 30--80\,px; estudo humano exige gravação consentida \\
 O4: custo baixo, sem GPU & estudo de custo (E5) & difusão e troca exigem GPU; refutado \\
-Pareamento demográfico & não feito & identidade nasce do crop real; atributos sensíveis fora do prompt (LGPD art.~11) \\
+Pareamento demográfico & não feito & identidade nasce do recorte real; atributos sensíveis fora do \emph{prompt} (LGPD art.~11) \\
 Equidade demográfica & não feita & sem rótulos; dois vídeos \\
-Coleta consentida na UFPR & não feita & prazo; consulta ao CEP pendente \\
+Coleta consentida na UFPR & não feita & prazo; consulta ao CEP em andamento \\
 Estágio temporal dedicado & identidade fixa por track e reaproveitamento; P1 negativo & consistência já vem da identidade fixa \\
 \bottomrule
 \end{tabular}

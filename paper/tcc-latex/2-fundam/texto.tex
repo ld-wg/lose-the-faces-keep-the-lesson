@@ -1,112 +1,168 @@
 \chapter{Fundamentação e trabalhos relacionados}
 \label{cap:fundam}
 
-% Rascunho em tópicos (2026-10-22). Cada item: o que é, o que usamos, o que importa aqui.
 % 2026-10-30 (análise crítica, F6): formulação dos componentes usados (equações).
+% 2026-11-18 (resposta à banca): reescrito em prosa. Referências conferidas nos artigos:
+% hanisch (recomendações; parrot), fantomas (sem "em rostos pequenos"), bondalakunta
+% (preprint; não avalia o inswapper), mustu (0,02 a 0,44); o artigo do BLANKET oculta o quadro.
+
+Este capítulo apresenta primeiro a formulação dos componentes que o método usa.
+Em seguida, revisa os trabalhos relacionados em detecção, rastreamento e reconhecimento facial.
+Depois, trata da anonimização por censura, por redes adversariais generativas (GAN) e por difusão, e da avaliação de privacidade e de afeto.
+Ao final, aponta o que esses trabalhos não cobrem.
 
 \section{Formulação dos componentes usados}
 \label{sec:formulacao}
-\begin{itemize}
-\item Difusão (DDPM) \citep{ddpm}: processo direto com ruído gaussiano,
-  \begin{equation}
-  q(x_t \mid x_0) = \mathcal{N}\!\left(\sqrt{\bar\alpha_t}\,x_0,\ (1-\bar\alpha_t)\,I\right),\qquad \bar\alpha_t = \textstyle\prod_{i\le t}\alpha_i;
-  \end{equation}
-  rede $\epsilon_\theta$ treinada para prever o ruído, $\mathcal{L} = \mathbb{E}\,\lVert \epsilon - \epsilon_\theta(x_t, t, y)\rVert^2$.
-  \begin{itemize}
-  \item difusão latente (SDXL): o processo roda em $z = \mathcal{E}(x)$ do VAE; imagem final $\mathcal{D}(z_0)$ \citep{sdxl};
-  \item previsão do latente limpo: $\hat z_0 = (z_t - \sqrt{1-\bar\alpha_t}\,\epsilon_\theta)/\sqrt{\bar\alpha_t}$ \citep{ddpm}; o MPGD e o P1 orientam por ela \citep{mpgd};
-  \item \emph{classifier-free guidance}: $\tilde\epsilon = \epsilon_\theta(z_t,\varnothing) + w\,(\epsilon_\theta(z_t,y) - \epsilon_\theta(z_t,\varnothing))$ \citep{cfg};
-  \item SDEdit com \emph{strength} $\rho$: parte do crop real com ruído no passo $t_0 = \rho T$ e só remove ruído a partir dali; com $\rho = 0{,}6$ a estrutura do rosto real sobrevive \citep{sdedit}.
-  \end{itemize}
-\item ArcFace \citep{arcface}: margem angular aditiva sobre embeddings normalizados,
-  \begin{equation}
-  \mathcal{L} = -\log \frac{e^{s\cos(\theta_y + m)}}{e^{s\cos(\theta_y + m)} + \sum_{j\ne y} e^{s\cos\theta_j}};
-  \end{equation}
-  identidade comparada por cosseno, $\cos(e_a, e_b) = e_a^\top e_b$ com $\lVert e\rVert = 1$.
-\item Troca de rosto (\texttt{inswapper\_128}) \citep{facefusion,insightface}: gerador de passo único a 128\,px; recebe o rosto alvo alinhado e o embedding ArcFace da fonte projetado por uma matriz fixa $W_{\mathrm{emap}}$, $z = W_{\mathrm{emap}}^\top e / \lVert W_{\mathrm{emap}}^\top e \rVert$; mantém a geometria (pose, landmarks) do alvo e troca a identidade. Não é difusão.
-\item GFPGAN \citep{gfpgan}: restauração facial por GAN com \emph{prior} generativo; re-renderiza o rosto trocado.
-\item Reidentificação em conjunto fechado: rank do track verdadeiro na ordem decrescente de cosseno com as médias dos tracks; rank-1 ao acaso $= 1/N$.
-\item Concordância corrigida pelo acaso \citep{cohen}: $\kappa = (p_o - p_e)/(1 - p_e)$.
-\end{itemize}
+
+Esta seção resume a formulação dos componentes do método e das medidas de avaliação.
+
+Um modelo de difusão \citep{ddpm} define um processo direto que adiciona ruído gaussiano a uma imagem $x_0$ ao longo de $T$ passos.
+No passo $t$, a imagem ruidosa tem distribuição
+\begin{equation}
+q(x_t \mid x_0) = \mathcal{N}\!\left(\sqrt{\bar\alpha_t}\,x_0,\ (1-\bar\alpha_t)\,I\right),\qquad \bar\alpha_t = \textstyle\prod_{i\le t}\alpha_i,
+\end{equation}
+em que os $\alpha_i$ formam o cronograma de ruído.
+Uma rede $\epsilon_\theta$ é treinada para prever o ruído adicionado, com a perda $\mathcal{L} = \mathbb{E}\,\lVert \epsilon - \epsilon_\theta(x_t, t, y)\rVert^2$, em que $y$ é o condicionamento, como o texto do prompt.
+A geração parte de ruído puro e remove o ruído passo a passo.
+
+O Stable Diffusion XL (SDXL) usa difusão latente: o processo roda no latente $z = \mathcal{E}(x)$ de um autoencoder variacional (VAE), e a imagem final é decodificada como $\mathcal{D}(z_0)$ \citep{sdxl}.
+Em cada passo, a previsão do ruído dá uma estimativa do latente limpo, $\hat z_0 = (z_t - \sqrt{1-\bar\alpha_t}\,\epsilon_\theta)/\sqrt{\bar\alpha_t}$ \citep{ddpm}.
+O MPGD calcula a orientação sobre essa estimativa \citep{mpgd}.
+O P1 deste trabalho, uma orientação por ArcFace no amostrador do SDXL (Seção~\ref{cap:metodo}), também atua sobre ela.
+A \emph{classifier-free guidance} (CFG) combina as previsões com e sem condicionamento, $\tilde\epsilon = \epsilon_\theta(z_t,\varnothing) + w\,(\epsilon_\theta(z_t,y) - \epsilon_\theta(z_t,\varnothing))$, em que $w$ é a escala da orientação \citep{cfg}.
+
+O SDEdit parte de uma imagem existente, e não de ruído puro.
+Com \emph{strength} $\rho$, a imagem recebe ruído até o passo $t_0 = \rho T$, e a geração só remove ruído a partir dali.
+No método, a imagem de partida é o crop real; com $\rho = 0{,}6$, a estrutura do rosto real sobrevive \citep{sdedit}.
+
+O ArcFace \citep{arcface} treina o reconhecedor com uma margem angular aditiva sobre embeddings normalizados:
+\begin{equation}
+\mathcal{L} = -\log \frac{e^{s\cos(\theta_y + m)}}{e^{s\cos(\theta_y + m)} + \sum_{j\ne y} e^{s\cos\theta_j}},
+\end{equation}
+em que $\theta_j$ é o ângulo entre o embedding e o vetor da classe $j$, $y$ é a classe correta, $m$ é a margem e $s$ é um fator de escala.
+A identidade é comparada pelo cosseno, $\cos(e_a, e_b) = e_a^\top e_b$, já que $\lVert e\rVert = 1$.
+
+A troca de rosto usa o \texttt{inswapper\_128} \citep{facefusion,insightface}.
+Ele não é um modelo de difusão: é um gerador de passo único, que trabalha a 128\,px.
+Recebe o rosto alvo alinhado e o embedding ArcFace $e$ da fonte, projetado por uma matriz fixa $W_{\mathrm{emap}}$: $z = W_{\mathrm{emap}}^\top e / \lVert W_{\mathrm{emap}}^\top e \rVert$.
+O resultado mantém a geometria do alvo (pose e landmarks) e troca a identidade.
+No método, a fonte é a identidade sintética gerada pela difusão, e o alvo é o rosto real de cada quadro.
+Depois da troca, o GFPGAN \citep{gfpgan}, um restaurador facial baseado em GAN com \emph{prior} generativo, renderiza de novo o rosto trocado.
+
+A privacidade é medida por reidentificação em conjunto fechado.
+Cada rosto é comparado, pelo cosseno, com a média dos embeddings de cada track.
+O rank é a posição do track verdadeiro na ordem decrescente de cosseno, e o rank-1 é a fração de rostos cujo track verdadeiro fica em primeiro lugar.
+Ao acaso, o rank-1 é $1/N$, em que $N$ é o número de tracks.
+
+Por fim, a concordância entre rótulos, corrigida pelo acaso, é medida pelo $\kappa$ de Cohen \citep{cohen}: $\kappa = (p_o - p_e)/(1 - p_e)$, em que $p_o$ é a concordância observada e $p_e$, a esperada ao acaso.
 
 \section{Detecção de faces}
-\begin{itemize}
-\item WIDER FACE: benchmark com subconjuntos \emph{easy}/\emph{medium}/\emph{hard} \citep{widerface}. Outro: FDDB \citep{fddb}. LFW \citep{wildface} é benchmark de verificação, não de detecção.
-\item SCRFD: redistribuição de amostras e computação; variantes 0.5--34 GFLOPs \citep{scrfd}.
-  \begin{itemize}
-  \item O pacote \texttt{buffalo\_l} do InsightFace traz SCRFD-10GF com keypoints (\texttt{det\_10g}), não RetinaFace \citep{insightface}.
-  \item AP publicado da variante com keypoints (SCRFD\_10G\_KPS): 95,40 / 94,01 / 82,80; 4,23 M parâmetros.
-  \end{itemize}
-\item RetinaFace: detector de estágio único com localização multinível \citep{retinaface}.
-\item YOLO-FaceV2: escala e oclusão; variante \emph{s} \citep{yolofacev2}.
-\item Em sala de aula: RetinaFace e YOLOFace com recall alto em dados de sala de aula \citep{gf-ananda}; YOLOv9 para rostos de crianças \citep{ahmed}.
-\item Outros considerados: MogFace \citep{mogface}, ADYOLOv5-Face \citep{adyolov5face}.
-\end{itemize}
+
+O WIDER FACE é um benchmark de detecção de faces dividido nos subconjuntos \emph{easy}, \emph{medium} e \emph{hard} \citep{widerface}.
+Outro benchmark de detecção é o FDDB \citep{fddb}.
+Já o LFW \citep{wildface} é um benchmark de verificação, e não de detecção.
+
+O SCRFD redistribui as amostras de treino e a computação da rede para tornar a detecção eficiente; suas variantes vão de 0,5 a 34 GFLOPs \citep{scrfd}.
+O pacote \texttt{buffalo\_l} do InsightFace traz o SCRFD-10GF com keypoints (\texttt{det\_10g}), e não o RetinaFace \citep{insightface}.
+Para essa variante (SCRFD\_10G\_KPS), a precisão média (\emph{Average Precision}, AP) publicada é de 95,40, 94,01 e 82,80 nos subconjuntos \emph{easy}, \emph{medium} e \emph{hard}, com 4,23 milhões de parâmetros.
+
+O RetinaFace é um detector de estágio único com localização multinível \citep{retinaface}.
+O YOLO-FaceV2 trata da escala e da oclusão dos rostos; este trabalho avalia a variante \emph{s} \citep{yolofacev2}.
+Em dados de sala de aula, o RetinaFace e o YOLOFace têm recall alto \citep{gf-ananda}.
+Para rostos de crianças, já se usou o YOLOv9 \citep{ahmed}.
+Este trabalho também considerou o MogFace \citep{mogface} e o ADYOLOv5-Face \citep{adyolov5face}.
 
 \section{Rastreamento}
-\begin{itemize}
-\item ByteTrack: associa primeiro detecções de alta confiança; as de baixa confiança só estendem tracks existentes \citep{bytetrack}.
-\item Deep OC-SORT: média móvel exponencial da aparência com peso pela confiança \citep{deepocsort}.
-\end{itemize}
+
+O rastreamento liga as detecções de quadros sucessivos em tracks.
+O ByteTrack associa primeiro as detecções de alta confiança; as de baixa confiança só estendem tracks já existentes \citep{bytetrack}.
+O Deep OC-SORT mantém, para cada track, uma média móvel exponencial da aparência, com peso dado pela confiança da detecção \citep{deepocsort}.
 
 \section{Reconhecimento facial}
-\begin{itemize}
-\item ArcFace: margem angular aditiva \citep{arcface}; usamos \texttt{w600k\_r50} (ResNet-50, WebFace600K, subconjunto de \citealp{webface260m}).
-\item FaceNet: embedding por perda tripla \citep{facenet}; usamos InceptionResnetV1 treinado em VGGFace2 \citep{vggface2,facenetpytorch}.
-\item Agregação de templates em vídeo ponderada por qualidade: NAN \citep{nan}, QAN \citep{qan}.
-\end{itemize}
+
+O ArcFace usa a margem angular aditiva descrita na Seção~\ref{sec:formulacao} \citep{arcface}.
+Este trabalho usa o modelo \texttt{w600k\_r50}: uma ResNet-50 treinada no WebFace600K, subconjunto do WebFace260M (\citealp{webface260m}).
+O FaceNet aprende o embedding com uma perda tripla \citep{facenet}; este trabalho usa uma InceptionResnetV1 treinada no VGGFace2 \citep{vggface2,facenetpytorch}.
+
+Em vídeo, os embeddings de vários quadros podem ser agregados num template único, com peso pela qualidade de cada quadro, como no NAN \citep{nan} e no QAN \citep{qan}.
 
 \section{Anonimização por censura e GAN}
-\begin{itemize}
-\item Blur e mosaico: removem identidade e comportamento; reversíveis ou atacáveis em rostos pequenos \citep{fantomas}.
-\item DeepPrivacy: o gerador nunca vê o rosto original \citep{deepprivacy}; DeepPrivacy2: corpo inteiro \citep{deeprivacy2}.
-\item CIAGAN: landmarks (contorno, boca, nariz), fundo mascarado, código de identidade \emph{one-hot} \citep{ciagan}.
-\item GANonymization: 478 landmarks (MediaPipe FaceMesh, 468 pontos mais íris) re-sintetizados por pix2pix \citep{hellmann,facemesh,pix2pix}.
-\item PP-GAN: verificador contrastivo mais SSIM \citep{yifan-wu}; G$^2$Face: priors generativo e geométrico, reversível \citep{h-yang}.
-\item FALCO: otimização no latente do StyleGAN2 \citep{falco}.
-\item Fantômas: 11 de 15 anonimizadores são parcialmente reversíveis; DeepPrivacy e CIAGAN entre os não reversíveis \citep{fantomas}.
-\end{itemize}
+
+A censura por blur ou mosaico remove a identidade, mas remove também o comportamento do rosto, como a expressão.
+Além disso, as duas técnicas são em parte reversíveis \citep{fantomas}.
+
+Os métodos baseados em GAN sintetizam um rosto novo no lugar do original.
+No DeepPrivacy, o gerador nunca vê o rosto original \citep{deepprivacy}; o DeepPrivacy2 estende a anonimização ao corpo inteiro \citep{deeprivacy2}.
+O CIAGAN condiciona o gerador em landmarks (contorno, boca e nariz), no fundo com o rosto mascarado e num código de identidade \emph{one-hot} \citep{ciagan}.
+O GANonymization extrai 478 landmarks com o MediaPipe FaceMesh (468 pontos mais a íris) e ressintetiza o rosto a partir deles com o pix2pix \citep{hellmann,facemesh,pix2pix}.
+O PP-GAN combina um verificador de identidade, treinado com perda contrastiva, e um termo de similaridade estrutural (SSIM) \citep{yifan-wu}.
+O G$^2$Face usa \emph{priors} generativo e geométrico e é reversível por desenho \citep{h-yang}.
+O FALCO anonimiza por otimização do código latente do StyleGAN2 \citep{falco}.
+
+O Fantômas mediu a reversibilidade de 15 anonimizadores: 11 são ao menos em parte reversíveis, e o DeepPrivacy e o CIAGAN estão entre os não reversíveis \citep{fantomas}.
 
 \section{Anonimização por difusão}
-\begin{itemize}
-\item Difusão latente \citep{ldm}; SDXL \citep{sdxl}; ControlNet \citep{controlnet}; SDEdit (\emph{strength}) \citep{sdedit}.
-\item BLANKET: identidade sintética por difusão mais troca de rosto em vídeo \citep{blanket}.
-  \begin{itemize}
-  \item Artigo: SD~1.5 (Realistic Vision), oculta o quadro inteiro quando a detecção falha.
-  \item Código liberado: SDXL \emph{inpainting} 896$\times$896, ControlNets OpenPose e Canny, refiner SDXL; FaceFusion \texttt{inswapper\_128} e GFPGAN 1.4 \citep{facefusion,gfpgan}; rostos que falham passam reais.
-  \item Não é treinado em crianças: o viés infantil vinha do prompt.
-  \end{itemize}
-\item FAMS: ReferenceNet; distância controlada por $(1-d)Z$ \citep{kung}.
-\item NullFace: embedding ArcFace negado via IP-Adapter \citep{ipadapter}, sem treino \citep{nullface}.
-\item Reverse Personalization: CFG negativa na identidade \citep{revpers}.
-\item LDFA: inpainting por difusão latente \citep{klemp}.
-\item Zhu et al.: média ArcFace da identidade real de um vídeo de uma pessoa, perturbada com ruído \citep{zhu-bmsb}.
-\item DiffAIM: injeção de gradiente para personificação \citep{wang}.
-\item MPGD: orientação no $\hat{x}_0$ previsto, sem retropropagar pela UNet \citep{mpgd}.
-\item Diff-Privacy: funções de energia de identidade aplicadas durante a remoção de ruído para anonimizar \citep{diffprivacy}; o P1 deste trabalho segue o mesmo desenho, sem treino.
-\item FIVA: anonimização em vídeo por troca de rosto condicionada em ArcFace, com rastreamento de identidade (a mesma identidade falsa por pessoa ao longo dos quadros) e identidade falsa amostrada a uma margem de cosseno da real; aponta que afastar ao máximo ($-z_{\mathrm{id}}$) é recuperável \citep{fiva}. É o precedente mais próximo do C2 e do P2.
-\item Trocadores de rosto como anonimizadores em vídeo, com rostos sintéticos como fonte: SimSwap, FaceDancer, REFace e E4S comparados a anonimizadores dedicados no FaceForensics++; a recuperação de identidade varia muito entre trocadores \citep{mustu,simswap}.
-\item Pseudonimização só por texto (atributos $\to$ template $\to$ gerador) \citep{lee2026}.
-\item Trocadores de rosto vazam a identidade do alvo \citep{bondalakunta}.
-\end{itemize}
+
+Os métodos desta seção usam blocos comuns: a difusão latente \citep{ldm}, o SDXL \citep{sdxl}, o ControlNet, que acrescenta condições espaciais como pose e bordas \citep{controlnet}, e o SDEdit, cujo \emph{strength} controla quanto da imagem de partida se mantém \citep{sdedit}.
+A seção inclui também trabalhos de troca de rosto, porque o método combina difusão e troca.
+
+O BLANKET anonimiza rostos em gravações de bebês: gera por difusão uma identidade sintética e a aplica ao vídeo por troca de rosto \citep{blanket}.
+O artigo usa o SD~1.5 (Realistic Vision) e oculta o quadro inteiro quando a detecção falha; é, portanto, \emph{fail-closed} por quadro.
+O código liberado é diferente.
+A identidade é gerada com SDXL \emph{inpainting} a 896$\times$896, ControlNets OpenPose e Canny e o refiner do SDXL, e a troca usa o \texttt{inswapper\_128} do FaceFusion e o GFPGAN~1.4 \citep{facefusion,gfpgan}.
+Nesse código, os rostos que falham passam reais para o vídeo.
+O método deste trabalho parte do código liberado, mas oculta por rosto, e não por quadro.
+Cada rosto detectado sem substituição válida é ocultado, e os outros rostos do quadro continuam com a face sintética (Seção~\ref{cap:metodo}).
+O BLANKET não é treinado em crianças; o viés infantil das identidades vinha do prompt.
+
+Outros métodos geram o rosto anonimizado diretamente com difusão.
+O FAMS usa uma ReferenceNet, e a distância à identidade original é controlada pelo termo $(1-d)Z$ \citep{kung}.
+O NullFace usa o embedding ArcFace do rosto, negado, como condição injetada pelo IP-Adapter \citep{ipadapter}, e dispensa treino \citep{nullface}.
+O Reverse Personalization aplica a CFG com a identidade como condição negativa \citep{revpers}.
+O LDFA anonimiza por \emph{inpainting} com difusão latente \citep{klemp}.
+
+Outra linha orienta a amostragem por gradientes.
+O DiffAIM injeta gradientes durante a difusão para personificação, isto é, para que o reconhecedor confunda o rosto com outra identidade \citep{wang}.
+O MPGD calcula a orientação sobre a previsão $\hat{x}_0$ da imagem limpa, sem retropropagar pela UNet \citep{mpgd}.
+O Diff-Privacy aplica funções de energia de identidade durante a remoção de ruído para anonimizar \citep{diffprivacy}.
+O P1 deste trabalho segue o mesmo desenho, mas sem treino.
+
+Em vídeo, uma questão é manter a mesma identidade falsa ao longo dos quadros.
+Um trabalho de desidentificação de vídeo com autoencoders de difusão usa, num vídeo de uma só pessoa, a média ArcFace da identidade real, perturbada com ruído, como identidade falsa de todos os quadros \citep{zhu-bmsb}.
+O FIVA anonimiza vídeo por troca de rosto condicionada no embedding ArcFace \citep{fiva}.
+Com rastreamento de identidade, cada pessoa recebe a mesma identidade falsa em todos os quadros.
+A identidade falsa é amostrada a uma margem de cosseno da real, e o trabalho aponta que afastá-la ao máximo ($-z_{\mathrm{id}}$) é recuperável.
+O FIVA é o precedente mais próximo de duas partes deste trabalho: o C2, identidade real agregada por track, e o P2, empurrão do embedding de identidade da troca para longe da identidade real.
+
+Um estudo avalia trocadores de rosto como anonimizadores de vídeo, com rostos sintéticos como fonte: SimSwap, FaceDancer, REFace e E4S são comparados a anonimizadores dedicados no FaceForensics++ \citep{mustu,simswap}.
+Nesse estudo, a recuperação de identidade vai de 0,02 a 0,44 conforme o trocador e é a menor no SimSwap.
+Um \emph{preprint} recente, ainda sem revisão por pares, relata que, nos sete trocadores que avalia, parte da identidade do rosto alvo, o que é substituído, passa para o resultado \citep{bondalakunta}.
+São eles o hyperswap do FaceFusion, BlendFace, CanonSwap, DiffSwap, DiffFace, E4S e FaceShifter; o \texttt{inswapper} não está entre eles.
+
+Por fim, há a pseudonimização só por texto: atributos do rosto preenchem um template de texto, e um gerador produz um rosto novo a partir dele \citep{lee2026}.
 
 \section{Avaliação de privacidade}
-\begin{itemize}
-\item Survey de biometria com privacidade; \emph{Privacy Gain} como diferença absoluta de rank-1 \citep{meden}.
-\item Atacante ingênuo superestima a privacidade; recomenda reconhecedor não usado na otimização e atacante ciente \citep{hanisch}.
-\item Reversibilidade como critério \citep{fantomas}.
-\end{itemize}
+
+Uma revisão sobre biometria facial com preservação de privacidade usa o \emph{Privacy Gain}, a diferença absoluta de rank-1 entre os rostos originais e os anonimizados \citep{meden}.
+
+A medida de privacidade depende do atacante considerado.
+Um estudo sobre a metodologia de avaliação mostra que o atacante ingênuo, que usa um reconhecedor pronto, sem retreino em dados anonimizados, superestima a privacidade.
+O estudo recomenda treinar ou pré-treinar o reconhecedor em dados anonimizados, testar com vários reconhecedores diferentes e usar conjuntos de avaliação mais difíceis \citep{hanisch}.
+O reconhecedor treinado e testado em dados anonimizados representa um atacante ciente do método, chamado \emph{parrot}.
+
+A reversibilidade é outro critério: além da reidentificação, avalia-se se a anonimização pode ser desfeita \citep{fantomas}.
 
 \section{Afeto e atributos}
-\begin{itemize}
-\item AffectNet, 8 classes \citep{affectnet}; CK+ \citep{ck+}; FACES \citep{faces}.
-\item HSEmotion \texttt{enet\_b0\_8\_best\_vgaf} \citep{hsemotion}.
-\item Concordância corrigida pelo acaso: $\kappa$ de Cohen \citep{cohen}.
-\end{itemize}
+
+O AffectNet é uma base de expressões faciais com 8 classes \citep{affectnet}; o CK+ \citep{ck+} e o FACES \citep{faces} são outras bases de expressões.
+Este trabalho classifica a emoção com o HSEmotion, modelo \texttt{enet\_b0\_8\_best\_vgaf} \citep{hsemotion}.
+A concordância de emoção entre o rosto real e o rosto mostrado é medida pelo $\kappa$ de Cohen \citep{cohen}, definido na Seção~\ref{sec:formulacao}.
 
 \section{O que nenhum trabalho cobre (lacuna)}
-\begin{itemize}
-\item Vídeo multipessoa de sala de aula, com rostos pequenos, medido no vídeo publicado (identidade estável por pessoa em vídeo já existe: \citealp{fiva}).
-\item Avaliação no vídeo final, com o que falha contando como vazamento ou como oculto.
-\item Onde, num pipeline híbrido difusão + troca, um empurrão de identidade sobrevive até o vídeo.
-\end{itemize}
+
+Os trabalhos acima deixam três questões em aberto.
+A primeira é o vídeo de sala de aula, com várias pessoas e rostos pequenos, avaliado no vídeo que é publicado.
+A identidade estável por pessoa em vídeo já existe (\citealp{fiva}), mas não nesse cenário.
+A segunda é a avaliação no vídeo final, em que os rostos que o método não consegue substituir entram na conta: como vazamento, se saem reais, ou como ocultos, se são ocultados.
+A terceira é saber onde, num pipeline híbrido de difusão e troca de rosto, um empurrão de identidade sobrevive até o vídeo.
+Este trabalho trata dessas três questões.

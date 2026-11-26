@@ -42,6 +42,13 @@ HEADERS = {
     "Method": "Método", "View": "Visão", "Synthetic share": "Com face sintética", "R1 among them": "R1 entre eles",
     "cos($\\hat e$, synth.)": "cos($\\hat e$, sint.)", "cos($\\hat e$, real)": "cos($\\hat e$, real)",
     "FaceNet R1": "R1 FaceNet", "ArcFace R1": "R1 ArcFace",
+    # 2026-11-18 review: per-student attacker, same-face table, where the identity is
+    "R1 student": "R1 aluno",
+    "Faces the released flow swaps": "Rostos que o BLANKET original troca",
+    "Faces only Stage 1 adds": "Rostos que só o Estágio 1 acrescenta",
+    "Faces scored": "Rostos avaliados",
+    "FaceNet R1, core": "R1 FaceNet, só rosto", "FaceNet R1, context": "R1 FaceNet, só contexto",
+    "ArcFace R1, core": "R1 ArcFace, só rosto", "ArcFace R1, context": "R1 ArcFace, só contexto",
 }
 
 LABELS = {
@@ -78,6 +85,12 @@ LABELS = {
     "BLANKET native mix, Stage 1 detection": "BLANKET mix nativo (Estágio 1)",
     "final pipeline": "pipeline final", "final pipeline + adaptive": "pipeline final + adaptativa",
     "final pipeline, GFPGAN off": "pipeline final sem GFPGAN", "final pipeline (gate)": "pipeline final (gate)",
+    # 2026-11-18 review
+    "Tracks": "Tracks (n)", "Real face (ceiling)": "Rosto real (teto)",
+    "BLANKET, released flow": "BLANKET, fluxo original",
+    "Stage 1 detection, native mix": "Detecção do Estágio 1, mix nativo",
+    "Privacy gate, shown faces": "Privacy gate, rostos mostrados",
+    "real face": "rosto real", "native swap": "troca, mix nativo", "P2 swap": "troca, P2",
 }
 
 CELLS = {"yes": "sim", "no": "não", "generated": "gerados", "final video, shown": "vídeo final",

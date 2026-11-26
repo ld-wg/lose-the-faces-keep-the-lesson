@@ -4,7 +4,7 @@
 \begin{itemize}
 \item Servidor: constantine (DInf/UFPR), uma NVIDIA GeForce GTX 1080 de 8\,GB (Pascal), 24 \emph{threads}, 31\,GB de RAM, compartilhado.
 \item Ambiente: Python 3.11 com \texttt{uv}; torch 2.6.0+cu124; \texttt{onnxruntime-gpu} 1.20.2; dois venvs isolados para a ponte do BLANKET.
-\item Ponte: repositório \texttt{blanket-anonymizer-bridge} (servidores de identidade e de troca, RPC por socket Unix), commit \texttt{276970a} na campanha e \texttt{2116af2} no E3h (opção de trocador).
+\item Ponte: repositório \texttt{blanket-anonymizer-bridge} (servidores de identidade e de troca, RPC por socket Unix), commit \texttt{276970a} na campanha e \texttt{2116af2} no E3h (opção de trocador). A proveniência de cada experimento (commit do projeto, se a árvore estava limpa, commit da ponte) está em \texttt{paper/generated/SOURCES.md}; a campanha usou mais de um commit, e as reavaliações de 2026-11-18 usaram \texttt{--resume} sobre as mesmas gerações.
 \item Experimentos: \texttt{experiments/e0..e5}, cada um com \texttt{config.toml}, \texttt{run.py}, README.
   \begin{itemize}
   \item \texttt{run\_all.sh} (\texttt{--only}, \texttt{--resume}); \texttt{smoke.sh};
@@ -12,7 +12,7 @@
   \item exportação para o texto: \texttt{export\_paper.sh}, que leva tabelas, figuras e chaves para \texttt{paper/generated} e roda \texttt{derived.py} e \texttt{tables\_pt.py};
   \item \texttt{purge.sh}: remove resíduos com pessoas reais após a exportação.
   \end{itemize}
-\item Testes unitários: \texttt{tests/} (pytest), só com arrays sintéticos; 62 testes, executados na constantine.
+\item Testes unitários: \texttt{tests/} (pytest), só com arrays sintéticos; 69 testes, executados na constantine.
 \item Tempos na GTX 1080: identidade SDXL $\approx$3,3\,min por track (a primeira, com carga dos modelos, $\approx$12\,min); E2 $\approx$5\,h; E3 $\approx$2 dias; E5 $\approx$8\,h.
 \item Identidades SDXL congeladas em cache por vídeo; seeds determinísticas por track (dependem do caminho do vídeo).
 \item Código: \texttt{github.com/ld-wg/lose-the-faces-keep-the-lesson}.

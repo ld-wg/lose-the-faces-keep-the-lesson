@@ -14,28 +14,29 @@ Facial de-identification for classroom video by synthetic identity swap (undergr
 
 Evaluation: two public classroom clips (22 s, 41 tracks, about 10k faces), two recognizers (FaceNet as the independent judge, ArcFace as the one the push optimizes against), a closed gallery of real faces, and a naive attacker. Experiments E0–E5 compare blur, mosaic, CIAGAN, GANonymization, released BLANKET and the pipeline on the same detections; one clip was seen during the pilot, the other only after the pipeline was frozen.
 
-**Results.**
+**Results.** Headline numbers are for the final pipeline (adaptive sampling) on the clip it never saw during the pilot (demo4); pooled values in brackets.
 
 | | Released BLANKET | Final pipeline |
 |---|---|---|
 | Faces shown with a synthetic face | 22% (the rest is published real) | 78% (the rest hidden) |
-| FaceNet rank-1 among shown faces | 0.68 | 0.34 (0.22 seen clip, 0.45 new clip; chance ≈ 0.05) |
+| FaceNet rank-1 among shown faces | 0.68 | 0.47 [0.36]; chance ≈ 0.05 |
+| Attacker deciding once per student | — | 0.70 [0.51]; blur: 0.22 |
 
-- Re-identification drops but stays 4 to 9 times above chance. An attacker deciding once per student is right for 51% of them. Blur reaches 0.09 on the final video, so blur still protects more.
-- The leak is in the face swap, not in the diffusion identity. P2 lowers rank-1 among swapped faces from 0.50 to 0.39 (ArcFace: 0.71 → 0.35), with no utility cost, but this is not significant after Holm correction (p = 0.22). Removing all real-identity content from the source (β = c) only gives 0.50 → 0.46. Guiding the diffusion (P1) or CIAGAN's identity code (P3) changes nothing. SimSwap instead of inswapper leaks more without the push (0.58) and ties with it (0.42).
-- Expression error is 0.12 inter-ocular units (about 5× the noise floor; blur 0.23, GANs 0.13–0.18). Head pose error is 9.7° (blur and GANs 14–18°). Emotion is not kept by any method (κ ≈ 0.2).
-- The new clip is harder than the pilot clip: the detector finds about half the boxes a second detector finds, and faces are more turned.
-- Cost on a GTX 1080: 197 GPU-hours per class hour, 77 with adaptive sampling (per-face loop only).
-- 8.9% of swaps returned the face unchanged; the fail-closed composition now hides them.
+- **Compare on the same faces.** Covering more faces adds small faces that are hard to recognize even when real, which lowers the average by itself. On the 2,432 faces the released BLANKET manages to swap, it leaks 0.65; the swap with Stage 1 detection leaks *more* (0.75, p = 0.004); the push P2 brings it to 0.44 and the privacy gate to 0.41.
+- **Where the identity is left.** With a gallery from the same session, a face-core mask shows that what the swap does not replace (hair, forehead, ears, outline, background) re-identifies the swapped face as well as the whole image (0.49 vs 0.50), and P2 does not touch it. The swapped face core still leaks 0.34, 0.28 with P2.
+- **P2.** Large drop in ArcFace (0.71 → 0.35), about a third of it in FaceNet; the confirmatory test on the new clip is not significant (Δ −0.09, p = 0.26). Guiding the diffusion (P1), CIAGAN's identity code (P3) and SimSwap instead of inswapper change nothing.
+- **Utility.** Head pose error 9.6° (blur 16.0°, GANs 14–15°); expression error 0.12 inter-ocular units, about 5× the noise floor, tied with GANonymization (0.13). Emotion is not kept by any method (κ ≈ 0.2).
+- **Baselines re-measured.** The evaluator used to score censor and CIAGAN crops with black borders; fixed, blur's final-video rank-1 is 0.14 (was 0.09).
+- **Cost** on a GTX 1080: 77 GPU-hours per class hour with adaptive sampling (197 without), per-face loop only, plus about 3 min of SDXL per track.
 
 **Conclusions.**
 
-- Per-track synthetic swap de-identifies classroom video only partially.
-- Most of the gain over the published method is coverage, from simple engineering: reuse Stage 1's detections and hide whatever fails.
-- The diffusion step, the most expensive part, matters least for privacy. The remaining leak comes from the swapper keeping the real face's shape.
+- Per-track synthetic swap de-identifies classroom video only partially; blur and opaque masking protect more.
+- Most of the gain over the published method is coverage, from simple engineering: reuse Stage 1's detections and hide whatever fails. Privacy comparisons between methods with different coverage need the same faces.
+- What is left of the identity is mostly outside the swapped face; the diffusion step, the most expensive part, matters least for privacy.
 - The output is face de-identification, not anonymized data in the LGPD's sense: hair, body, voice and seat remain.
-- When privacy is the requirement, blur is still the choice. Face swap is justified only when visible behavior matters and the residual risk is accepted.
-- Limits: two short public clips (not a consented dataset of children), a naive attacker, no human evaluation.
+- When privacy is the requirement, hide the face (an opaque mask, as the pipeline already uses for failed faces). Face swap is justified only when visible behavior matters and the residual risk is accepted.
+- Limits: two short public clips (not a consented dataset of children), a naive same-session attacker, faces the detector never finds are not measured, no human evaluation.
 
 ## Pipeline
 

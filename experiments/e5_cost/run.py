@@ -16,14 +16,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _common import SERIES, Experiment, holm, paired_kappa_diff  # noqa: E402
+from _common import SERIES, Experiment, holm, paired_kappa_diff, strata  # noqa: E402
 from _generation import (anonymize, by_run, cell, detect, eval_ctx_args, evaluate, metric_keys,  # noqa: E402
                          paired_rows, strata_rows)
 
 PIPELINE_KEYS = ("identity_cache_from", "reference", "arms")   # [pipeline] entries that are not arm flags
 # what the viewer sees (--video-view), FaceNet = held-out
 VIDEO = ["facenet_video.rank1", "facenet_video.verified", "arcface_video.rank1", "expression_video",
-         "pose_err_video", "emotion_kappa_video", "gender_agree_video", "motion_err_video",
+         "pose_err_video", "emotion_kappa_video", "gender_agree_video", "age_err_video", "motion_err_video",
          "orient_kappa_video",
          # 2026-10-30: shown faces only, one decision per track
          "video_shown", "facenet_video_shown.rank1", "facenet_video_track.rank1", "facenet_video_track_inv.rank1"]
@@ -186,10 +186,23 @@ with Experiment(__file__) as exp:
                 if r[3] is not None:
                     exp.metric(f"e5/pooled/{n}/delta-{short[m]}.p-holm", round(adjusted[n], 4))
 
-    # Large faces leak most (E2): FaceNet rank-1 on the composed video by face size.
-    bins, size_rows = strata_rows({n: pooled[n] for n in names if n != "ref-cpu"}, "face_px", SIZE_EDGES,
-                                  "facenet_video.rank1", ev, {})
-    exp.table("size", ["Face size (px)", *bins], size_rows, align="l" + "r" * len(bins))
+    # FaceNet rank-1 on the composed video by face size, among the shown faces (2026-11-18 review:
+    # with hidden faces counted as never re-identified, hiding alone lowers a bin), with the
+    # number of tracks per bin (the unit the intervals resample); the all-faces view as keys only.
+    size_arms = {n: pooled[n] for n in names if n != "ref-cpu"}
+    bins, size_rows = strata_rows(size_arms, "face_px", SIZE_EDGES, "facenet_video_shown.rank1", ev, {})
+    tracks = [len({(r["video"], r["track_id"]) for r in sub})
+              for _, sub in strata(pooled[ref], "face_px", SIZE_EDGES)]
+    exp.table("size", ["Face size (px)", *bins], [["Tracks", *tracks], *size_rows], align="l" + "r" * len(bins))
+    for b, n_tracks in zip(bins, tracks):
+        exp.metric(f"e5/pooled/size-{b}/tracks", n_tracks)
+    for n, rows in size_arms.items():
+        for b, (_, sub) in zip(bins, strata(rows, "face_px", SIZE_EDGES)):
+            for metric in ("facenet_video_shown.rank1", "facenet_video.rank1"):
+                c = cell(sub, metric, ev)
+                if c is not None:
+                    exp.metric(f"e5/pooled/{n}/size-{b}/{metric}", round(c[0], 3))
+                    exp.metric(f"e5/pooled/{n}/size-{b}/{metric}.ci", round(c[1], 3))
 
     # Figure: one row per arm (cheapest at the top), four panels sharing the rows: GPU hours per
     # hour of class, then FaceNet rank-1, emotion κ and motion error on the composed video, with

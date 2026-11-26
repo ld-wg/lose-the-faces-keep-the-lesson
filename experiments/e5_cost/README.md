@@ -3,9 +3,9 @@
 **Question.** How much cheaper can the final pipeline get, and what does each
 speed-up cost the viewer: privacy, utility and motion?
 
-Profiling on 2026-10-20 (60 frames of demo1) set the starting point:
-- The campaign ran BLANKET's main process on CPU. Its head segmentation then
-  took 412 ms per face; on the GPU it takes 24 ms.
+A pilot profile (2026-10-20, 60 frames) set the starting point:
+- With BLANKET's main process on CPU, its head segmentation took 412 ms per
+  face; on the GPU it takes 24 ms. The final campaign runs it on the GPU.
 - Per face, GFPGAN takes 78 ms, the swap server's landmarking 37 ms and the
   swap itself 26 ms.
 - PNG transport and the RPC are about 10 ms together.
@@ -73,5 +73,9 @@ track-bootstrap intervals.
 
 ## Status
 
-Written 2026-10-20. Needs E3's identity cache, and the bridge at 16cf02d or
-later (per-call `enhance`).
+Final campaign on constantine (one GTX 1080), 2026-11-14; re-exported on
+2026-11-18 (size table among the shown faces, with tracks per bin; age error).
+The configuration the thesis calls final is `adapt-0.08`; `ref` (every frame) is
+the cost baseline (DECISIONS.md 77). Needs E3's identity cache, and the bridge at
+16cf02d or later (per-call `enhance`). The `ref-cpu` arm was dropped: on
+constantine it ran on the GPU (DECISIONS.md 72).

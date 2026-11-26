@@ -65,11 +65,14 @@ with Experiment(__file__) as exp:
     # Main table: coverage and FaceNet (held-out) rank-1 in the three views, pooled over videos.
     # "Rel. red.": 1 − R1/R1_real, the relative rank-1 reduction (the survey's "Privacy Gain" is the
     # absolute difference; key name kept as privacy-gain for existing \result references)
-    exp.table("main", ["Arm", "Coverage", "R1 gen.", "R1 all", "R1 final", "Rel. red.", "Verified"], [
+    # "R1 student": one decision per track from the mean face it shows (the attacker who follows the
+    # stable pseudonym), next to the per-face views (2026-11-18 review)
+    exp.table("main", ["Arm", "Coverage", "R1 gen.", "R1 all", "R1 final", "R1 student", "Rel. red.", "Verified"], [
         [labels[n], cell(pooled[n], "anonymized", ev), cell([r for r in pooled[n] if r["anonymized"]], "facenet.rank1", ev),
          cell(pooled[n], "facenet.rank1", ev), cell(pooled[n], "facenet_final.rank1", ev),
+         cell(pooled[n], "facenet_track.rank1", ev),
          privacy_gain_cell(pooled[n], ev), cell(pooled[n], "facenet_final.verified", ev)]
-        for n in names], best={"R1 final": "min", "Verified": "min"}, align="lrrrrrr")
+        for n in names], best={"R1 final": "min", "R1 student": "min", "Verified": "min"}, align="lrrrrrrr")
 
     # FN = FaceNet (held-out), AF = ArcFace (guidance space); the caption says so
     exp.table("privacy", ["Arm", "FN R1", "FN R5", "AF R1", "AF R5", "FN cos", "Consist."], [
